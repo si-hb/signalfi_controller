@@ -2,8 +2,8 @@ services:
   signalfi-web:
     build: .
     restart: unless-stopped
-    ports:
-      - "${HTTP_PORT:-3000}:3000"
+    expose:
+      - 3000
     volumes:
       - ./data:/app/data
       - ./audio:/app/audio
@@ -19,6 +19,17 @@ services:
     networks:
       - default
       - root_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.signalfi-https.rule=Host(`signalfi.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.signalfi-https.entrypoints=websecure"
+      - "traefik.http.routers.signalfi-https.service=signalfi"
+      - "traefik.http.routers.signalfi-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.signalfi-http.rule=Host(`signalfi.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.signalfi-http.entrypoints=web"
+      - "traefik.http.routers.signalfi-http.middlewares=redirect-https"
+      - "traefik.http.services.signalfi.loadbalancer.server.port=3000"
+      - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/state"]
       interval: 30s

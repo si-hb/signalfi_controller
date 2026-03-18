@@ -1,0 +1,90 @@
+version: "3"
+
+services:
+  traefik:
+    image: traefik:v3
+    command:
+      - "--api.insecure=false"
+      - "--api.dashboard=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=root_default"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@symphonyinteractive.ca"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--global.checknewversion=false"
+      - "--global.sendanonymoususage=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /root/acme.json:/acme.json
+    networks:
+      - root_default
+    labels:
+      - "traefik.enable=false"
+    restart: unless-stopped
+
+  node-red:
+    image: nodered/node-red:latest
+    container_name: node-red
+    restart: unless-stopped
+    environment:
+      - TZ=America/Toronto
+      - OTP_SECRET=d4efad504590a39b884029516949e2a2fbdf2db8aabcc5e3e2e2af06f9130f81
+    expose:
+      - 1880
+      - 3333/udp
+    ports:
+      - "3333:3333/udp"
+    volumes:
+      - ./nodered-data:/data
+    networks:
+      - root_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nodered-https.rule=Host(`weather.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.nodered-https.entrypoints=websecure"
+      - "traefik.http.routers.nodered-https.service=nodered"
+      - "traefik.http.routers.nodered-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nodered-http.rule=Host(`weather.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.nodered-http.entrypoints=web"
+      - "traefik.http.routers.nodered-http.middlewares=redirect-https"
+      - "traefik.http.services.nodered.loadbalancer.server.port=1880"
+      - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
+
+  mosquitto:
+    image: eclipse-mosquitto:2
+    user: mosquitto
+    volumes:
+      - type: bind
+        source: ./config/
+        target: /mosquitto/config/
+      - type: bind
+        source: ./log/
+        target: /mosquitto/log/
+      - type: volume
+        source: data
+        target: /mosquitto/data/
+    ports:
+      - target: 1883
+        published: 1883
+        protocol: tcp
+        mode: host
+      - target: 9001
+        published: 9001
+        protocol: tcp
+        mode: host
+    restart: unless-stopped
+
+networks:
+  root_default:
+    external: true
+
+volumes:
+  data:
+    name: "mqtt-broker-data"
