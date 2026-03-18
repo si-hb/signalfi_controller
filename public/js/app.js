@@ -2,7 +2,7 @@
  * SignalFi Control — main application entry point
  */
 
-import { initWS, sendCommand, registerMessageHandler } from './ws.js';
+import { initWS, sendCommand, registerMessageHandler, setAuthToken as wsSetAuthToken } from './ws.js';
 import { initDevicesView, renderDevices, updateScoutCard, setSearchTerm, toggleViewMode } from './views/devices.js';
 import { initSettingsView, renderSettings, updateStoreSection } from './views/settings.js';
 import { initInfoView, renderInfo, renderInfoRow } from './views/info.js';
@@ -10,7 +10,45 @@ import { initLightingSheet, openLightingSheet } from './sheets/lighting.js';
 import { initSoundSheet, openSoundSheet, renderSoundSheet } from './sheets/sound.js';
 import { initPresetsSheet, openPresetsSheet } from './sheets/presets.js';
 import { initDeviceSheet, openDeviceSheet, updateDeviceSheetForScout, onBackdropClose } from './sheets/device.js';
-import { fetchState, fetchAudio } from './api.js';
+import { fetchState, fetchAudio, setAuthToken as apiSetAuthToken, loadAuthToken } from './api.js';
+
+// ─── Authentication Setup ─────────────────────────────────────────────────────
+
+/**
+ * Check if the server requires authentication.
+ * If 401 is received, prompt the user for a token.
+ */
+async function setupAuth() {
+  try {
+    // Try to fetch state without token; if 401, server requires auth
+    const res = await fetch('/api/state');
+    if (res.status === 401) {
+      const token = window.prompt('This server requires authentication.\nPlease enter the API token:');
+      if (token) {
+        // Set token in both API and WebSocket modules
+        apiSetAuthToken(token);
+        wsSetAuthToken(token);
+        // Retry the fetch with the new token
+        const retryRes = await fetch('/api/state');
+        if (retryRes.status === 401) {
+          window.alert('Invalid token. Please refresh and try again.');
+          // Clear the invalid token
+          apiSetAuthToken(null);
+          wsSetAuthToken(null);
+          return false;
+        }
+        return true;
+      } else {
+        window.alert('Authentication required to access this server.');
+        return false;
+      }
+    }
+    return true;
+  } catch (err) {
+    console.error('Error during auth setup:', err);
+    return true; // Continue anyway; might be a transient network error
+  }
+}
 
 // ─── Global State ─────────────────────────────────────────────────────────────
 
@@ -494,7 +532,7 @@ async function loadInitialState() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
-function init() {
+async function init() {
   // Initialize sheets (build DOM)
   initLightingSheet();
   initSoundSheet();
@@ -514,6 +552,13 @@ function init() {
   // Register WS message handler and start WebSocket
   registerMessageHandler(handleWsMessage);
   initWS();
+
+  // Check authentication before loading initial state
+  const authOk = await setupAuth();
+  if (!authOk) {
+    // Auth failed; stop here. User will need to refresh after authentication is resolved.
+    return;
+  }
 
   // Load initial state via REST
   loadInitialState();
