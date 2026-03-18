@@ -1,0 +1,27 @@
+{
+  "mqtt": {
+    "host": "apis.symphonyinteractive.ca",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "tls": false,
+    "caCert": "",
+    "clientCert": "",
+    "clientKey": "",
+    "clientId": "signalfi-web",
+    "topicPrefix": "scout"
+  },
+  "http": {
+    "host": "0.0.0.0",
+    "port": 3000,
+    "staticDir": "./public"
+  },
+  "paths": {
+    "dataDir": "./data",
+    "firmwareDir": "./firmware",
+    "audioDir": "./audio"
+  },
+  "auth": {
+    "token": ""
+  }
+}

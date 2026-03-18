@@ -1,0 +1,94 @@
+/* Status dot */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  display: inline-block;
+  flex-shrink: 0;
+}
+
+.status-dot.online,
+.status-dot.idle {
+  background: var(--status-online);
+}
+
+.status-dot.offline {
+  background: var(--status-offline);
+}
+
+.status-dot.announce {
+  background: var(--status-busy);
+  animation: pulse-dot 1.2s ease-in-out infinite;
+}
+
+.status-dot.connecting,
+.status-dot.rebooting,
+.status-dot.updating,
+.status-dot.identifying,
+.status-dot.warn {
+  background: var(--status-warn);
+  animation: pulse-dot 0.8s ease-in-out infinite;
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50% { opacity: 0.5; transform: scale(0.8); }
+}
+
+/* Pulsing card outline when announcing */
+.device-card.announcing {
+  border-color: var(--status-busy);
+  animation: pulse-border 1.4s ease-in-out infinite;
+}
+
+@keyframes pulse-border {
+  0%, 100% {
+    border-color: var(--status-busy);
+    box-shadow: 0 0 0 0 rgba(14,184,192,0);
+  }
+  50% {
+    border-color: var(--accent-bright);
+    box-shadow: 0 0 0 3px rgba(14,184,192,0.2);
+  }
+}
+
+/* MQTT status indicator */
+.mqtt-indicator {
+  font-size: 14px !important;
+}
+
+.mqtt-indicator.connected {
+  color: var(--status-online);
+}
+
+.mqtt-indicator.disconnected {
+  color: var(--danger);
+}
+
+.mqtt-indicator.reconnecting {
+  color: var(--status-warn);
+  animation: pulse-dot 1s ease-in-out infinite;
+}
+
+/* Identify mode toggle active state */
+#btn-identify.active,
+#btn-identify-sel.active {
+  color: var(--accent-bright);
+  background: rgba(14,184,192,0.1) !important;
+  border-radius: 8px;
+}
+
+/* WS disconnected state: disable command buttons */
+body.ws-disconnected .action-btn,
+body.ws-disconnected .sheet-announce-btn,
+body.ws-disconnected .sheet-stop-btn,
+body.ws-disconnected .btn-primary.cmd-btn {
+  opacity: 0.4;
+  pointer-events: none;
+}
+
+body.ws-disconnected .action-btn::after {
+  content: " (offline)";
+  font-size: 11px;
+  opacity: 0.7;
+}

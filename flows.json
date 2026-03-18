@@ -1,0 +1,4538 @@
+[
+    {
+        "id": "ec1c42aabdfe318b",
+        "type": "tab",
+        "label": "Signalfi",
+        "disabled": false,
+        "info": "",
+        "env": []
+    },
+    {
+        "id": "59f17ead25af0830",
+        "type": "subflow",
+        "name": "Crestron ISC Server",
+        "info": "# Crestron ISC\nSymphony Interactive\n\n---\n\n\n## Crestron Configuration\n\nAdd a TCP server to program and an ISC symbol. Connect TX/RX respectively. Add analog signal joins to ISC as necessary.\n\nNumber of analog/serial joins on output side and input side must match.\n\nUse aforce or sforce symbols to force signals to serial or analog if necessary.\n\n---\n\n\n## Node Parameters\n\n**IPaddress:**  address of Crestron processor\n**PORT:**  a  port for the server, as configured on the TCP server node in Crestron above.\n**ISCoffset:**  this must match the total number of serial and/or analog joins added to symbol, default is 1.\n\n---\n\n\n## Input/Output message format\n\n**msg.**\n - **topic** = analog, digital (0-100), or serial\n - **channel** = ISC join number\n - **payload** = value to send. digital and analog values are numbers, serial values are strings\n\n",
+        "category": "",
+        "in": [
+            {
+                "x": 160,
+                "y": 160,
+                "wires": [
+                    {
+                        "id": "caf6a311e002fe09"
+                    }
+                ]
+            }
+        ],
+        "out": [
+            {
+                "x": 1060,
+                "y": 160,
+                "wires": [
+                    {
+                        "id": "7377b90433ecdf9f",
+                        "port": 0
+                    }
+                ]
+            }
+        ],
+        "env": [
+            {
+                "name": "ISCoffset",
+                "type": "str",
+                "value": "100"
+            },
+            {
+                "name": "PORT",
+                "type": "str",
+                "value": "49152"
+            }
+        ],
+        "meta": {},
+        "color": "#DDAA99",
+        "status": {
+            "x": 660,
+            "y": 240,
+            "wires": [
+                {
+                    "id": "86e4373fbb9433bf",
+                    "port": 0
+                }
+            ]
+        }
+    },
+    {
+        "id": "f37ef717440ca2e3",
+        "type": "junction",
+        "z": "ec1c42aabdfe318b",
+        "x": 1759,
+        "y": 197,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ce773206c2d9ce0c",
+        "type": "mqtt-broker",
+        "name": "cloud",
+        "broker": "apis.symphonyinteractive.ca",
+        "port": "1883",
+        "clientid": "",
+        "autoConnect": true,
+        "usetls": false,
+        "protocolVersion": "4",
+        "keepalive": "60",
+        "cleansession": true,
+        "autoUnsubscribe": true,
+        "birthTopic": "",
+        "birthQos": "1",
+        "birthRetain": "false",
+        "birthPayload": "",
+        "birthMsg": {},
+        "closeTopic": "",
+        "closeQos": "0",
+        "closePayload": "",
+        "closeMsg": {},
+        "willTopic": "",
+        "willQos": "0",
+        "willPayload": "",
+        "willMsg": {},
+        "userProps": "",
+        "sessionExpiry": ""
+    },
+    {
+        "id": "c11675ab5ac7a4e0",
+        "type": "ui_tab",
+        "name": "Scout Control & Configure",
+        "icon": "graphic_eq",
+        "order": 1,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "4577ca69931e0e7a",
+        "type": "ui_tab",
+        "name": "Node Configure",
+        "icon": "fa-share-alt",
+        "order": 2,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "467fb597b7cdf2ea",
+        "type": "ui_tab",
+        "name": "Scout Details",
+        "icon": "fa-list",
+        "order": 3,
+        "disabled": false,
+        "hidden": false
+    },
+    {
+        "id": "346264b02d70b76e",
+        "type": "ui_group",
+        "name": "Control",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 2,
+        "disp": true,
+        "width": 8,
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "05c535fa4d303b7d",
+        "type": "ui_group",
+        "name": "Announce Node Configuration",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 6,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "f0eda1058ea7caaa",
+        "type": "ui_group",
+        "name": "Target Device(s)",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 1,
+        "disp": true,
+        "width": 8,
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "ce438370dbed10c5",
+        "type": "ui_group",
+        "name": "Audio",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 4,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "92d431f494ebc921",
+        "type": "ui_group",
+        "name": "LEDs",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 3,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "c518a0f03de26d7a",
+        "type": "ui_group",
+        "name": "Test & Calibration",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 5,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "66db4d5b56777673",
+        "type": "ui_group",
+        "name": "Nodes",
+        "tab": "4577ca69931e0e7a",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "9b6c4344984e19c8",
+        "type": "ui_group",
+        "name": "Node Announce Presets",
+        "tab": "4577ca69931e0e7a",
+        "order": 3,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "e0979b8967db2436",
+        "type": "ui_group",
+        "name": "Announcement Presets",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 7,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "72293de21afcebce",
+        "type": "ui_group",
+        "name": "Status",
+        "tab": "467fb597b7cdf2ea",
+        "order": 2,
+        "disp": true,
+        "width": 24,
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "9b169b5117e74f85",
+        "type": "ui_group",
+        "name": "Node Summary",
+        "tab": "4577ca69931e0e7a",
+        "order": 4,
+        "disp": true,
+        "width": 10,
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "46075fdf3b077ad9",
+        "type": "ui_group",
+        "name": "Checkup",
+        "tab": "467fb597b7cdf2ea",
+        "order": 1,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "b9bf10ff5a5c2408",
+        "type": "ui_base",
+        "theme": {
+            "name": "theme-dark",
+            "lightTheme": {
+                "default": "#0094CE",
+                "baseColor": "#0094CE",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": true,
+                "reset": false
+            },
+            "darkTheme": {
+                "default": "#097479",
+                "baseColor": "#097479",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif",
+                "edited": true,
+                "reset": false
+            },
+            "customTheme": {
+                "name": "Untitled Theme 1",
+                "default": "#4B7930",
+                "baseColor": "#4B7930",
+                "baseFont": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+            },
+            "themeState": {
+                "base-color": {
+                    "default": "#097479",
+                    "value": "#097479",
+                    "edited": false
+                },
+                "page-titlebar-backgroundColor": {
+                    "value": "#097479",
+                    "edited": false
+                },
+                "page-backgroundColor": {
+                    "value": "#111111",
+                    "edited": false
+                },
+                "page-sidebar-backgroundColor": {
+                    "value": "#333333",
+                    "edited": false
+                },
+                "group-textColor": {
+                    "value": "#0eb8c0",
+                    "edited": false
+                },
+                "group-borderColor": {
+                    "value": "#555555",
+                    "edited": false
+                },
+                "group-backgroundColor": {
+                    "value": "#333333",
+                    "edited": false
+                },
+                "widget-textColor": {
+                    "value": "#eeeeee",
+                    "edited": false
+                },
+                "widget-backgroundColor": {
+                    "value": "#097479",
+                    "edited": false
+                },
+                "widget-borderColor": {
+                    "value": "#333333",
+                    "edited": false
+                },
+                "base-font": {
+                    "value": "-apple-system,BlinkMacSystemFont,Segoe UI,Roboto,Oxygen-Sans,Ubuntu,Cantarell,Helvetica Neue,sans-serif"
+                }
+            },
+            "angularTheme": {
+                "primary": "indigo",
+                "accents": "blue",
+                "warn": "red",
+                "background": "grey",
+                "palette": "light"
+            }
+        },
+        "site": {
+            "name": "Node-RED Dashboard",
+            "hideToolbar": "false",
+            "allowSwipe": "false",
+            "lockMenu": "false",
+            "allowTempTheme": "true",
+            "dateFormat": "DD/MM/YYYY",
+            "sizes": {
+                "sx": 48,
+                "sy": 48,
+                "gx": 6,
+                "gy": 6,
+                "cx": 6,
+                "cy": 6,
+                "px": 0,
+                "py": 0
+            }
+        }
+    },
+    {
+        "id": "b592d03ce747e747",
+        "type": "ui_group",
+        "name": "File Upload",
+        "tab": "c11675ab5ac7a4e0",
+        "order": 8,
+        "disp": true,
+        "width": "6",
+        "collapse": false,
+        "className": ""
+    },
+    {
+        "id": "caf6a311e002fe09",
+        "type": "function",
+        "z": "59f17ead25af0830",
+        "name": "Crestron ISC TX",
+        "func": "\n\n// for binary debug\nfunction dec2bin(dec) {\n  return (dec >>> 0).toString(2);\n}\n\n/**\n* @param {string | number} chan\n* @param {string | number} val\n*/\nfunction fnISCdigital (chan,val){\n    let bytes = [];\n    chan = Number.parseInt(chan, 10) + Number(env.get(\"ISCoffset\")) - 1\n    val = Number.parseInt(val,10)\n    \n    let idx = (((chan << 1) & 0x1F00) | (chan & 0x7f))\n    let an = (((val & 0x01) ^ 0x01) << 13)\n    let X = 0x8000 | idx | an\n\n    bytes.push((X >> 8) & 0x000000ff)\n    bytes.push(X & 0x000000ff)\n    \n    // return array\n    return (bytes)\n}\n\n// converts val fro <0-100> to <0-65535>\n/**\n* @param {string | number} chan\n* @param {string | number} val\n*/\nfunction fnISCanalog (chan,val){\n    let bytes = [];\n    chan = Number.parseInt(chan)-1\n    val = Number.parseInt(val) | 0\n    let idx = (((chan << 1) & 0x0700) | (chan & 0x7f)) << 16\n    let an = ((val & 0xC000) << 14)  | ((val & 0x3f80) << 1) | (val & 0x7f) \n    let X = 0xC0000000 | idx | an\n    \n    /*\n    node.warn({\n        \"chan: \":dec2bin(chan),\n        \"val: \":dec2bin(val),\n        \"idx: \":dec2bin(idx),\n        \"an: \":dec2bin(an),\n        \"ISC: \":dec2bin(X)\n        \n    })\n    */\n\n    bytes.push((X >> 24) & 0x000000ff)\n    bytes.push((X >> 16) & 0x000000ff)\n    bytes.push((X >> 8) & 0x000000ff)\n    bytes.push(X & 0x000000ff)\n    \n    // return array\n    return (bytes)\n}\n/**\n* @param {string | number} chan\n* @param {string | number} val\n*/\nfunction fnISCserial (chan,val){\n    let bytes = [];\n    chan = Number.parseInt(chan)-1\n\n    let idx = (((chan << 1) & 0x0700) | (chan & 0x7f))\n    let X = 0xC800 | idx\n    \n    bytes.push((X >> 8) & 0x000000ff)\n    bytes.push(X & 0x000000ff)\n\n    for (let i=0; i<val.length; i++){\n        bytes.push(val.charCodeAt(i))\n    }    \n\n    bytes.push(0xff)\n\n    // return array\n    return (bytes)\n}\n\nlet ss\nswitch (msg.topic){\n    case \"analog\":\n        ss = fnISCanalog(msg.channel,msg.payload)        \n        msg.payload = Buffer.from(ss)\n        return msg;        \n    case \"digital\":\n        ss = fnISCdigital(msg.channel,msg.payload) \n        msg.payload = Buffer.from(ss)\n        return msg; \n    case \"serial\":\n        ss = fnISCserial(msg.channel,msg.payload) \n        msg.payload = Buffer.from(ss)\n        return msg;        \n}\n\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 320,
+        "y": 160,
+        "wires": [
+            [
+                "dd161edf13fe5d8f"
+            ]
+        ]
+    },
+    {
+        "id": "7377b90433ecdf9f",
+        "type": "function",
+        "z": "59f17ead25af0830",
+        "name": "Crestron ISC RX",
+        "func": "\n\n// collect buffer bytes\nlet RX=flow.get(\"ISCrx\")\nif (RX){\n    let arr = [RX, msg.payload];\n    RX = Buffer.concat(arr);    \n}\nelse{\n    RX = Buffer.from(msg.payload);\n}\n\n// node.warn({\"BUFFER: \":RX})\nlet ns = 0 // new start of remaining buffer\nlet newmsg={}\n\n\nlet msgs=[]\n\nfor (let i=0; i<RX.length; i++){\n\n    let newmsg={}\n    \n    // digitals\n    if ((RX[i] & 0xC0) == 0x80){\n        if ((RX.length-i) >= 2){\n            let data={\n                \"type\":\"digital\",\n                \"chan\":(RX[i] & 0x1f)<<8 | (RX[i+1] & 0x7f)+1-Number(env.get(\"ISCoffset\")),\n                \"value\":(RX[i] & 0x20)>>5 ^ 0x01\n            }\n            newmsg.payload=data.value\n            newmsg.channel=data.chan\n            newmsg.topic=data.type\n            \n            msgs.push(newmsg)\n            node.send(newmsg)\n            \n            i=i+1 // advance pointer to next message\n            ns=i\n        }\n    }\n    \n    //analogs\n    else if ((RX[i] & 0xC8) == 0xC0){\n        if ((RX.length-i) >= 4){\n            let data={\n                \"type\":\"analog\",\n                \"chan\":(RX[i] & 0x07)<<8 | (RX[i+1] & 0x7f)+1,\n                \"value\":((RX[i] & 0x30) << 10 | (RX[i+2] & 0x7f) << 7 | (RX[i+3] & 0x7f)) | 0\n            }\n            \n            newmsg.payload=data.value\n            newmsg.channel=data.chan\n            newmsg.topic=data.type\n            \n            msgs.push(newmsg)\n            node.send(newmsg)\n            i=i+3 // advance pointer to next message\n            ns=i\n        }\n    }\n    \n    //strings\n    else if ((RX[i] & 0xC8) == 0xC8){\n        var eos = RX.indexOf(0xff,i+1)\n        if (eos >= 0){\n            let data={\n                \"type\":\"serial\",\n                \"chan\":(RX[i] & 0x07)<<8 | (RX[i+1] & 0x7f)+1,\n                \"value\":RX.slice(i+2,eos).toString()\n            }\n\n            newmsg.payload=data.value\n            newmsg.channel=data.chan\n            newmsg.topic=data.type\n\n\n            msgs.push(newmsg)\n            node.send(newmsg)\n            i=eos // advance pointer to next message\n            ns=i\n        }\n    }\n}\n\n// keep only the remaining bytes in buffer from the end of the last complete message\nif (RX.length==ns){\n    flow.set(\"ISCrx\",null) // no bytes left, set null\n}\nelse{\n    flow.set(\"ISCrx\",RX.slice(ns+1,RX.length)) // preserve remainder\n}\n\n/**\n* @param {string | any[]} arry\n* @param {any} topic\n* @param {any} channel\n*/\nfunction fnFindItem(arry,topic,channel){\n    for (let i=0;i<arry.length;i++){\n        \n        if (arry[i].topic == topic && arry[i].channel == channel)\n            return i\n    }\n    return -1\n}\n\n// new fb array without duplicates\n\nif (msgs.length>0){\n\n    let iscfb = global.get(\"iscfb\") || []\n\n    for (let i=0;i<msgs.length;i++){\n\n        const index = fnFindItem(iscfb,msgs[i].topic,msgs[i].channel)\n\n        if (index>-1){\n            iscfb.splice(index,1)\n        }\n        \n        iscfb.push(msgs[i])\n\n    }\n    \n    if (iscfb.length>0){\n        global.set(\"iscfb\",iscfb)\n    }\n}\n\n\n\n\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 160,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "86e4373fbb9433bf",
+        "type": "status",
+        "z": "59f17ead25af0830",
+        "name": "",
+        "scope": [
+            "fbbe141715212ee3"
+        ],
+        "x": 520,
+        "y": 240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a9845e63e4af0f52",
+        "type": "tcp in",
+        "z": "59f17ead25af0830",
+        "name": "",
+        "server": "server",
+        "host": "",
+        "port": "${PORT}",
+        "datamode": "stream",
+        "datatype": "buffer",
+        "newline": "",
+        "topic": "",
+        "trim": false,
+        "base64": false,
+        "tls": "",
+        "x": 670,
+        "y": 160,
+        "wires": [
+            [
+                "7377b90433ecdf9f"
+            ]
+        ]
+    },
+    {
+        "id": "dd161edf13fe5d8f",
+        "type": "tcp out",
+        "z": "59f17ead25af0830",
+        "name": "",
+        "host": "",
+        "port": "",
+        "beserver": "reply",
+        "base64": false,
+        "end": false,
+        "tls": "",
+        "x": 510,
+        "y": 160,
+        "wires": []
+    },
+    {
+        "id": "e089931eadfc052d",
+        "type": "mqtt out",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "topic": "",
+        "qos": "1",
+        "retain": "false",
+        "respTopic": "",
+        "contentType": "",
+        "userProps": "",
+        "correl": "",
+        "expiry": "",
+        "broker": "ce773206c2d9ce0c",
+        "x": 650,
+        "y": 1620,
+        "wires": []
+    },
+    {
+        "id": "86859537006ba66a",
+        "type": "link in",
+        "z": "ec1c42aabdfe318b",
+        "name": "To MQTT In",
+        "links": [
+            "e78839ee7b97e500",
+            "cc4e763b23e69f20",
+            "b0b69a8aa6f7f02c",
+            "502de02e50ae749e"
+        ],
+        "x": 245,
+        "y": 1660,
+        "wires": [
+            [
+                "72ed7bf8d2ace00c",
+                "e1d9ef7e09e7cf6d"
+            ]
+        ]
+    },
+    {
+        "id": "a0c5509b2c541306",
+        "type": "mqtt in",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "topic": "scout/+/$state",
+        "qos": "1",
+        "datatype": "auto",
+        "broker": "ce773206c2d9ce0c",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 330,
+        "y": 260,
+        "wires": [
+            [
+                "2616dffcf6619f22",
+                "8e8565cf432fe33b"
+            ]
+        ]
+    },
+    {
+        "id": "2616dffcf6619f22",
+        "type": "json",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "property": "payload",
+        "action": "",
+        "pretty": false,
+        "x": 690,
+        "y": 260,
+        "wires": [
+            [
+                "1e2f277d2f73c777",
+                "17ac1ddcc431f23a",
+                "97cc8b8fef56518e"
+            ]
+        ]
+    },
+    {
+        "id": "cc4e763b23e69f20",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "From Scout Control",
+        "mode": "link",
+        "links": [
+            "86859537006ba66a"
+        ],
+        "x": 1165,
+        "y": 980,
+        "wires": []
+    },
+    {
+        "id": "dd6ef65a3b15b404",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "Send MSG",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "{\t\"act\":\"nod\",\t\"nod\":$flowContext(\"scoutnode\")\t\t}",
+                "tot": "jsonata"
+            },
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "scout",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 930,
+        "y": 1300,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "17c60c2eaa35ddf3",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "strip leading '#'",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "$substringAfter($.payload,\"#\")\t\t",
+                "tot": "jsonata"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 740,
+        "y": 1080,
+        "wires": [
+            [
+                "c66068d11e7493c6"
+            ]
+        ]
+    },
+    {
+        "id": "6d86da04e5e355f4",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Validate path",
+        "func": "// https://regex101.com/\n// regex: must start without a forward slash, and in remainder of path allow only a-z 0-9 . - /\n//node.send([msg,{payload:\"Path is OK, sent\"}])\n\n\nif (msg.payload.match(/^[a-z0-9][a-z0-9\\/.\\-]*[a-z0-9]$/)){\n    node.send([msg,{payload:\"OK\"}])\n    flow.set(\"scoutnode\",msg.payload)\n}\nelse\n    node.send([null,{payload:\"Invalid\"}])\n",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 570,
+        "y": 1340,
+        "wires": [
+            [],
+            [
+                "994e8c532008f30d"
+            ]
+        ],
+        "outputLabels": [
+            "Path",
+            "Path error"
+        ]
+    },
+    {
+        "id": "d5b84beb60c43623",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Play",
+        "func": "let scout=global.get(\"scout\",\"file\") || {};\n\nmsg.payload={\n   \"act\":\"ply\",\n   \"aud\":scout.audio,\n   \"rpt\":scout.audiorepeat,\n   \"clr\":scout.color,\n   \"pat\":Number(scout.pattern),\n   \"dur\":scout.duration,\n   \"brt\":scout.brightness\n}\n\n  \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 890,
+        "y": 520,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "bb24bf7a706cdb4d",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Tone",
+        "func": "let scout=global.get(\"scout\",\"file\") || {};\nmsg.payload={\n    \"act\":\"cal\",\n    \"sig\":\"tone\",\n    \"frq\":scout.cal_tone_frequency\n}\n   \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 890,
+        "y": 940,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "00660e87c21d0742",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Pink",
+        "func": "let scout=global.get(\"scout\",\"file\");\nmsg.payload={\n    \"act\":\"cal\",\n    \"sig\":\"pink\"\n}\n  \nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 890,
+        "y": 560,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "729aeb8ec741a8b3",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Sweep",
+        "func": "\nmsg.payload={\n    \"act\":\"ply\",\n    \"aud\":\"sweep.wav\"\n}\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 890,
+        "y": 600,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "e3e131ef0afeaa5d",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Stop",
+        "func": "\nmsg.payload={\n    \"act\":\"stp\",\n}\n  \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 890,
+        "y": 480,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "c66068d11e7493c6",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Color",
+        "func": "let scout = global.get(\"scout\",\"file\") || {}\nscout.color = msg.payload\nglobal.set(\"scout\", scout,\"file\")\n\nmsg.payload={\n   \"act\":\"col\",\n   \"clr\":msg.payload\n}\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 890,
+        "y": 1080,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "f81a7adaced9fed0",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Brightness",
+        "func": "let scout=global.get(\"scout\",\"file\") || {};\nscout.brightness = msg.payload\nglobal.set(\"scout\", scout,\"file\")\nmsg.payload={\n   \"act\":\"brt\",\n   \"brt\":msg.payload\n}\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 1120,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "6382c3caa5aa103a",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Pattern",
+        "func": "let scout = global.get(\"scout\",\"file\") || {}\nscout.pattern = msg.payload\nglobal.set(\"scout\", scout,\"file\")\n\nmsg.payload={\n   \"act\":\"pat\",\n   \"pat\":Number(msg.payload)\n}\n \nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 880,
+        "y": 1160,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "1e2f277d2f73c777",
+        "type": "switch",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "property": "payload.key_press",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "F1",
+                "vt": "str"
+            },
+            {
+                "t": "eq",
+                "v": "F2",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 3,
+        "x": 770,
+        "y": 380,
+        "wires": [
+            [
+                "e3e131ef0afeaa5d"
+            ],
+            [
+                "d5b84beb60c43623"
+            ],
+            [
+                "6840b7d78b6ba501"
+            ]
+        ]
+    },
+    {
+        "id": "17ac1ddcc431f23a",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Track Scouts",
+        "func": "\n// get existing array of scouts\nlet scouts = global.get(\"scouts\",\"file\") || [];\nlet mac = msg.topic.split(\"/\")[1]\n\nlet scout = {\n    \"mac\":mac,\n    \"state\":msg.payload\n}\n\ndelete scout.state._msgid\n\n\n// Store the timestamp in global context\nconst sentTimestamp = global.get('sentTimestamp') || {};\nconst roundTripTime = Date.now() - sentTimestamp;\n\n// Update the longest time in global context\nlet longestTime = global.get('longestTime') || 0;\nif (roundTripTime > longestTime) {\n    longestTime = roundTripTime;\n    global.set('longestTime', longestTime);\n    node.warn(`New longest reply time: ${longestTime} ms`);\n}\n\n// track presence\nif (msg.payload.hasOwnProperty(\"status\")){\n    if (scouts){\n        // keep a global store array of online scouts\n        // each panel will remember the zone it has selected\n        \n        // get index of scouts[] array item that contains the matching mac of new socket connection\n        var idx = scouts.map(function(/** @type {{ ip: any; }} */ e) { return e.mac; }).indexOf(mac);\n        \n        if (idx>-1){  \n            \n            /*\n            node.warn({\n                \"Tracker event\":\"status updated\",\n                \"mac\":scouts[idx].mac,\n                \"ip\":scouts[idx].state.ip,\n                \"status\":scouts[idx].state.status\n            })\n            */\n            \n            //if online or offline, replace existing object\n            if ((scout.state.status == \"offline\") || (scout.state.status == \"rebooting\") ||(scout.state.status!=\"offline\") && (scouts[idx].state.status==\"offline\")){\n                scouts.splice(idx,1) // remove existing\n                scouts.push(scout)\n            }\n            // otherwise update status\n            else \n                scouts[idx].state.status=scout.state.status\n        }\n        else {\n            /*\n            node.warn({\n                \"Tracker event\":\"New online\",\n                \"mac\":scout.mac,\n                \"ip\":scout.state.ip,\n                \"status\":scout.state.status\n            })\n            */\n            scouts.push(scout)\n        }\n    }\n    else{\n        /*\n        node.warn({\n            \"Tracker event\":\"New online\",\n            \"mac\":scout.mac,\n            \"ip\":scout.state.ip,\n            \"status\":scout.state.status\n        })\n        */\n        scouts=[]\n        scouts.push(scout)\n    }\n    \n    // store the global array\n    global.set(\"scouts\",scouts,\"file\")\n    \n    return msg\n    \n}\nelse if (msg.payload.hasOwnProperty(\"key_press\")){\n    const key=msg.payload;\n    //node.warn({\"key\":msg.payload})\n    let keystring = flow.get(\"keystring\") || \"\";\n    switch (key.type){\n        case \"ascii\":\n            keystring = keystring+key.key_press;\n            break;\n        case \"control\":\n            switch (key.key_press){\n                case \"DEL\":\n                    keystring=\"\";\n                    break;\n                case \"BACK\":\n                    keystring = keystring.slice(0, -1);\n                    break;\n                case \"ENTER\":\n                    node.warn(`Keystring: ${keystring}`)\n                    break;\n            }\n            break;\n    }\n    flow.set(\"keystring\",keystring);\n}\n\n// if status message\nelse if (msg.payload.hasOwnProperty(\"act\")){\n    // if status is a get response, store the node property\n    if (msg.payload.act==\"get\"){\n        for (let i = 0; i < scouts.length; i++) {\n            if (scouts[i].mac == mac) {        \n                if (msg.payload.hasOwnProperty(\"nod\"))\n                    scouts[i].state.node=msg.payload.nod\n                if (msg.payload.hasOwnProperty(\"usb\"))\n                    scouts[i].state.usb = msg.payload.usb\n                if (msg.payload.hasOwnProperty(\"ftp\"))                    \n                    scouts[i].state.ftp = msg.payload.ftp\n                if (msg.payload.hasOwnProperty(\"ole\"))\n                    scouts[i].state.oled = msg.payload.ole\n\n                global.set(\"scouts\", scouts,\"file\")\n                return msg \n            }\n        }\n    }\n}\n\n// play/idle status update\nelse if (msg.payload.hasOwnProperty(\"sta\")){\n    for (let i=0;i<scouts.length;i++){\n        if (scouts[i].mac==mac){\n            scouts[i].state.status=msg.payload.sta\n        }\n    }\n    global.set(\"scouts\",scouts,\"file\")\n    return msg\n}\n\n\n\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1330,
+        "y": 280,
+        "wires": [
+            [
+                "1cd3cc3a1fd2515f",
+                "76d1e9685a5c0f77",
+                "7411eb0f8211773e"
+            ]
+        ]
+    },
+    {
+        "id": "76d1e9685a5c0f77",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "List of online Scouts, sorted by node",
+        "func": "/* listbox notes...\npayloadarray\nArray of objects containing following properties:\ntitle - title of the item,\ndescription - description of the item. Optional if line type is Single-line or action type is menu,\nmenu - list of menu items (optional),\nicon - URL of icon (optional),\nicon_name - font icon name (optional).\nicon_unicode - alternative to icon name - uses text characters (optional).\nisChecked - boolean, set the item checked or on (optional).\n*/\n\n// get existing array of scouts\nlet scouts = global.get(\"scouts\",\"file\")\nif (scouts){\n    // create dashboard list\n    let dashlist=[]\n    for (let i=0;i<scouts.length;i++){\n        /*\n        node.warn({\n            \"i\":i,\n            \"scouts[i]\":scouts[i],\n            \"scouts[i].state.status\":scouts[i].state.status,\n            \"scouts[i].state.status.localeCompare(online)\":scouts[i].state.status.localeCompare(\"online\")\n        })\n        */\n        let checked =0\n        if (scouts[i].hasOwnProperty(\"isChecked\"))\n            checked=scouts[i].isChecked\n        \n        if (scouts[i].state.status!=\"offline\"){\n            dashlist.push({\n                \"title\":scouts[i].state.ip,\n                \"description\":scouts[i].state.node,\n                \"icon_name\":\"graphic_eq\",\n                \"isChecked\":checked\n            })\n        }\n    }\n    if (dashlist.length){\n        dashlist.sort(function(a, b) {\n          const nameA = a.description;\n          const nameB = b.description;\n          if (nameA > nameB) {\n            return 1;\n          }\n          if (nameA < nameB) {\n            return -1;\n          }\n        \n          // names must be equal\n          return 0;\n        });    \n\n        msg.payload=dashlist\n        return msg        \n    }\n\n}\n     ",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1630,
+        "y": 280,
+        "wires": [
+            [
+                "dd6e07b3d96ff3ea"
+            ]
+        ]
+    },
+    {
+        "id": "14816cf529675b70",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Scout list",
+        "func": "\n// get existing array of scouts\n// mark the selected one\nlet scouts = global.get(\"scouts\",\"file\")\nif (scouts){\n    // create dashboard list\n    let dashlist=[]\n    for (let i=0;i<scouts.length;i++){\n        if (scouts[i].state.ip==msg.payload.title){\n            scouts[i].isChecked=msg.payload.isChecked\n        }\n    }\n    global.set(\"scouts\",scouts,\"file\")\n}\n\n/*            \"mac\":scout.mac,\n            \"ip\":scout.state.ip,\n            \"status\":scout.state.status\n*/\n            ",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2060,
+        "y": 280,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "72ed7bf8d2ace00c",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Broadcast, Node or Scout",
+        "func": "let scouts        = global.get(\"scouts\",\"file\");\nlet scout         = flow.get(\"scout\")\nlet announce      = flow.get(\"announcement\")\nlet announcenode  = flow.get(\"announce_node\")\n\n/* topic post precedence order:\n\n    1. Broadcast\n    2. All selected MAC address\n    3. Group Node\n\n*/\n//node.warn({\"announce \":announce})\nlet newmsg = {}\nnewmsg.payload=msg.payload\nif (msg.topic==\"node\"){\n    newmsg.topic = \"scout/$group/\" + msg.node + \"/$action\";\n    return newmsg;     \n}\nelse if (msg.topic == \"scout\") {\n    for (let i = 0; i < scouts.length; i++) {\n        if (scouts[i].isChecked) {\n            newmsg.topic = \"scout/\" + scouts[i].mac + \"/$action\";\n            node.send(newmsg)\n        }\n    }\n}\nelse\n    switch(announce){\n        case 0:\n            newmsg.topic = \"scout/$group/\" + announcenode+\"/$action\";\n            return newmsg;     \n        case 1:\n            newmsg.topic = \"scout/$broadcast/$action\"\n\n            const timestamp = Date.now();\n            // Store the timestamp in global context\n            //const sentTimestamps = global.get('sentTimestamps') || {};\n            global.set('sentTimestamp', timestamp);               \n\n            return newmsg;    \n        case 2:\n            for (let i=0;i<scouts.length;i++){\n                if (scouts[i].isChecked){\n                    newmsg.topic=\"scout/\"+scouts[i].mac+\"/$action\";\n                    node.send(newmsg)\n                }\n            }\n            break;\n    }\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 430,
+        "y": 1660,
+        "wires": [
+            [
+                "e089931eadfc052d",
+                "e80fa5712e05351f"
+            ]
+        ]
+    },
+    {
+        "id": "c510831fa33e2047",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Tone to A440 scale",
+        "func": "let Notes=[\n    \"A\",\n    \"A#\",\n    \"B\",\n    \"C\",\n    \"C#\",\n    \"D\",\n    \"D#\",\n    \"E\",\n    \"F\",\n    \"F#\",\n    \"G\",\n    \"G#\"\n]\nlet octave = msg.payload/12\nlet note=Notes[msg.payload % 12]+parseInt(octave)\nlet msg2={payload:note};\nmsg.payload=Math.round(110*Math.pow(2,msg.payload/12) * 100) / 100\nreturn ([msg,msg2]);\n\n",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 370,
+        "y": 860,
+        "wires": [
+            [
+                "cfb560fbe8ce68fc",
+                "a35a7b38f82c789c"
+            ],
+            [
+                "aa14c6fa3ac84b75"
+            ]
+        ]
+    },
+    {
+        "id": "9d7f73d6c01e5d0b",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Announce destination",
+        "func": "// Code added here will be run once\n// whenever the node is started.\nlet checklist=[\n    {\n        \"title\":\"Node\",\n        \"icon_name\":\"keyboard_arrow_right\"\n    },    \n    {\n        \"title\":\"Broadcast\",\n        \"icon_name\":\"keyboard_arrow_right\"\n    },\n    {\n        \"title\":\"Selected Scouts\",\n        \"icon_name\":\"keyboard_arrow_down\"\n    }\n]\n    \nlet announcelist=[]    \nfor (let i=0;i<3;i++){\n    let checked = false\n    if (flow.get(\"announcement\")==i)\n        checked=true\n        \n    announcelist.push({\n        \"title\":checklist[i].title,\n        \"icon_name\":checklist[i].icon_name,\n        \"isChecked\":checked\n    })\n}\nmsg.payload=announcelist\nreturn msg",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "// Code added here will be run once\n// whenever the node is started.\n/*\nlet checklist=[\n    {\"title\":\"Broadcast Announce\"},\n    {\"title\":\"Group Announce\"},\n    {\"title\":\"Scout Announce\"}\n]\n    \nlet announcelist=[]    \nfor (i=0;i<3;i++){\n    let checked = false\n    if (flow.get(\"scout\").broadcast==i)\n        checked=true\n    announcelist.push({\n        \"title\":checklist[i].title,\n        \"isChecked\":checked\n    })\n}\nmsg={}\nmsg.payload=announcelist\nreturn msg\n*/",
+        "finalize": "",
+        "libs": [],
+        "x": 1980,
+        "y": 620,
+        "wires": [
+            [
+                "e9346bf54e3f5d51"
+            ]
+        ]
+    },
+    {
+        "id": "cf513e028bdbee38",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Update switches",
+        "func": "let checklist=[\n    {\"title\":\"Node\"},\n    {\"title\":\"Broadcast\"},\n    {\"title\":\"Selected Scouts\"}\n]\n\nfor (let i=0;i<3;i++){\n    if (checklist[i].title==msg.payload.title){\n        flow.set(\"announcement\",i)\n        break \n    }\n}\n\nreturn msg\n            ",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2420,
+        "y": 620,
+        "wires": [
+            [
+                "9d7f73d6c01e5d0b"
+            ]
+        ]
+    },
+    {
+        "id": "1cd3cc3a1fd2515f",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Update node list",
+        "func": "/* listbox notes...\npayloadarray\nArray of objects containing following properties:\ntitle - title of the item,\ndescription - description of the item. Optional if line type is Single-line or action type is menu,\nmenu - list of menu items (optional),\nicon - URL of icon (optional),\nicon_name - font icon name (optional).\nicon_unicode - alternative to icon name - uses text characters (optional).\nisChecked - boolean, set the item checked or on (optional).\n*/\n\n// get existing array of scouts\nlet scouts = global.get(\"scouts\",\"file\") || []\nlet nodes = global.get(\"nodes\",\"file\") || []\nlet nd={};\nif (scouts){\n    for (let i=0;i<scouts.length;i++){\n        if (scouts[i].state.hasOwnProperty(\"node\") && (scouts[i].state.status!=\"offline\")){\n            let nd=scouts[i].state.node\n            let s=nd.split(\"/\")\n            let path = \"\"\n            // generate sub nodes\n            for (let p=0;p<s.length;p++){\n                path=path+s[p]\n                //node.warn({\"path: \":path})                \n                const found = nodes.some((/** @type {{ node: string; }} */ el) => el.node === path)\n\n                if (!found){\n                    const members = scouts.reduce((/** @type {number} */ accumulator, /** @type {{ id: string; }} */ obj) => {\n\n                        if (obj.state.hasOwnProperty(\"node\")) {\n                            /*\n                            node.warn({\n                                \"node path \": obj.state.node,\n                                \"path \": path,\n                                \"obj.state.node.substring(0, path.length)\": obj.state.node.substring(0, path.length),\n                                \"member? \": (obj.state.node.substring(0, path.length) === path)\n                            })\n                            */\n                            if (obj.state.node.substring(0, path.length) === path) {\n                                return accumulator + 1;\n                            }\n                        }\n\n                        return accumulator;\n                    }, 0);\n                                     \n                    nodes.push({\n                        \"node\":path,\n                        \"join\":0,\n                        \"isChecked\":false,\n                        \"announcing\":0, // count of all scouts currently announcing on this node\n                        \"members\":members\n                    })\n                    nd={\n                        \"payload\": path,\n                        \"channel\": nodes.length + 20,\n                        \"topic\":\"serial\"\n                    }\n                    node.send([null,null,nd]);            \n                    \n                }\n                path=path+\"/\"\n            }\n        }\n    }\n\n    if (nodes.length) {\n\n        // track count of scouts announcing per node\n        if (msg.payload.hasOwnProperty(\"nod\")) {\n            let topic_node = msg.payload.nod.split(\"/\")\n            if (topic_node[1] == \"$group\") {\n                if (msg.payload.hasOwnProperty(\"sta\")) {\n                    let path=\"\"\n                    for (let i=2;i<topic_node.length-1;i++){\n                        path=path+topic_node[i];\n                        if (i < topic_node.length - 2)\n                            path = path +\"/\";\n                    }\n\n                    let idx = nodes.map(function (/** @type {{ ip: any; }} */ e) { return e.node; }).indexOf(path);\n                    /*\n                    node.warn({\n                        \"msg.payload.sta\": msg.payload.sta,\n                        \"node: \": topic_node[2],\n                        \"idx\": idx\n                    })\n                    */\n                    if (idx > -1) {\n                        // message came via node\n                        if (msg.payload.sta == \"announce\") {\n                            nodes[idx].announcing++;\n                        }\n                        else if (msg.payload.sta == \"idle\") {\n                            if (nodes[idx].announcing > 0)\n                                nodes[idx].announcing--;\n                        }\n                    }\n                }\n            }\n        }\n\n        // sort node list\n        nodes.sort(function(/** @type {{ node: any; }} */ a, /** @type {{ node: any; }} */ b) {\n          const nameA = a.node;\n          const nameB = b.node;\n          if (nameA > nameB) {\n            return 1;\n          }\n          if (nameA < nameB) {\n            return -1;\n          }\n        \n          // names must be equal\n          return 0;\n        });\n\n        // create node table\n        // renumber node joins\n        \n        let tarray=[];\n        let newmsg={}\n        for (let i = 0; i < nodes.length; i++){\n            if (msg.topic == \"Reset All Nodes?\")\n                nodes[i].join = i + 1;\n            nd={\n                \"node\":nodes[i].node,\n                \"index\": i+1,\n                \"announce\": nodes[i].announcing,\n                \"members\":nodes[i].members\n            }\n            tarray.push(nd);\n            nd={\n                \"payload\": nodes[i].announcing,\n                \"channel\": i + 1,\n                \"topic\":\"analog\"\n            }\n            node.send([null,null,nd]);\n        }\n        newmsg.payload = nodes;\n        let nmsg={\n            \"payload\":tarray\n        }\n        node.send([newmsg, nmsg]);\n        global.set(\"nodes\",nodes,\"file\")\n    }    \n}\n\n// alert isc of presence\nif (msg.payload.hasOwnProperty(\"status\")){\n    let mac = msg.topic.split(\"/\")[1]    \n    var idx = scouts.map(function(/** @type {{ ip: any; }} */ e) { return e.mac; }).indexOf(mac);\n    if (idx>-1){     \n        if (msg.payload.status!=\"offline\")\n            nd={\n                \"payload\": 1,\n                \"channel\": idx+1,\n                \"topic\":\"digital\"\n            }\n        else\n            nd={\n                \"payload\": 0,\n                \"channel\": idx+1,\n                \"topic\":\"digital\"\n            }\n        \n        node.send([null,null,nd]);        \n    }\n}\n",
+        "outputs": 3,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1560,
+        "y": 380,
+        "wires": [
+            [
+                "143ca204df05f927"
+            ],
+            [
+                "28cca76155b6d4f0"
+            ],
+            [
+                "129245b318a3d87d"
+            ]
+        ],
+        "outputLabels": [
+            "Node Switches",
+            "Summary",
+            "ISC"
+        ]
+    },
+    {
+        "id": "37e14d9d055a4938",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Mutually exclusive selection",
+        "func": "let nodes=global.get(\"nodes\",\"file\") || [] // set index of of selected\nlet checked=0\n\nfor (let i=0;i<nodes.length;i++){\n    if (nodes[i].node==msg.payload.title)\n        nodes[i].isChecked=msg.payload.isChecked\n    else\n        nodes[i].isChecked=false\n    }\n\nglobal.set(\"nodes\",nodes,\"file\")\n\nreturn msg\n            ",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2220,
+        "y": 360,
+        "wires": [
+            [
+                "143ca204df05f927"
+            ]
+        ]
+    },
+    {
+        "id": "143ca204df05f927",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Crestron Nodes",
+        "func": "/* listbox notes...\npayloadarray\nArray of objects containing following properties:\ntitle - title of the item,\ndescription - description of the item. Optional if line type is Single-line or action type is menu,\nmenu - list of menu items (optional),\nicon - URL of icon (optional),\nicon_name - font icon name (optional).\nicon_unicode - alternative to icon name - uses text characters (optional).\nisChecked - boolean, set the item checked or on (optional).\n*/\n\nlet nodes = global.get(\"nodes\",\"file\") || []\nlet dashlist=[]\nfor (let i=0;i<nodes.length;i++){\n    dashlist.push({\n        \"title\":nodes[i].node,\n        \"description\":\"Index: \"+(i+1),\n        \"icon_name\":\"fa-share-alt\",\n        \"isChecked\":nodes[i].isChecked\n    })\n}\n\nmsg.payload=dashlist\nreturn msg        \n\n\n     ",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1800,
+        "y": 360,
+        "wires": [
+            [
+                "3c4b6f3b37f19bf9"
+            ]
+        ]
+    },
+    {
+        "id": "0943884dd045861d",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "delete",
+                "p": "#:(file)::nodes",
+                "pt": "global"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2250,
+        "y": 520,
+        "wires": [
+            [
+                "8d4270ea3f455aa3"
+            ]
+        ]
+    },
+    {
+        "id": "50aba55ea5d9527c",
+        "type": "link in",
+        "z": "ec1c42aabdfe318b",
+        "name": "Update node list",
+        "links": [
+            "8d4270ea3f455aa3"
+        ],
+        "x": 1415,
+        "y": 380,
+        "wires": [
+            [
+                "1cd3cc3a1fd2515f"
+            ]
+        ]
+    },
+    {
+        "id": "8d4270ea3f455aa3",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "To node update",
+        "mode": "link",
+        "links": [
+            "50aba55ea5d9527c"
+        ],
+        "x": 2395,
+        "y": 520,
+        "wires": []
+    },
+    {
+        "id": "3622c4d721c3013c",
+        "type": "switch",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "YES",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 1,
+        "x": 2050,
+        "y": 520,
+        "wires": [
+            [
+                "0943884dd045861d"
+            ]
+        ]
+    },
+    {
+        "id": "54097b9413e27516",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Save preset",
+        "func": "let presets = global.get(\"presets\",\"file\") || []\n\nif (msg.topic==\"Save Current Settings as Preset\" && msg.payload !=\"CANCEL\"){\n    node.warn({ \"presets: \": presets })\n    let sct = global.get(\"scout\",\"file\")\n    let scout={\n        \"aud\": sct.audio,\n        \"pat\": sct.pattern,\n        \"col\": sct.color,\n        \"dur\": sct.duration,\n        \"vol\": sct.volume,\n        \"rpt\": sct.audiorepeat,\n        \"brt\": sct.brightness\n    }\n    let preset = {\n        \"name\":msg.payload,\n        scout,\n        \"isChecked\":false\n    }\n    //node.warn({\"preset: \":preset})\n    presets.push(preset)\n    //node.warn({\"presets: \":presets})\n    global.set(\"presets\",presets,\"file\")\n}\n\nconst names = presets.map(function (/** @type {{ name: any; }} */ pre) {\n    return pre.name;\n});\n\nnames.sort(function (/** @type {any} */ a, /** @type {any} */ b) {\n    const nameA = a;\n    const nameB = b;\n    if (nameA > nameB) {\n        return 1;\n    }\n    if (nameA < nameB) {\n        return -1;\n    }\n\n    // names must be equal\n    return 0;\n}); \n\nlet newmsg={}\nnewmsg.options=names\nreturn newmsg;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2050,
+        "y": 840,
+        "wires": [
+            [
+                "d8a2b27b651f3b7e",
+                "b6226069e30a3b64",
+                "7926d68fe0821f92"
+            ]
+        ]
+    },
+    {
+        "id": "61774b1685271112",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Recall preset",
+        "func": "const presets = global.get(\"presets\",\"file\") || []\nconst preset_name = flow.get(\"preset_selected\");\n\nif (msg.topic==\"startup\"){\n    let scout = global.get(\"scout\",\"file\")\n    let newmsg = {\n        \"payload\": scout\n    }\n    return newmsg;\n}\nelse{\n    const obj = presets.find(({ name }) => name === preset_name);\n    node.warn(obj)\n    if (obj) {\n        let scout = global.get(\"scout\")\n        scout.audio = obj.scout.aud,\n        scout.pattern = obj.scout.pat,\n        scout.color = obj.scout.col.toUpperCase(),\n        scout.duration = obj.scout.dur,\n        //scout.volume = obj.scout.vol,\n        scout.audiorepeat = obj.scout.rpt,\n        scout.brightness = obj.scout.brt,\n        node.warn(scout)\n        global.set(\"scout\", scout,\"file\")\n        let newmsg = {\n            \"payload\": scout\n        }\n        return newmsg;\n    }\n}\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2450,
+        "y": 960,
+        "wires": [
+            [
+                "531dca48d435a072"
+            ]
+        ]
+    },
+    {
+        "id": "531dca48d435a072",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "From Preset Recall",
+        "mode": "link",
+        "links": [
+            "8c13fa7f0a04a04b"
+        ],
+        "x": 2575,
+        "y": 1020,
+        "wires": []
+    },
+    {
+        "id": "8c13fa7f0a04a04b",
+        "type": "link in",
+        "z": "ec1c42aabdfe318b",
+        "name": "Set audio",
+        "links": [
+            "531dca48d435a072"
+        ],
+        "x": 95,
+        "y": 1020,
+        "wires": [
+            [
+                "b957de8da2ed9643",
+                "33d92d8b94ba8a2c",
+                "fc46ef339500e9e3",
+                "1ef2a78b1dcd81c8",
+                "8f355f79d2dd56f5",
+                "cef244a0d2bd6006",
+                "560cc866feb2a798"
+            ]
+        ]
+    },
+    {
+        "id": "b957de8da2ed9643",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.volume",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 420,
+        "y": 980,
+        "wires": [
+            [
+                "8544092bfc7b0285"
+            ]
+        ]
+    },
+    {
+        "id": "33d92d8b94ba8a2c",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.audio",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 420,
+        "y": 1040,
+        "wires": [
+            [
+                "4c7d41a0c4c27803"
+            ]
+        ]
+    },
+    {
+        "id": "fc46ef339500e9e3",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.color",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 280,
+        "y": 1080,
+        "wires": [
+            [
+                "b0e4ed2af85dd3d6"
+            ]
+        ]
+    },
+    {
+        "id": "1ef2a78b1dcd81c8",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.brightness",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 280,
+        "y": 1120,
+        "wires": [
+            [
+                "77b050d28c3a6bd6"
+            ]
+        ]
+    },
+    {
+        "id": "8f355f79d2dd56f5",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.pattern",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 280,
+        "y": 1160,
+        "wires": [
+            [
+                "0537760c5dfbf304"
+            ]
+        ]
+    },
+    {
+        "id": "cef244a0d2bd6006",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "payload.audiorepeat",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 280,
+        "y": 1200,
+        "wires": [
+            [
+                "072e3b82e7edb758"
+            ]
+        ]
+    },
+    {
+        "id": "560cc866feb2a798",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "$.payload.duration/1000",
+                "tot": "jsonata"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 280,
+        "y": 1240,
+        "wires": [
+            [
+                "159d4101aeb53d89"
+            ]
+        ]
+    },
+    {
+        "id": "4c6ba0b5a1b3dd48",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "preset_selected",
+                "pt": "flow",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2490,
+        "y": 840,
+        "wires": [
+            [
+                "61774b1685271112",
+                "e850aa5b6b6bc2d7"
+            ]
+        ]
+    },
+    {
+        "id": "871dc3f4816a70d3",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "function 5",
+        "func": "let scout=global.get(\"scout\",\"file\") || {};\nscout.audio=msg.payload ===\"<NONE>\" ? \"\" : msg.payload;\nglobal.set(\"scout\",scout,\"file\")",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 880,
+        "y": 1040,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "1e337f36c8384dc6",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "function 6",
+        "func": "// Map linear fader [0,1] to Teensy gain [0,1] with (roughly) linear dB steps\n// Slow-rise potentiometer curve: most adjustment in 0–80%, steeper near the top\nfunction volumeCurve(x, steepness = 6, midpoint = 0.75) {\n    if (x <= 0) return 0;\n    if (x >= 1) return 1;\n\n    // logistic S-curve normalized from 0 → 1\n    const k = steepness;     // higher = steeper upper half\n    const m = midpoint;      // where the curve \"bends\"\n\n    const y = 1 / (1 + Math.exp(-k * (x - m)));\n\n    // normalize logistic to 0–1 range\n    const yMin = 1 / (1 + Math.exp(k * m));\n    const yMax = 1 / (1 + Math.exp(-k * (1 - m)));\n    const norm = (y - yMin) / (yMax - yMin);\n\n    return parseFloat(norm.toFixed(8));\n}\n\nlet scout=global.get(\"scout\",\"file\") || {};\nconst volLinear = msg.payload;\nconst volOut = volumeCurve (volLinear);\nnode.status({\n    fill: \"green\",     // green | yellow | red | blue | grey\n    shape: \"dot\",      // dot | ring\n    text: `${volLinear}>${volOut}`\n});\n\n\nscout.volume=volLinear;\nglobal.set(\"scout\",scout,\"file\");\n\nmsg.payload = {\n    \"act\": \"volOut\",\n    \"vol\": msg.payload\n}\n\nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 880,
+        "y": 980,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "096d5bb04c1b7867",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "function 8",
+        "func": "let scout=global.get(\"scout\",\"file\") || {}\nscout.audiorepeat=msg.payload\nglobal.set(\"scout\",scout,\"file\")",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 880,
+        "y": 1200,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "18873efc09025d0f",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "function 9",
+        "func": "let scout=global.get(\"scout\",\"file\") || {}\nscout.duration=msg.payload*1000\nglobal.set(\"scout\",scout,\"file\")",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 880,
+        "y": 1240,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "84918027207259c0",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Set Announce Destination Node",
+        "func": "flow.set(\"announce_node\",msg.payload)",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 810,
+        "y": 1420,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a35a7b38f82c789c",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "function 11",
+        "func": "let scout=global.get(\"scout\",\"file\") || {}\nscout.cal_tone_frequency=msg.payload\nglobal.set(\"scout\",scout,\"file\")\n\nmsg.payload = {\n    \"act\": \"cal\",\n    \"frq\": msg.payload\n}\n\nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 900,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "62e0c73050960973",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Delete preset",
+        "func": "// get existing array of scouts\nif (msg.payload==\"YES\"){\n    let presets = global.get(\"presets\",\"file\") || []\n    let name = flow.get(\"preset_selected\");\n\n    if (presets.length) {\n\n        // get index of scouts[] array item that contains the matching mac of new socket connection\n        var idx = presets.map(function (/** @type {{ ip: any; }} */ e) { return e.name; }).indexOf(name);\n\n        if (idx > -1){\n            node.warn({ \"Preset deleted: \": name })\n            presets.splice(idx, 1) // remove existing\n            global.set(\"presets\",presets,\"file\") \n            return msg\n        }\n        else\n            node.warn({\"Preset not found: \":name})\n    }\n}\n\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1870,
+        "y": 900,
+        "wires": [
+            [
+                "54097b9413e27516"
+            ]
+        ]
+    },
+    {
+        "id": "64a677401a864e80",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "#:(file)::scout",
+                "pt": "global",
+                "to": "{\"audio\":\"chime01.wav\",\"audiorepeat\":0,\"volume\":0.09,\"cal_tone_frequency\":500,\"brightness\":255,\"pattern\":\"3\",\"duration\":0,\"color\":\"69968c\"}",
+                "tot": "json"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 400,
+        "y": 400,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "5494d82efc9837e1",
+        "type": "inject",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 200,
+        "y": 400,
+        "wires": [
+            [
+                "64a677401a864e80"
+            ]
+        ]
+    },
+    {
+        "id": "ddd1bdbe4bab8f02",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "scout",
+                "pt": "global",
+                "to": "{\"audio\":\"chime01.wav\",\"audiorepeat\":0,\"volume\":0.5,\"cal_tone_frequency\":1000,\"brightness\":255,\"pattern\":\"3\",\"duration\":0,\"color\":\"ffffff\"}",
+                "tot": "json"
+            },
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "startup",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 2060,
+        "y": 960,
+        "wires": [
+            [
+                "61774b1685271112"
+            ]
+        ]
+    },
+    {
+        "id": "b7220c1b183ade2c",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Mutually exclusive selection",
+        "func": "let presets=global.get(\"presets\",\"file\")// set index of of selected\nlet checked=0\nlet name = msg.payload.title.split(\": \")\n\nfor (let i=0;i<presets.length;i++){\n    if (presets[i].name==name[1])\n        presets[i].isChecked=msg.payload.isChecked\n    else\n        presets[i].isChecked=false\n    }\n\nglobal.set(\"presets\",presets,\"file\")\n\nreturn msg\n            ",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2540,
+        "y": 700,
+        "wires": [
+            [
+                "b6226069e30a3b64"
+            ]
+        ]
+    },
+    {
+        "id": "b6226069e30a3b64",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Presets",
+        "func": "/* listbox notes...\npayloadarray\nArray of objects containing following properties:\ntitle - title of the item,\ndescription - description of the item. Optional if line type is Single-line or action type is menu,\nmenu - list of menu items (optional),\nicon - URL of icon (optional),\nicon_name - font icon name (optional).\nicon_unicode - alternative to icon name - uses text characters (optional).\nisChecked - boolean, set the item checked or on (optional).\n*/\n\nlet presets = global.get(\"presets\",\"file\") || []\nlet dashlist=[]\nfor (let i=0;i<presets.length;i++){\n    dashlist.push({\n        \"title\": i.toString().padStart(2, '0')+\": \"+presets[i].name,\n        \"isChecked\":presets[i].isChecked\n    })\n    let nd={\n        \"payload\": presets[i].name,\n        \"channel\": i + 41,\n        \"topic\":\"serial\"\n    }\n    node.send([null,nd]);\n}\nmsg.payload=dashlist\nreturn msg        \n",
+        "outputs": 2,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2080,
+        "y": 700,
+        "wires": [
+            [
+                "4c374712e54ad967"
+            ],
+            [
+                "34b8203c6df99dc6"
+            ]
+        ]
+    },
+    {
+        "id": "1a7794373796486b",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Recall & trigger preset",
+        "func": "const presets = global.get(\"presets\",\"file\") || []\nconst nodes = global.get(\"nodes\",\"file\") || []\n\nconst obj = nodes.find(({ isChecked }) => isChecked === true);\n\nif ((obj) && presets.length){\n    for (let i=0;i<presets.length;i++){\n        if (presets[i].isChecked){\n\n            let scout = {};\n            \n            scout.audio = presets[i].scout.aud,\n            scout.pattern = presets[i].scout.pat,\n            scout.color = presets[i].scout.col.toUpperCase(),\n            scout.duration = presets[i].scout.dur,\n            scout.volume = presets[i].scout.vol,\n            scout.audiorepeat = presets[i].scout.rpt,\n            scout.brightness = presets[i].scout.brt,\n\n            global.set(\"scout\", scout,\"file\")\n\n            let newmsg = {\n                \"payload\": scout\n            }\n            let playmsg={\n                \"payload\": {\n                    \"act\": \"ply\",\n                    \"aud\": presets[i].scout.aud,\n                    \"rpt\": presets[i].scout.rpt,\n                    \"clr\": presets[i].scout.col,\n                    \"pat\": presets[i].scout.pat,\n                    \"dur\": presets[i].scout.dur,\n                    \"vol\": presets[i].scout.vol,\n                    \"brt\": presets[i].scout.brt\n                },\n                \"topic\":\"node\",\n                \"node\":obj.node\n            }\n            return ([newmsg,playmsg]);\n\n        }\n    }\n}\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2180,
+        "y": 1080,
+        "wires": [
+            [
+                "531dca48d435a072"
+            ],
+            [
+                "e78839ee7b97e500"
+            ]
+        ]
+    },
+    {
+        "id": "e78839ee7b97e500",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "From preset recall trigger",
+        "mode": "link",
+        "links": [
+            "86859537006ba66a"
+        ],
+        "x": 2565,
+        "y": 1100,
+        "wires": []
+    },
+    {
+        "id": "7ed07c1d4140e95a",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Stop",
+        "func": "const nodes = global.get(\"nodes\",\"file\") || []\n\nconst obj = nodes.find(({ isChecked }) => isChecked === true);\n\nif (obj) {\n    msg={\n        \"payload\":{\n            \"act\":\"stp\",\n        },\n        \"topic\": \"node\",\n        \"node\": obj.node\n    }\n    \n    return msg;\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1970,
+        "y": 1140,
+        "wires": [
+            [
+                "e78839ee7b97e500"
+            ]
+        ]
+    },
+    {
+        "id": "01b783c27deaa5f0",
+        "type": "inject",
+        "z": "ec1c42aabdfe318b",
+        "name": "Digital 1",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            },
+            {
+                "p": "channel",
+                "v": "1",
+                "vt": "num"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "digital",
+        "payload": "1",
+        "payloadType": "num",
+        "x": 1740,
+        "y": 1200,
+        "wires": [
+            [
+                "9f3c239ed7cfc02b"
+            ]
+        ]
+    },
+    {
+        "id": "68dd98b07caf34e5",
+        "type": "inject",
+        "z": "ec1c42aabdfe318b",
+        "name": "Analog 1",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            },
+            {
+                "p": "channel",
+                "v": "1",
+                "vt": "num"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": false,
+        "onceDelay": 0.1,
+        "topic": "analog",
+        "payload": "0",
+        "payloadType": "num",
+        "x": 1738,
+        "y": 1248,
+        "wires": [
+            [
+                "9f3c239ed7cfc02b"
+            ]
+        ]
+    },
+    {
+        "id": "9f3c239ed7cfc02b",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "ISC Recall & trigger preset",
+        "func": "const presets = global.get(\"presets\",\"file\") || []\nconst nodes = global.get(\"nodes\",\"file\") || []\n\n\nif (msg.topic==\"analog\"){\n    nodes[msg.channel-1].preset=msg.payload;\n    global.set(\"nodes\",nodes);\n\n}\n\n// digital HIGH\nelse if (msg.topic==\"digital\" && msg.payload==1){\n\n    let idx = nodes.map(function (/** @type {{ ip: any; }} */ e) { return e.join; }).indexOf(msg.channel)\n    if (nodes.length && presets.length && idx>-1) {\n        // node trigger\n        if (msg.channel<21){\n        \n            let scout = {};\n            \n            scout.audio = presets[nodes[idx].preset].scout.aud,\n            scout.pattern = presets[nodes[idx].preset].scout.pat,\n            scout.color = presets[nodes[idx].preset].scout.col.toUpperCase(),\n            scout.duration = presets[nodes[idx].preset].scout.dur,\n            scout.volume = presets[nodes[idx].preset].scout.vol,\n            scout.audiorepeat = presets[nodes[idx].preset].scout.rpt,\n            scout.brightness = presets[nodes[idx].preset].scout.brt,\n    \n            global.set(\"scout\", scout,\"file\")\n    \n            let newmsg = {\n                \"payload\": scout\n            }\n            let playmsg={\n                \"payload\": {\n                    \"act\": \"ply\",\n                    \"aud\": presets[nodes[idx].preset].scout.aud,\n                    \"rpt\": presets[nodes[idx].preset].scout.rpt,\n                    \"clr\": presets[nodes[idx].preset].scout.col,\n                    \"pat\": presets[nodes[idx].preset].scout.pat,\n                    \"dur\": presets[nodes[idx].preset].scout.dur,\n                    \"brt\": presets[nodes[idx].preset].scout.brt\n                },\n                \"topic\":\"node\",\n                \"node\":nodes[msg.channel-1].node\n            }\n            return ([newmsg,playmsg]);\n        }\n        \n    }\n    // node cancel\n    else if (msg.channel<41){\n        let playmsg={\n            \"payload\": {\n                \"act\": \"stp\"\n            },\n            \"topic\":\"node\",\n            \"node\":nodes[msg.channel-21].node\n        }\n        return ([null,playmsg]);            \n    }    \n    // refresh ISC signals to Crestron\n    else if (msg.channel==41){\n        let playmsg={\n            \"payload\": {\n                \"isc\": \"refresh\"\n            },\n        }\n        return ([null,null,playmsg]);            \n    }\n}\n\n",
+        "outputs": 3,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2040,
+        "y": 1260,
+        "wires": [
+            [
+                "531dca48d435a072"
+            ],
+            [
+                "e78839ee7b97e500"
+            ],
+            [
+                "cadf9adf71406af9",
+                "ccd675066fa69ede"
+            ]
+        ]
+    },
+    {
+        "id": "04e907f72f736e36",
+        "type": "switch",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "YES",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 770,
+        "y": 1300,
+        "wires": [
+            [
+                "dd6ef65a3b15b404"
+            ]
+        ]
+    },
+    {
+        "id": "085202b78281b6e6",
+        "type": "subflow:59f17ead25af0830",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "env": [
+            {
+                "name": "ISCoffset",
+                "value": "60",
+                "type": "str"
+            }
+        ],
+        "x": 1580,
+        "y": 1320,
+        "wires": [
+            [
+                "9f3c239ed7cfc02b",
+                "335215ad8d42ef58"
+            ]
+        ]
+    },
+    {
+        "id": "4472e7816888f097",
+        "type": "link in",
+        "z": "ec1c42aabdfe318b",
+        "name": "To ISC",
+        "links": [
+            "129245b318a3d87d",
+            "c320b8b0d6b1be62",
+            "34b8203c6df99dc6"
+        ],
+        "x": 1425,
+        "y": 1320,
+        "wires": [
+            [
+                "085202b78281b6e6"
+            ]
+        ]
+    },
+    {
+        "id": "129245b318a3d87d",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "From Node list ISC",
+        "mode": "link",
+        "links": [
+            "4472e7816888f097"
+        ],
+        "x": 1735,
+        "y": 460,
+        "wires": []
+    },
+    {
+        "id": "f6d5a5433ded4cd1",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "identify",
+                "pt": "flow",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1840,
+        "y": 560,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "ac1cdf555e9f506c",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Play",
+        "func": "if (flow.get(\"identify\")==true){\n\n   msg.topic = \"scout/\" + msg.payload.MAC + \"/$action\";\n   msg.payload={\n      \"act\":\"ply\",\n      \"aud\":\"chime01.wav\",\n      \"rpt\":1,\n      \"clr\":\"ffffff\",\n      \"pat\":4,  // ladder\n      \"dur\":1000,\n      \"vol\":\".8\",\n      \"brt\":255\n   }\n\n   return msg;\n}",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2030,
+        "y": 200,
+        "wires": [
+            [
+                "dbc3e2e4cc2bcb4d"
+            ]
+        ]
+    },
+    {
+        "id": "dbc3e2e4cc2bcb4d",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "From summary list select",
+        "mode": "link",
+        "links": [
+            "0695ab84c83dfed0"
+        ],
+        "x": 2145,
+        "y": 200,
+        "wires": []
+    },
+    {
+        "id": "0695ab84c83dfed0",
+        "type": "link in",
+        "z": "ec1c42aabdfe318b",
+        "name": "To MQTT",
+        "links": [
+            "dbc3e2e4cc2bcb4d",
+            "a1833f86e1f004b9",
+            "b8902fed9f2aaedb"
+        ],
+        "x": 505,
+        "y": 1620,
+        "wires": [
+            [
+                "e089931eadfc052d",
+                "e80fa5712e05351f"
+            ]
+        ]
+    },
+    {
+        "id": "7411eb0f8211773e",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "func": "let scouts = global.get(\"scouts\", \"file\") || [];\nlet selected = flow.get(\"selectedDevice\") || null;\n\nlet array2 = [];\nlet mqtt_online = flow.get(\"mqtt_online\");\n\nfunction mapStatusToOrder(status) {\n    switch (status) {\n        case \"identifying\": return 1;\n        case \"announce\": return 2;  // was 1\n        case \"going offline\": return 3;  // was 2\n        case \"connecting to server\": return 4;  // was 3\n        case \"downloading firmware\": return 5;  // was 4\n        case \"flashing firmware\": return 6;  // was 5\n        case \"pulling firmware\": return 7;  // was 6\n        case \"idle\": return 8;  // was 7\n        case \"online\": return 9;  // was 8\n        case \"offline\": return 10; // was 9\n        default: return 11; // was 10 (\"no broker\" or anything else)\n    }\n}\n\nfor (let i = 0; i < scouts.length; i++) {\n\n    // Normalize incoming text safely\n    let rawStatus = mqtt_online ? scouts[i].state.status : \"No Broker\";\n    let state = (rawStatus || \"\")\n        .toString()\n        .trim()\n        .toLowerCase();\n\n    let scout = {\n        IP: scouts[i].state.ip,\n        status: state,                      // normalized lowercase\n        Version: scouts[i].state.ver,\n        MAC: scouts[i].mac,\n        Subnet: scouts[i].state.mask,\n        Gateway: scouts[i].state.gate,\n        DHCP: scouts[i].state.dhcp,\n        USB: scouts[i].state.usb,\n        FTP: scouts[i].state.ftp,\n        oled: scouts[i].state.oled,\n        Node: scouts[i].state.node,\n\n        // numeric sort field\n        _sortStatus: mapStatusToOrder(state)\n    };\n\n    array2.push(scout);\n\n    if (selected && selected.IP === scouts[i].state.ip){\n        node.send([null,{\n            payload:{\n                IP: scouts[i].state.ip,\n                status: state, \n                Version: scouts[i].state.ver,\n                MAC: scouts[i].mac,\n                Subnet: scouts[i].state.mask,\n                Gateway: scouts[i].state.gate,\n                DHCP: scouts[i].state.dhcp,\n                USB: scouts[i].state.usb,\n                FTP: scouts[i].state.ftp,\n                Node: scouts[i].state.node,                \n            }\n        }])\n    }\n}\n\n// Primary sort: _sortStatus\n// Secondary sort: IP numerically\narray2.sort((a, b) => {\n    if (a._sortStatus !== b._sortStatus) {\n        return a._sortStatus - b._sortStatus;\n    }\n    const ipA = a.IP.split('.').map(n => parseInt(n, 10));\n    const ipB = b.IP.split('.').map(n => parseInt(n, 10));\n    for (let i = 0; i < 4; i++) {\n        if (ipA[i] !== ipB[i]) return ipA[i] - ipB[i];\n    }\n    return 0;\n});\n\nmsg.payload = array2;\nreturn msg;\n",
+        "outputs": 2,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1540,
+        "y": 180,
+        "wires": [
+            [
+                "7996c6fa4bff9c3b",
+                "318c45c472cfb858",
+                "a1fee2776d4f2e7e"
+            ],
+            [
+                "9e45806b91a3bf78"
+            ]
+        ]
+    },
+    {
+        "id": "e80fa5712e05351f",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "MQTT To Scouts",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 710,
+        "y": 1680,
+        "wires": []
+    },
+    {
+        "id": "335215ad8d42ef58",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "From Crestron",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 2000,
+        "y": 1340,
+        "wires": []
+    },
+    {
+        "id": "cadf9adf71406af9",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "Refresh",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 2300,
+        "y": 1260,
+        "wires": []
+    },
+    {
+        "id": "ccd675066fa69ede",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "ISC online, update client",
+        "func": "let nodes = global.get(\"nodes\",\"file\") || []\nlet presets = global.get(\"presets\",\"file\") || []\nlet scouts= global.get(\"scouts\",\"file\") || []\nfor (let i=0;i<nodes.length;i++){\n    let nd={\n        \"payload\": nodes[i].node,\n        \"channel\": i + 21,\n        \"topic\":\"serial\"\n    }\n    node.send(nd);\n}    \n\nfor (let i=0;i<presets.length;i++){\n    let nd={\n        \"payload\": presets[i].name,\n        \"channel\": i + 41,\n        \"topic\":\"serial\"\n    }\n    node.send(nd);\n}    \n\nfor (let i=0;i<scouts.length;i++){\n    let nd={\n        \"payload\": scouts[i].mac,\n        \"channel\": i + 51,\n        \"topic\":\"serial\"\n    }\n    node.send(nd);\n    let online=0;\n    if (scouts[i].state.status!=\"offline\")\n        online=1\n    nd={\n        \"payload\": online,\n        \"channel\": i + 1,\n        \"topic\":\"digital\"\n    }\n    node.send(nd);\n}\n",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2330,
+        "y": 1320,
+        "wires": [
+            [
+                "c320b8b0d6b1be62"
+            ]
+        ],
+        "outputLabels": [
+            "Node Switches"
+        ]
+    },
+    {
+        "id": "c320b8b0d6b1be62",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "ISC client online",
+        "mode": "link",
+        "links": [
+            "4472e7816888f097"
+        ],
+        "x": 2495,
+        "y": 1320,
+        "wires": []
+    },
+    {
+        "id": "34b8203c6df99dc6",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "ISC preset update",
+        "mode": "link",
+        "links": [
+            "4472e7816888f097"
+        ],
+        "x": 2225,
+        "y": 760,
+        "wires": []
+    },
+    {
+        "id": "7926d68fe0821f92",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "Save preset",
+        "mode": "link",
+        "links": [],
+        "x": 2215,
+        "y": 900,
+        "wires": []
+    },
+    {
+        "id": "e850aa5b6b6bc2d7",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 3",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 2720,
+        "y": 780,
+        "wires": []
+    },
+    {
+        "id": "24ed95f3797d5f0b",
+        "type": "inject",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "props": [
+            {
+                "p": "payload"
+            },
+            {
+                "p": "topic",
+                "vt": "str"
+            }
+        ],
+        "repeat": "",
+        "crontab": "",
+        "once": true,
+        "onceDelay": "2",
+        "topic": "",
+        "payload": "",
+        "payloadType": "date",
+        "x": 1730,
+        "y": 720,
+        "wires": [
+            [
+                "9d7f73d6c01e5d0b",
+                "54097b9413e27516",
+                "ddd1bdbe4bab8f02"
+            ]
+        ]
+    },
+    {
+        "id": "cc1a5b6bbde7e96a",
+        "type": "status",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "scope": [
+            "a0c5509b2c541306",
+            "e089931eadfc052d"
+        ],
+        "x": 240,
+        "y": 160,
+        "wires": [
+            [
+                "1094193e83b90ec0"
+            ]
+        ]
+    },
+    {
+        "id": "6094280d8b52133d",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "MQTT Status",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 630,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "1094193e83b90ec0",
+        "type": "switch",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "property": "status.text",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "node-red:common.status.connected",
+                "vt": "str"
+            },
+            {
+                "t": "else"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 2,
+        "x": 390,
+        "y": 160,
+        "wires": [
+            [
+                "6094280d8b52133d",
+                "c442a5b41344f8eb"
+            ],
+            [
+                "cdec449bed09803c"
+            ]
+        ],
+        "outputLabels": [
+            "online",
+            "offline"
+        ]
+    },
+    {
+        "id": "c442a5b41344f8eb",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "true",
+                "tot": "bool"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 640,
+        "y": 140,
+        "wires": [
+            [
+                "73c37fd18771359a",
+                "29922ae98aad9076",
+                "c4622a2bb172b467"
+            ]
+        ]
+    },
+    {
+        "id": "cdec449bed09803c",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "false",
+                "tot": "bool"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 640,
+        "y": 180,
+        "wires": [
+            [
+                "73c37fd18771359a",
+                "29922ae98aad9076"
+            ]
+        ]
+    },
+    {
+        "id": "97cc8b8fef56518e",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 4",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 980,
+        "y": 320,
+        "wires": []
+    },
+    {
+        "id": "fbc2d3285021fa7e",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Store volume",
+        "func": "\nmsg.payload={\n    \"act\":\"vrt\",\n    \"vol\":global.get(\"scout\",\"file\").volume\n}\n  \nreturn msg;",
+        "outputs": 1,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 870,
+        "y": 440,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "13b21d25918fde5f",
+        "type": "switch",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "property": "payload",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "YES",
+                "vt": "str"
+            }
+        ],
+        "checkall": "false",
+        "repair": false,
+        "outputs": 1,
+        "x": 710,
+        "y": 440,
+        "wires": [
+            [
+                "fbc2d3285021fa7e"
+            ]
+        ]
+    },
+    {
+        "id": "29922ae98aad9076",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "mqtt_online",
+                "pt": "flow",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1130,
+        "y": 80,
+        "wires": [
+            [
+                "7411eb0f8211773e"
+            ]
+        ]
+    },
+    {
+        "id": "333f0e7d8424ab8c",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "payload",
+                "pt": "msg",
+                "to": "{\"act\":\"get\"}",
+                "tot": "json"
+            },
+            {
+                "t": "set",
+                "p": "topic",
+                "pt": "msg",
+                "to": "scout/$broadcast/$action",
+                "tot": "str"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 1120,
+        "y": 140,
+        "wires": [
+            [
+                "a1833f86e1f004b9"
+            ]
+        ]
+    },
+    {
+        "id": "a1833f86e1f004b9",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "refresh scouts on mqtt online",
+        "mode": "link",
+        "links": [
+            "0695ab84c83dfed0"
+        ],
+        "x": 1255,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "c4622a2bb172b467",
+        "type": "switch",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "property": "status.source.type",
+        "propertyType": "msg",
+        "rules": [
+            {
+                "t": "eq",
+                "v": "mqtt in",
+                "vt": "str"
+            }
+        ],
+        "checkall": "true",
+        "repair": false,
+        "outputs": 1,
+        "x": 950,
+        "y": 140,
+        "wires": [
+            [
+                "333f0e7d8424ab8c"
+            ]
+        ]
+    },
+    {
+        "id": "cf2c619b2f24a68d",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 1,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;ANNOUNCE",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-play",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 680,
+        "y": 520,
+        "wires": [
+            [
+                "d5b84beb60c43623"
+            ]
+        ]
+    },
+    {
+        "id": "f8701552234cb4cb",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "c518a0f03de26d7a",
+        "order": 7,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;PINK",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-play",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 650,
+        "y": 560,
+        "wires": [
+            [
+                "00660e87c21d0742"
+            ]
+        ]
+    },
+    {
+        "id": "4cef124eacd4aeea",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "c518a0f03de26d7a",
+        "order": 6,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;SWEEP",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-play",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 660,
+        "y": 600,
+        "wires": [
+            [
+                "729aeb8ec741a8b3"
+            ]
+        ]
+    },
+    {
+        "id": "b0f1c0ee9ae33102",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 2,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;STOP",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-stop",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 660,
+        "y": 480,
+        "wires": [
+            [
+                "e3e131ef0afeaa5d"
+            ]
+        ]
+    },
+    {
+        "id": "bd67d63339c5d212",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "c518a0f03de26d7a",
+        "order": 5,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;TONE",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-play",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 660,
+        "y": 940,
+        "wires": [
+            [
+                "bb24bf7a706cdb4d"
+            ]
+        ]
+    },
+    {
+        "id": "bc2410d50fe9f91c",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "05c535fa4d303b7d",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;SEND NODE TO Selected Scouts",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-paper-plane",
+        "payload": "This action will reprogram the listening node on all selected destinations",
+        "payloadType": "str",
+        "topic": "Are you sure?",
+        "topicType": "str",
+        "x": 300,
+        "y": 1300,
+        "wires": [
+            [
+                "2b51c5af2c8c4be8"
+            ]
+        ]
+    },
+    {
+        "id": "25bc1b5e5f0a7e0f",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "9b6c4344984e19c8",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;Announce  to Selected Node",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-play",
+        "payload": "single",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 1560,
+        "y": 1080,
+        "wires": [
+            [
+                "1a7794373796486b"
+            ]
+        ]
+    },
+    {
+        "id": "b23e1c883001ee99",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "66db4d5b56777673",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;Reset and refresh",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-refresh",
+        "payload": "This will remove any orphan nodes and re-enumerate all nodes",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 1590,
+        "y": 520,
+        "wires": [
+            [
+                "fa1b0358a58cb341"
+            ]
+        ]
+    },
+    {
+        "id": "9fa1f6cee8c646c4",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 4,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;REFRESH",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-refresh",
+        "payload": "{\"act\":\"get\"}",
+        "payloadType": "json",
+        "topic": "scout/$broadcast/$action",
+        "topicType": "str",
+        "x": 210,
+        "y": 1540,
+        "wires": [
+            [
+                "c5a73cc0569348aa"
+            ]
+        ]
+    },
+    {
+        "id": "a1cb21536623ed9e",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "e0979b8967db2436",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;Save New Preset",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-database",
+        "payload": "Enter a preset name",
+        "payloadType": "str",
+        "topic": "Save Current Settings as Preset",
+        "topicType": "str",
+        "x": 1430,
+        "y": 840,
+        "wires": [
+            [
+                "df8c7113637e5b89"
+            ]
+        ]
+    },
+    {
+        "id": "c91699aeb8349398",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "e0979b8967db2436",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;Delete Selected",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-trash",
+        "payload": "Are you sure?",
+        "payloadType": "str",
+        "topic": "Delete selected preset",
+        "topicType": "str",
+        "x": 1430,
+        "y": 900,
+        "wires": [
+            [
+                "400c0cb36f2e7dc6"
+            ]
+        ]
+    },
+    {
+        "id": "acff21eb4959c263",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "9b6c4344984e19c8",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;STOP Selected Node",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-stop",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 1560,
+        "y": 1140,
+        "wires": [
+            [
+                "7ed07c1d4140e95a"
+            ]
+        ]
+    },
+    {
+        "id": "55f207da46618183",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "ce438370dbed10c5",
+        "order": 3,
+        "width": 1,
+        "height": 1,
+        "passthru": false,
+        "label": "",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-database",
+        "payload": "This will write the current volume to all Scouts in the Announce Destination",
+        "payloadType": "str",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 210,
+        "y": 440,
+        "wires": [
+            [
+                "f74555d024e509fd"
+            ]
+        ]
+    },
+    {
+        "id": "d8a2b27b651f3b7e",
+        "type": "ui_dropdown",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Recall Preset",
+        "tooltip": "",
+        "place": "Select option",
+        "group": "e0979b8967db2436",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "multiple": false,
+        "options": [
+            {
+                "label": "",
+                "value": "",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "topic",
+        "topicType": "msg",
+        "className": "",
+        "x": 2270,
+        "y": 840,
+        "wires": [
+            [
+                "4c6ba0b5a1b3dd48"
+            ]
+        ]
+    },
+    {
+        "id": "0537760c5dfbf304",
+        "type": "ui_dropdown",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Pattern",
+        "tooltip": "",
+        "place": "Select option",
+        "group": "92d431f494ebc921",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "multiple": false,
+        "options": [
+            {
+                "label": "Off",
+                "value": "0",
+                "type": "str"
+            },
+            {
+                "label": "Solid",
+                "value": "1",
+                "type": "str"
+            },
+            {
+                "label": "Blink",
+                "value": "2",
+                "type": "str"
+            },
+            {
+                "label": "Rotate",
+                "value": "3",
+                "type": "str"
+            },
+            {
+                "label": "Pulse",
+                "value": "4",
+                "type": "str"
+            },
+            {
+                "label": "Flash",
+                "value": "5",
+                "type": "str"
+            },
+            {
+                "label": "Wave Outwards",
+                "value": "6",
+                "type": "str"
+            },
+            {
+                "label": "Wave Inwards",
+                "value": "7",
+                "type": "str"
+            },
+            {
+                "label": "Audio Follow",
+                "value": "8",
+                "type": "str"
+            },
+            {
+                "label": "Left",
+                "value": "9",
+                "type": "str"
+            },
+            {
+                "label": "Right",
+                "value": "10",
+                "type": "str"
+            },
+            {
+                "label": "Up",
+                "value": "11",
+                "type": "str"
+            },
+            {
+                "label": "Down",
+                "value": "12",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "topic",
+        "topicType": "msg",
+        "className": "",
+        "x": 560,
+        "y": 1160,
+        "wires": [
+            [
+                "6382c3caa5aa103a"
+            ]
+        ]
+    },
+    {
+        "id": "b0e4ed2af85dd3d6",
+        "type": "ui_dropdown",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Colour",
+        "tooltip": "",
+        "place": "Select option",
+        "group": "92d431f494ebc921",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "multiple": false,
+        "options": [
+            {
+                "label": "Red",
+                "value": "FF0000",
+                "type": "str"
+            },
+            {
+                "label": "Orange",
+                "value": "FF4500",
+                "type": "str"
+            },
+            {
+                "label": "Blue",
+                "value": "0000FF",
+                "type": "str"
+            },
+            {
+                "label": "Green",
+                "value": "00FF00",
+                "type": "str"
+            },
+            {
+                "label": "Lt Blue",
+                "value": "1E90FF",
+                "type": "str"
+            },
+            {
+                "label": "White",
+                "value": "FFFFFF",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "topic",
+        "topicType": "msg",
+        "className": "",
+        "x": 430,
+        "y": 1080,
+        "wires": [
+            [
+                "7d81f6fd902b33d7"
+            ]
+        ]
+    },
+    {
+        "id": "4c7d41a0c4c27803",
+        "type": "ui_dropdown",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Audio",
+        "tooltip": "",
+        "place": "Select option",
+        "group": "ce438370dbed10c5",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "multiple": false,
+        "options": [
+            {
+                "label": "<NONE>",
+                "value": "<NONE>",
+                "type": "str"
+            },
+            {
+                "label": "Start Me Up",
+                "value": "startme.wav",
+                "type": "str"
+            },
+            {
+                "label": "1 Chime",
+                "value": "chime01.wav",
+                "type": "str"
+            },
+            {
+                "label": "2 Chimes",
+                "value": "chime02.wav",
+                "type": "str"
+            },
+            {
+                "label": "3 Chimes",
+                "value": "chime03.wav",
+                "type": "str"
+            },
+            {
+                "label": "Oh Canada, T.O. Symphony",
+                "value": "oc-orc.wav",
+                "type": "str"
+            },
+            {
+                "label": "Oh Canada, French, N. Paulin",
+                "value": "oc-fra.wav",
+                "type": "str"
+            },
+            {
+                "label": "Oh Canada, English, J. Nesrallah",
+                "value": "oc-eng.wav",
+                "type": "str"
+            },
+            {
+                "label": "Oh Canada, Bilingual, Paulin/Nesrallah",
+                "value": "oc-bil.wav",
+                "type": "str"
+            },
+            {
+                "label": "Speech Test, J. Royer",
+                "value": "royer.wav",
+                "type": "str"
+            },
+            {
+                "label": "Stereo Test",
+                "value": "stereo.wav",
+                "type": "str"
+            },
+            {
+                "label": "Doorbell",
+                "value": "doorbell.wav",
+                "type": "str"
+            },
+            {
+                "label": "Clock Chime",
+                "value": "clock.wav",
+                "type": "str"
+            },
+            {
+                "label": "Royal Anthem",
+                "value": "royal.wav",
+                "type": "str"
+            },
+            {
+                "label": "Down The Road",
+                "value": "dtr.wav",
+                "type": "str"
+            },
+            {
+                "label": "Far From Home",
+                "value": "farfrom.wav",
+                "type": "str"
+            },
+            {
+                "label": "Ocean",
+                "value": "ocean.wav",
+                "type": "str"
+            }
+        ],
+        "payload": "",
+        "topic": "topic",
+        "topicType": "msg",
+        "className": "",
+        "x": 610,
+        "y": 1040,
+        "wires": [
+            [
+                "871dc3f4816a70d3"
+            ]
+        ]
+    },
+    {
+        "id": "64405b28959e15de",
+        "type": "ui_switch",
+        "z": "ec1c42aabdfe318b",
+        "name": "IDENTIFY",
+        "label": "Identify",
+        "tooltip": "",
+        "group": "46075fdf3b077ad9",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "decouple": "false",
+        "topic": "topic",
+        "topicType": "msg",
+        "style": "",
+        "onvalue": "true",
+        "onvalueType": "bool",
+        "onicon": "",
+        "oncolor": "",
+        "offvalue": "false",
+        "offvalueType": "bool",
+        "officon": "",
+        "offcolor": "",
+        "animate": false,
+        "className": "",
+        "x": 1650,
+        "y": 560,
+        "wires": [
+            [
+                "f6d5a5433ded4cd1"
+            ]
+        ]
+    },
+    {
+        "id": "072e3b82e7edb758",
+        "type": "ui_slider",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Audio Repeat",
+        "tooltip": "",
+        "group": "ce438370dbed10c5",
+        "order": 4,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "outs": "end",
+        "topic": "topic",
+        "topicType": "msg",
+        "min": 0,
+        "max": 10,
+        "step": 1,
+        "className": "",
+        "x": 580,
+        "y": 1200,
+        "wires": [
+            [
+                "096d5bb04c1b7867"
+            ]
+        ]
+    },
+    {
+        "id": "159d4101aeb53d89",
+        "type": "ui_slider",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Timeout, seconds",
+        "tooltip": "",
+        "group": "92d431f494ebc921",
+        "order": 5,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "outs": "end",
+        "topic": "topic",
+        "topicType": "msg",
+        "min": 0,
+        "max": "100",
+        "step": "1",
+        "className": "",
+        "x": 590,
+        "y": 1240,
+        "wires": [
+            [
+                "18873efc09025d0f"
+            ]
+        ]
+    },
+    {
+        "id": "8544092bfc7b0285",
+        "type": "ui_slider",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Volume",
+        "tooltip": "",
+        "group": "ce438370dbed10c5",
+        "order": 2,
+        "width": 5,
+        "height": 1,
+        "passthru": false,
+        "outs": "all",
+        "topic": "topic",
+        "topicType": "msg",
+        "min": "0",
+        "max": "1",
+        "step": ".01",
+        "className": "",
+        "x": 600,
+        "y": 980,
+        "wires": [
+            [
+                "1e337f36c8384dc6"
+            ]
+        ]
+    },
+    {
+        "id": "77b050d28c3a6bd6",
+        "type": "ui_slider",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Brightness",
+        "tooltip": "",
+        "group": "92d431f494ebc921",
+        "order": 3,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "outs": "all",
+        "topic": "topic",
+        "topicType": "msg",
+        "min": 0,
+        "max": "255",
+        "step": "1",
+        "className": "",
+        "x": 570,
+        "y": 1120,
+        "wires": [
+            [
+                "f81a7adaced9fed0"
+            ]
+        ]
+    },
+    {
+        "id": "6614a246918e83e9",
+        "type": "ui_slider",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Tone Freq",
+        "tooltip": "",
+        "group": "c518a0f03de26d7a",
+        "order": 3,
+        "width": 4,
+        "height": 1,
+        "passthru": true,
+        "outs": "all",
+        "topic": "topic",
+        "topicType": "msg",
+        "min": "200",
+        "max": "10000",
+        "step": "100",
+        "className": "",
+        "x": 240,
+        "y": 900,
+        "wires": [
+            [
+                "a35a7b38f82c789c",
+                "cfb560fbe8ce68fc"
+            ]
+        ]
+    },
+    {
+        "id": "a39929b114922648",
+        "type": "ui_slider",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Tone Note",
+        "tooltip": "",
+        "group": "c518a0f03de26d7a",
+        "order": 1,
+        "width": 4,
+        "height": 1,
+        "passthru": true,
+        "outs": "all",
+        "topic": "topic",
+        "topicType": "msg",
+        "min": "0",
+        "max": "76",
+        "step": "1",
+        "className": "",
+        "x": 170,
+        "y": 860,
+        "wires": [
+            [
+                "c510831fa33e2047"
+            ]
+        ]
+    },
+    {
+        "id": "5edc7b905594d01d",
+        "type": "ui_text_input",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Enter Announce Node",
+        "tooltip": "",
+        "group": "05c535fa4d303b7d",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "mode": "text",
+        "delay": "100",
+        "topic": "topic",
+        "sendOnBlur": true,
+        "className": "",
+        "topicType": "msg",
+        "x": 280,
+        "y": 1340,
+        "wires": [
+            [
+                "6d86da04e5e355f4"
+            ]
+        ]
+    },
+    {
+        "id": "b77e8dc91241074b",
+        "type": "ui_text_input",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Node",
+        "tooltip": "",
+        "group": "f0eda1058ea7caaa",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "mode": "text",
+        "delay": "0",
+        "topic": "topic",
+        "sendOnBlur": true,
+        "className": "",
+        "topicType": "msg",
+        "x": 530,
+        "y": 1420,
+        "wires": [
+            [
+                "84918027207259c0"
+            ]
+        ]
+    },
+    {
+        "id": "7d81f6fd902b33d7",
+        "type": "ui_colour_picker",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Color Picker",
+        "group": "92d431f494ebc921",
+        "format": "hex",
+        "outformat": "string",
+        "showSwatch": true,
+        "showPicker": true,
+        "showValue": true,
+        "showHue": false,
+        "showAlpha": false,
+        "showLightness": true,
+        "square": "false",
+        "dynOutput": "true",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "topic": "topic",
+        "topicType": "msg",
+        "className": "",
+        "x": 570,
+        "y": 1080,
+        "wires": [
+            [
+                "17c60c2eaa35ddf3"
+            ]
+        ]
+    },
+    {
+        "id": "994e8c532008f30d",
+        "type": "ui_text",
+        "z": "ec1c42aabdfe318b",
+        "group": "05c535fa4d303b7d",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "name": "",
+        "label": "Node Validation",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 860,
+        "y": 1360,
+        "wires": []
+    },
+    {
+        "id": "cfb560fbe8ce68fc",
+        "type": "ui_text",
+        "z": "ec1c42aabdfe318b",
+        "group": "c518a0f03de26d7a",
+        "order": 4,
+        "width": 2,
+        "height": 1,
+        "name": "Frequency",
+        "label": "",
+        "format": "{{msg.payload}}Hz",
+        "layout": "row-spread",
+        "className": "",
+        "x": 450,
+        "y": 920,
+        "wires": []
+    },
+    {
+        "id": "aa14c6fa3ac84b75",
+        "type": "ui_text",
+        "z": "ec1c42aabdfe318b",
+        "group": "c518a0f03de26d7a",
+        "order": 2,
+        "width": 2,
+        "height": 1,
+        "name": "Note",
+        "label": "",
+        "format": "{{msg.payload}}",
+        "layout": "row-spread",
+        "className": "",
+        "x": 590,
+        "y": 860,
+        "wires": []
+    },
+    {
+        "id": "fa1b0358a58cb341",
+        "type": "ui_toast",
+        "z": "ec1c42aabdfe318b",
+        "position": "dialog",
+        "displayTime": "3",
+        "highlight": "",
+        "sendall": false,
+        "outputs": 1,
+        "ok": "YES",
+        "cancel": "NO",
+        "raw": false,
+        "className": "",
+        "topic": "Reset All Nodes?",
+        "name": "Are you sure?",
+        "x": 1840,
+        "y": 520,
+        "wires": [
+            [
+                "3622c4d721c3013c"
+            ]
+        ]
+    },
+    {
+        "id": "df8c7113637e5b89",
+        "type": "ui_toast",
+        "z": "ec1c42aabdfe318b",
+        "position": "prompt",
+        "displayTime": "3",
+        "highlight": "",
+        "sendall": false,
+        "outputs": 1,
+        "ok": "SAVE",
+        "cancel": "CANCEL",
+        "raw": false,
+        "className": "",
+        "topic": "",
+        "name": "Enter preset name",
+        "x": 1690,
+        "y": 840,
+        "wires": [
+            [
+                "54097b9413e27516"
+            ]
+        ]
+    },
+    {
+        "id": "2b51c5af2c8c4be8",
+        "type": "ui_toast",
+        "z": "ec1c42aabdfe318b",
+        "position": "dialog",
+        "displayTime": "3",
+        "highlight": "",
+        "sendall": false,
+        "outputs": 1,
+        "ok": "YES",
+        "cancel": "NO",
+        "raw": false,
+        "className": "",
+        "topic": "",
+        "name": "Are you sure?",
+        "x": 600,
+        "y": 1300,
+        "wires": [
+            [
+                "04e907f72f736e36"
+            ]
+        ]
+    },
+    {
+        "id": "400c0cb36f2e7dc6",
+        "type": "ui_toast",
+        "z": "ec1c42aabdfe318b",
+        "position": "dialog",
+        "displayTime": "3",
+        "highlight": "",
+        "sendall": false,
+        "outputs": 1,
+        "ok": "YES",
+        "cancel": "CANCEL",
+        "raw": false,
+        "className": "",
+        "topic": "",
+        "name": "Delete?",
+        "x": 1660,
+        "y": 900,
+        "wires": [
+            [
+                "62e0c73050960973"
+            ]
+        ]
+    },
+    {
+        "id": "f74555d024e509fd",
+        "type": "ui_toast",
+        "z": "ec1c42aabdfe318b",
+        "position": "dialog",
+        "displayTime": "3",
+        "highlight": "",
+        "sendall": false,
+        "outputs": 1,
+        "ok": "YES",
+        "cancel": "NO",
+        "raw": false,
+        "className": "",
+        "topic": "Store Volume?",
+        "name": "Are you sure?",
+        "x": 540,
+        "y": 440,
+        "wires": [
+            [
+                "13b21d25918fde5f"
+            ]
+        ]
+    },
+    {
+        "id": "dd6e07b3d96ff3ea",
+        "type": "ui_list",
+        "z": "ec1c42aabdfe318b",
+        "group": "f0eda1058ea7caaa",
+        "name": "Devices",
+        "order": 3,
+        "width": 8,
+        "height": 12,
+        "lineType": "three",
+        "actionType": "switch",
+        "allowHTML": false,
+        "outputs": 1,
+        "topic": "",
+        "x": 1880,
+        "y": 280,
+        "wires": [
+            [
+                "14816cf529675b70"
+            ]
+        ]
+    },
+    {
+        "id": "e9346bf54e3f5d51",
+        "type": "ui_list",
+        "z": "ec1c42aabdfe318b",
+        "group": "f0eda1058ea7caaa",
+        "name": "Announcement",
+        "order": 2,
+        "width": 8,
+        "height": 3,
+        "lineType": "one",
+        "actionType": "switch",
+        "allowHTML": false,
+        "outputs": 1,
+        "topic": "",
+        "x": 2200,
+        "y": 620,
+        "wires": [
+            [
+                "cf513e028bdbee38"
+            ]
+        ]
+    },
+    {
+        "id": "3c4b6f3b37f19bf9",
+        "type": "ui_list",
+        "z": "ec1c42aabdfe318b",
+        "group": "66db4d5b56777673",
+        "name": "Nodes",
+        "order": 2,
+        "width": 6,
+        "height": 10,
+        "lineType": "three",
+        "actionType": "switch",
+        "allowHTML": false,
+        "outputs": 1,
+        "topic": "",
+        "x": 1990,
+        "y": 360,
+        "wires": [
+            [
+                "37e14d9d055a4938"
+            ]
+        ]
+    },
+    {
+        "id": "4c374712e54ad967",
+        "type": "ui_list",
+        "z": "ec1c42aabdfe318b",
+        "group": "9b6c4344984e19c8",
+        "name": "Presets",
+        "order": 3,
+        "width": 6,
+        "height": 9,
+        "lineType": "three",
+        "actionType": "switch",
+        "allowHTML": false,
+        "outputs": 1,
+        "topic": "",
+        "x": 2300,
+        "y": 700,
+        "wires": [
+            [
+                "b7220c1b183ade2c"
+            ]
+        ]
+    },
+    {
+        "id": "7996c6fa4bff9c3b",
+        "type": "ui_table",
+        "z": "ec1c42aabdfe318b",
+        "group": "72293de21afcebce",
+        "name": "Detailed Summary",
+        "order": 1,
+        "width": 24,
+        "height": 26,
+        "columns": [
+            {
+                "field": "IP",
+                "title": "IP address",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "status",
+                "title": "Status",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "Version",
+                "title": "Version",
+                "width": "8%",
+                "align": "center",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "MAC",
+                "title": "Mac address",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "Subnet",
+                "title": "Subnet",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "Gateway",
+                "title": "Gateway",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "DHCP",
+                "title": "DHCP",
+                "width": "8%",
+                "align": "center",
+                "formatter": "tickCross",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "Node",
+                "title": "Node",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "USB",
+                "title": "USB",
+                "width": "8%",
+                "align": "center",
+                "formatter": "tickCross",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "FTP",
+                "title": "FTP",
+                "width": "8%",
+                "align": "center",
+                "formatter": "tickCross",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "oled",
+                "title": "Oled Level",
+                "width": "8%",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            }
+        ],
+        "outputs": 1,
+        "cts": true,
+        "x": 1790,
+        "y": 200,
+        "wires": [
+            [
+                "ac1cdf555e9f506c"
+            ]
+        ]
+    },
+    {
+        "id": "28cca76155b6d4f0",
+        "type": "ui_table",
+        "z": "ec1c42aabdfe318b",
+        "group": "9b169b5117e74f85",
+        "name": "Node summary",
+        "order": 1,
+        "width": 10,
+        "height": 11,
+        "columns": [
+            {
+                "field": "index",
+                "title": "#",
+                "width": "20%",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "node",
+                "title": "Node",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "members",
+                "title": "Members",
+                "width": "20%",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "announce",
+                "title": "Busy",
+                "width": "20%",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            }
+        ],
+        "outputs": 0,
+        "cts": false,
+        "x": 1800,
+        "y": 420,
+        "wires": []
+    },
+    {
+        "id": "318c45c472cfb858",
+        "type": "ui_table",
+        "z": "ec1c42aabdfe318b",
+        "group": "346264b02d70b76e",
+        "name": "Short Summary",
+        "order": 5,
+        "width": 8,
+        "height": 5,
+        "columns": [
+            {
+                "field": "IP",
+                "title": "IP address",
+                "width": "",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            },
+            {
+                "field": "status",
+                "title": "Status",
+                "width": "40%",
+                "align": "left",
+                "formatter": "plaintext",
+                "formatterParams": {
+                    "target": "_blank"
+                }
+            }
+        ],
+        "outputs": 1,
+        "cts": true,
+        "x": 1780,
+        "y": 140,
+        "wires": [
+            [
+                "a269a2fe514c662d"
+            ]
+        ]
+    },
+    {
+        "id": "73c37fd18771359a",
+        "type": "ui_led",
+        "z": "ec1c42aabdfe318b",
+        "order": 1,
+        "group": "46075fdf3b077ad9",
+        "width": 0,
+        "height": 0,
+        "label": "Broker",
+        "labelPlacement": "left",
+        "labelAlignment": "left",
+        "colorForValue": [
+            {
+                "color": "#ac0202",
+                "value": "false",
+                "valueType": "bool"
+            },
+            {
+                "color": "#f3ef8c",
+                "value": "true",
+                "valueType": "bool"
+            }
+        ],
+        "allowColorForValueInMessage": true,
+        "shape": "circle",
+        "showGlow": true,
+        "name": "Broker Health",
+        "x": 880,
+        "y": 180,
+        "wires": []
+    },
+    {
+        "id": "1e43ab5ac461cb92",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Reboot",
+        "func": "\nmsg.payload={\n    \"act\":\"rbt\",\n}\n  \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 600,
+        "y": 1820,
+        "wires": [
+            [
+                "b0b69a8aa6f7f02c"
+            ]
+        ]
+    },
+    {
+        "id": "905557b82323abdd",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 7,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;REBOOT",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-stop",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 370,
+        "y": 1820,
+        "wires": [
+            [
+                "1e43ab5ac461cb92"
+            ]
+        ]
+    },
+    {
+        "id": "b0b69a8aa6f7f02c",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "From Scout Control",
+        "mode": "link",
+        "links": [
+            "86859537006ba66a"
+        ],
+        "x": 715,
+        "y": 1820,
+        "wires": []
+    },
+    {
+        "id": "3d1693bef05cda6c",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "d": true,
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 10,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;Get Files",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-refresh",
+        "payload": "{\"act\":\"dir\"}",
+        "payloadType": "json",
+        "topic": "scout/$broadcast/$action",
+        "topicType": "str",
+        "x": 420,
+        "y": 1500,
+        "wires": [
+            [
+                "e089931eadfc052d"
+            ]
+        ]
+    },
+    {
+        "id": "6840b7d78b6ba501",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 5",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "false",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 980,
+        "y": 400,
+        "wires": []
+    },
+    {
+        "id": "8e8565cf432fe33b",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 6",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 500,
+        "y": 240,
+        "wires": []
+    },
+    {
+        "id": "c5a73cc0569348aa",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Timestamp",
+        "func": "\n\nconst timestamp = Date.now();\nglobal.set('sentTimestamp', timestamp);               \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 190,
+        "y": 1580,
+        "wires": [
+            [
+                "b8902fed9f2aaedb"
+            ]
+        ]
+    },
+    {
+        "id": "b3e9518df1a9c432",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Identify ack",
+        "func": "\nmsg.payload={\n    \"act\":\"ack\",\n}\n  \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 610,
+        "y": 1880,
+        "wires": [
+            [
+                "502de02e50ae749e"
+            ]
+        ]
+    },
+    {
+        "id": "2dedc0a5904dfc66",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 3,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;ACKNOWLEDGE",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-stop",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 350,
+        "y": 1880,
+        "wires": [
+            [
+                "b3e9518df1a9c432"
+            ]
+        ]
+    },
+    {
+        "id": "502de02e50ae749e",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "From Scout Control",
+        "mode": "link",
+        "links": [
+            "86859537006ba66a"
+        ],
+        "x": 715,
+        "y": 1880,
+        "wires": []
+    },
+    {
+        "id": "e1d9ef7e09e7cf6d",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 8",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 380,
+        "y": 1720,
+        "wires": []
+    },
+    {
+        "id": "e89918987db5227e",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Firmware Update",
+        "func": "\nmsg.payload={\n    \"act\":\"fls\",\n}\n  \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 850,
+        "y": 640,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "99bbbcac818cb357",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "d": true,
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 9,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;SD FIRMWARE UPDATE",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-stop",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 560,
+        "y": 640,
+        "wires": [
+            [
+                "e89918987db5227e"
+            ]
+        ]
+    },
+    {
+        "id": "909869015bbe22a7",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Pull Firmware",
+        "func": "\nmsg.payload={\n    \"act\":\"upd\",\n}\n  \nreturn msg;",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 840,
+        "y": 680,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "4c01b65e25acb368",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "346264b02d70b76e",
+        "order": 8,
+        "width": 8,
+        "height": 1,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;FIRMWARE UPDATE",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-stop",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 500,
+        "y": 680,
+        "wires": [
+            [
+                "909869015bbe22a7"
+            ]
+        ]
+    },
+    {
+        "id": "283d892640d60891",
+        "type": "mqtt in",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "topic": "scout/+/$msg",
+        "qos": "1",
+        "datatype": "auto",
+        "broker": "ce773206c2d9ce0c",
+        "nl": false,
+        "rap": true,
+        "rh": 0,
+        "inputs": 0,
+        "x": 230,
+        "y": 340,
+        "wires": [
+            [
+                "c2dc8aa6d173b3d4"
+            ]
+        ]
+    },
+    {
+        "id": "c2dc8aa6d173b3d4",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 9",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 420,
+        "y": 340,
+        "wires": []
+    },
+    {
+        "id": "b8902fed9f2aaedb",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "link out 1",
+        "mode": "link",
+        "links": [
+            "0695ab84c83dfed0"
+        ],
+        "x": 415,
+        "y": 1560,
+        "wires": []
+    },
+    {
+        "id": "13f217543d2835ea",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "Pull File",
+        "func": "const filename = flow.get(\"filename\") || null;\n\nif (filename){\n    msg.payload = {\n        \"act\": \"fle\",\n        \"file\":filename\n    }\n\n    return msg;\n}\n\nreturn null;\n",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 820,
+        "y": 720,
+        "wires": [
+            [
+                "cc4e763b23e69f20"
+            ]
+        ]
+    },
+    {
+        "id": "c6e46ca0272e54a9",
+        "type": "ui_button",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "group": "b592d03ce747e747",
+        "order": 2,
+        "width": 0,
+        "height": 0,
+        "passthru": false,
+        "label": " &nbsp;&nbsp;UPLOAD FILE",
+        "tooltip": "",
+        "color": "",
+        "bgcolor": "",
+        "className": "",
+        "icon": "fa-file",
+        "payload": "",
+        "payloadType": "date",
+        "topic": "topic",
+        "topicType": "msg",
+        "x": 480,
+        "y": 720,
+        "wires": [
+            [
+                "13f217543d2835ea"
+            ]
+        ]
+    },
+    {
+        "id": "ee26715bdbd66dde",
+        "type": "ui_text_input",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "label": "Filename",
+        "tooltip": "",
+        "group": "b592d03ce747e747",
+        "order": 1,
+        "width": 0,
+        "height": 0,
+        "passthru": true,
+        "mode": "text",
+        "delay": 300,
+        "topic": "topic",
+        "sendOnBlur": true,
+        "className": "",
+        "topicType": "msg",
+        "x": 540,
+        "y": 760,
+        "wires": [
+            [
+                "0b868b43398e0fe9"
+            ]
+        ]
+    },
+    {
+        "id": "0b868b43398e0fe9",
+        "type": "change",
+        "z": "ec1c42aabdfe318b",
+        "name": "",
+        "rules": [
+            {
+                "t": "set",
+                "p": "filename",
+                "pt": "flow",
+                "to": "payload",
+                "tot": "msg"
+            }
+        ],
+        "action": "",
+        "property": "",
+        "from": "",
+        "to": "",
+        "reg": false,
+        "x": 710,
+        "y": 760,
+        "wires": [
+            []
+        ]
+    },
+    {
+        "id": "a1fee2776d4f2e7e",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 10",
+        "active": false,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "payload",
+        "targetType": "msg",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 1760,
+        "y": 80,
+        "wires": []
+    },
+    {
+        "id": "ecdbbb44392dc452",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 11",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 2240,
+        "y": 60,
+        "wires": []
+    },
+    {
+        "id": "a269a2fe514c662d",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "function 12",
+        "func": "flow.set(\"selectedDevice\",msg.payload)\nreturn msg;",
+        "outputs": 1,
+        "timeout": 0,
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 1990,
+        "y": 140,
+        "wires": [
+            [
+                "ecdbbb44392dc452",
+                "fd63c85d508b2b5f",
+                "304139df99d7c4d1"
+            ]
+        ]
+    },
+    {
+        "id": "fd63c85d508b2b5f",
+        "type": "ui_template",
+        "z": "ec1c42aabdfe318b",
+        "group": "346264b02d70b76e",
+        "name": "Selected",
+        "order": 6,
+        "width": 8,
+        "height": 5,
+        "format": "<div class=\"device-card\" ng-if=\"msg.payload\">\n\n    <h3 class=\"device-heading\">Selected Device: {{ msg.payload.IP }}</h3>\n    <div class=\"row\">\n        <div class=\"label\">IP</div>\n        <div class=\"value\">{{ msg.payload.IP }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">status</div>\n        <div class=\"value\">{{ msg.payload.status }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">Version</div>\n        <div class=\"value\">{{ msg.payload.Version }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">MAC</div>\n        <div class=\"value\">{{ msg.payload.MAC }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">Subnet</div>\n        <div class=\"value\">{{ msg.payload.Subnet }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">Gateway</div>\n        <div class=\"value\">{{ msg.payload.Gateway }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">DHCP</div>\n        <div class=\"value\">{{ msg.payload.DHCP ? 'Enabled' : 'Disabled' }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">FTP</div>\n        <div class=\"value\">{{ msg.payload.FTP ? 'Enabled' : 'Disabled' }}</div>\n    </div>\n\n    <div class=\"row\">\n        <div class=\"label\">Node</div>\n        <div class=\"value\">{{ msg.payload.Node }}</div>\n    </div>\n\n</div>\n\n<style>\n    /* Use Dashboard CSS variables for theme inheritance */\n    .device-card {\n        padding: 12px 16px;\n        background-color: var(--nr-dashboard-groupBackgroundColor);\n    }\n\n    /* STYLED HEADING */\n    .device-heading {\n        color: var(--nr-dashboard-widgetTextColor);\n        margin: 0 0 10px 0;\n        /* Add bottom margin for spacing */\n        padding-bottom: 5px;\n        border-bottom: 2px solid var(--nr-dashboard-groupBorderColor);\n        font-weight: 600;\n        font-size: 1.1em;\n    }\n\n    .row {\n        display: flex;\n        padding: 4px 0;\n        color: var(--nr-dashboard-widgetTextColor);\n        border-bottom: 1px solid rgba(var(--nr-dashboard-groupBorderColor), 0.1);\n    }\n\n    /* Remove border from last row */\n    .row:last-child {\n        border-bottom: none;\n    }\n\n    .label {\n        width: 90px;\n        text-align: right;\n        padding-right: 12px;\n        opacity: 0.7;\n        font-weight: 500;\n    }\n\n    .value {\n        flex: 1;\n    }\n</style>",
+        "storeOutMessages": true,
+        "fwdInMessages": true,
+        "resendOnRefresh": true,
+        "templateScope": "local",
+        "className": "",
+        "x": 2260,
+        "y": 100,
+        "wires": [
+            [
+                "710f2acf56419630"
+            ]
+        ]
+    },
+    {
+        "id": "710f2acf56419630",
+        "type": "debug",
+        "z": "ec1c42aabdfe318b",
+        "name": "debug 12",
+        "active": true,
+        "tosidebar": true,
+        "console": false,
+        "tostatus": false,
+        "complete": "true",
+        "targetType": "full",
+        "statusVal": "",
+        "statusType": "auto",
+        "x": 2440,
+        "y": 100,
+        "wires": []
+    },
+    {
+        "id": "304139df99d7c4d1",
+        "type": "function",
+        "z": "ec1c42aabdfe318b",
+        "name": "List of online Scouts, sorted by node",
+        "func": "/* listbox notes...\npayloadarray\nArray of objects containing following properties:\ntitle - title of the item,\ndescription - description of the item. Optional if line type is Single-line or action type is menu,\nmenu - list of menu items (optional),\nicon - URL of icon (optional),\nicon_name - font icon name (optional).\nicon_unicode - alternative to icon name - uses text characters (optional).\nisChecked - boolean, set the item checked or on (optional).\n*/\n\n\nconst status = msg?.payload?.status;\n\nconst ip=msg.payload.IP;\n\n// get existing array of scouts\nlet scouts = global.get(\"scouts\",\"file\")\nif (scouts){\n    // create dashboard list\n    let dashlist=[]\n    for (let i=0;i<scouts.length;i++){\n        /*\n        node.warn({\n            \"i\":i,\n            \"scouts[i]\":scouts[i],\n            \"scouts[i].state.status\":scouts[i].state.status,\n            \"scouts[i].state.status.localeCompare(online)\":scouts[i].state.status.localeCompare(\"online\")\n        })\n        */\n        let checked = false;\n        if (scouts[i].state.ip===ip){\n            scouts[i].isChecked=true;\n            checked=true;\n        }\n        else{\n            scouts[i].isChecked=false;\n        }\n            \n        \n        dashlist.push({\n            \"title\":scouts[i].state.ip,\n            \"description\":scouts[i].state.node,\n            \"icon_name\":\"graphic_eq\",\n            \"isChecked\":checked\n        })\n\n    }\n    global.set(\"scouts\",scouts,\"file\")\n    if (dashlist.length){\n        dashlist.sort(function(a, b) {\n        const nameA = a.description;\n        const nameB = b.description;\n        if (nameA > nameB) {\n            return 1;\n        }\n        if (nameA < nameB) {\n            return -1;\n        }\n        \n        // names must be equal\n        return 0;\n        });    \n\n        msg.payload=dashlist\n        return msg        \n    }\n\n}\n\n     ",
+        "outputs": 1,
+        "timeout": "",
+        "noerr": 0,
+        "initialize": "",
+        "finalize": "",
+        "libs": [],
+        "x": 2350,
+        "y": 140,
+        "wires": [
+            [
+                "bf9218d5afe42ef8"
+            ]
+        ]
+    },
+    {
+        "id": "bf9218d5afe42ef8",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "link out 2",
+        "mode": "link",
+        "links": [
+            "96e0d83a0b8c50f2"
+        ],
+        "x": 2585,
+        "y": 140,
+        "wires": []
+    },
+    {
+        "id": "96e0d83a0b8c50f2",
+        "type": "link in",
+        "z": "ec1c42aabdfe318b",
+        "name": "link in 1",
+        "links": [
+            "bf9218d5afe42ef8"
+        ],
+        "x": 1705,
+        "y": 240,
+        "wires": [
+            [
+                "dd6e07b3d96ff3ea"
+            ]
+        ]
+    },
+    {
+        "id": "fb30057215a0a017",
+        "type": "link in",
+        "z": "ec1c42aabdfe318b",
+        "name": "link in 2",
+        "links": [
+            "9e45806b91a3bf78"
+        ],
+        "x": 1975,
+        "y": 60,
+        "wires": [
+            [
+                "fd63c85d508b2b5f"
+            ]
+        ]
+    },
+    {
+        "id": "9e45806b91a3bf78",
+        "type": "link out",
+        "z": "ec1c42aabdfe318b",
+        "name": "link out 3",
+        "mode": "link",
+        "links": [
+            "fb30057215a0a017"
+        ],
+        "x": 1635,
+        "y": 220,
+        "wires": []
+    }
+]

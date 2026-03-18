@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="theme-color" content="#0e0e0e">
+  <title>SignalFi Control</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><circle cx='50' cy='50' r='50' fill='%230eb8c0'/></svg>">
+  <link rel="stylesheet" href="/css/base.css">
+  <link rel="stylesheet" href="/css/layout.css">
+  <link rel="stylesheet" href="/css/cards.css">
+  <link rel="stylesheet" href="/css/sheets.css">
+  <link rel="stylesheet" href="/css/components.css">
+  <link rel="stylesheet" href="/css/status.css">
+</head>
+<body>
+  <div id="app">
+    <div id="reconnect-banner" hidden>Reconnecting…</div>
+
+    <div id="content-area">
+      <nav id="top-bar">
+        <div id="top-bar-default">
+          <span id="top-bar-title">Devices</span>
+          <div class="top-bar-actions">
+            <button id="btn-select-all" aria-label="Select all devices">☑</button>
+            <button id="btn-search" aria-label="Search">🔍</button>
+            <button id="btn-view-toggle" aria-label="Toggle view">⊞</button>
+            <button id="btn-identify" aria-label="Identify mode">⊕</button>
+            <button id="btn-mqtt-status" aria-label="MQTT status" class="mqtt-indicator">●</button>
+          </div>
+        </div>
+        <div id="top-bar-selection" hidden>
+          <button id="btn-clear-selection" aria-label="Clear selection">←</button>
+          <span id="selection-count">0 Selected</span>
+          <div class="top-bar-actions">
+            <button id="btn-presets" aria-label="Presets">♡</button>
+            <button id="btn-identify-sel" aria-label="Identify mode">⊕</button>
+            <button id="btn-mqtt-status-sel" aria-label="MQTT status" class="mqtt-indicator">●</button>
+          </div>
+        </div>
+        <div id="identify-banner" hidden>
+          <span>Identify Mode — tap a device to identify</span>
+        </div>
+        <div id="search-bar" hidden>
+          <input type="search" id="search-input" placeholder="Search devices…" autocomplete="off">
+          <button id="btn-search-close">✕</button>
+        </div>
+      </nav>
+
+      <main id="main-content">
+        <section id="view-devices" class="view active">
+          <div id="device-list" class="device-list"></div>
+        </section>
+        <section id="view-settings" class="view">
+        </section>
+        <section id="view-info" class="view">
+        </section>
+      </main>
+
+      <div id="action-bar" class="action-bar" hidden>
+        <button id="btn-lighting" class="action-btn">💡 Lighting</button>
+        <button id="btn-sound" class="action-btn">🔊 Sound</button>
+        <button id="btn-announce" class="action-btn action-btn-announce">▶ Announce</button>
+        <button id="btn-stop" class="action-btn action-btn-stop">■ Stop</button>
+      </div>
+    </div>
+
+    <nav id="bottom-tabs">
+      <button class="tab-btn active" data-view="devices">
+        <span class="tab-icon">⊞</span>
+        <span class="tab-label">Devices</span>
+      </button>
+      <button class="tab-btn" data-view="settings">
+        <span class="tab-icon">⚙</span>
+        <span class="tab-label">Settings</span>
+      </button>
+      <button class="tab-btn" data-view="info">
+        <span class="tab-icon">ℹ</span>
+        <span class="tab-label">Info</span>
+      </button>
+    </nav>
+
+    <!-- Sheet overlays -->
+    <div id="sheet-overlay" class="sheet-overlay" hidden>
+      <div id="sheet-lighting" class="sheet" hidden></div>
+      <div id="sheet-sound" class="sheet" hidden></div>
+      <div id="sheet-presets" class="sheet" hidden></div>
+      <div id="sheet-device" class="sheet" hidden></div>
+    </div>
+
+    <!-- Toast container -->
+    <div id="toast-container"></div>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>
