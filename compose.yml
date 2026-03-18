@@ -8,9 +8,7 @@ services:
       - ./data:/app/data
       - ./audio:/app/audio
       - ./firmware:/app/firmware
-    env_file:
-      - path: .env
-        required: false
+    env_file: .env
     environment:
       - MQTT_HOST=${MQTT_HOST:-apis.symphonyinteractive.ca}
       - MQTT_PORT=${MQTT_PORT:-1883}
