@@ -20,30 +20,49 @@ import { fetchState, fetchAudio, setAuthToken as apiSetAuthToken, loadAuthToken 
  */
 async function setupAuth() {
   try {
-    // Try to fetch state without token; if 401, server requires auth
+    // If a token is already stored, validate it first.
+    const existingToken = loadAuthToken();
+    if (existingToken && existingToken.trim()) {
+      wsSetAuthToken(existingToken.trim());
+      try {
+        await fetchState();
+        return true;
+      } catch (err) {
+        if (!String(err.message || '').includes('401')) throw err;
+      }
+    }
+
+    // Try unauthenticated once; if it succeeds, auth is not required.
     const res = await fetch('/api/state');
-    if (res.status === 401) {
-      const token = window.prompt('This server requires authentication.\nPlease enter the API token:');
-      if (token) {
-        // Set token in both API and WebSocket modules
-        apiSetAuthToken(token);
-        wsSetAuthToken(token);
-        // Retry the fetch with the new token
-        const retryRes = await fetch('/api/state');
-        if (retryRes.status === 401) {
+    if (res.status !== 401) {
+      return true;
+    }
+
+    const token = window.prompt('This server requires authentication.\nPlease enter the API token:');
+    if (token && token.trim()) {
+      const cleanToken = token.trim();
+
+      // Set token in both API and WebSocket modules.
+      apiSetAuthToken(cleanToken);
+      wsSetAuthToken(cleanToken);
+
+      // Validate token via authenticated API helper.
+      try {
+        await fetchState();
+        return true;
+      } catch (err) {
+        if (String(err.message || '').includes('401')) {
           window.alert('Invalid token. Please refresh and try again.');
-          // Clear the invalid token
           apiSetAuthToken(null);
           wsSetAuthToken(null);
           return false;
         }
-        return true;
-      } else {
-        window.alert('Authentication required to access this server.');
-        return false;
+        throw err;
       }
     }
-    return true;
+
+    window.alert('Authentication required to access this server.');
+    return false;
   } catch (err) {
     console.error('Error during auth setup:', err);
     return true; // Continue anyway; might be a transient network error
