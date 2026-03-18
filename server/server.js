@@ -58,6 +58,32 @@ function loadConfig() {
 }
 
 // ---------------------------------------------------------------------------
+// Authentication middleware — Bearer token validation
+// ---------------------------------------------------------------------------
+function createAuthMiddleware(config) {
+  return (req, res, next) => {
+    // If AUTH_TOKEN is not configured, skip auth (disabled)
+    if (!config.auth.token || config.auth.token.trim() === '') {
+      return next();
+    }
+
+    // Extract Authorization header
+    const authHeader = req.headers.authorization || '';
+    const match = authHeader.match(/^Bearer\s+(.+)$/);
+    const token = match ? match[1] : '';
+
+    if (token === config.auth.token) {
+      return next();
+    }
+
+    // Auth failed
+    const ts = new Date().toISOString();
+    console.warn(`[${ts}] [AUTH] Unauthorized access attempt to ${req.method} ${req.path}`);
+    return res.status(401).json({ error: 'Unauthorized' });
+  };
+}
+
+// ---------------------------------------------------------------------------
 // Colour normaliser — strip leading '#' before sending to devices
 // ---------------------------------------------------------------------------
 function normaliseColour(val, fallback = 'ffffff') {
@@ -295,8 +321,39 @@ async function main() {
   // ---- HTTP server ----
   const httpServer = http.createServer(app);
 
-  // ---- WebSocket server ----
-  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  // ---- WebSocket server with auth verification ----
+  function verifyClient(info, callback) {
+    // If AUTH_TOKEN is not configured, allow all connections
+    if (!config.auth.token || config.auth.token.trim() === '') {
+      return callback(true);
+    }
+
+    // Extract Bearer token from either header or query parameter
+    let token = '';
+
+    // Try Authorization header first
+    const authHeader = info.req.headers.authorization || '';
+    const match = authHeader.match(/^Bearer\s+(.+)$/);
+    if (match) {
+      token = match[1];
+    }
+
+    // Fall back to query parameter (?token=...)
+    if (!token && info.req.url) {
+      const url = new URL(info.req.url, `http://${info.req.headers.host || 'localhost'}`);
+      token = url.searchParams.get('token') || '';
+    }
+
+    if (token === config.auth.token) {
+      return callback(true);
+    }
+
+    const ts = new Date().toISOString();
+    console.warn(`[${ts}] [AUTH] Unauthorized WebSocket upgrade attempt`);
+    return callback(false, 401, 'Unauthorized');
+  }
+
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws', verifyClient });
 
   let mqttOnline = false;
 
@@ -329,8 +386,8 @@ async function main() {
     }, 200);
   }
 
-  // ---- Mount REST routes ----
-  app.use('/api', createRouter(config, state, persistence, broadcast));
+  // ---- Mount REST routes with auth middleware ----
+  app.use('/api', createAuthMiddleware(config), createRouter(config, state, persistence, broadcast));
 
   // ---- WS connection handler ----
   wss.on('connection', (ws, req) => {

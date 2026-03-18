@@ -2,7 +2,29 @@
  * REST API calls for SignalFi Control
  */
 
+let authToken = null;
+
+export function setAuthToken(token) {
+  authToken = token;
+  if (token) {
+    localStorage.setItem('signalfi-auth-token', token);
+  } else {
+    localStorage.removeItem('signalfi-auth-token');
+  }
+}
+
+export function loadAuthToken() {
+  authToken = localStorage.getItem('signalfi-auth-token');
+  return authToken;
+}
+
 async function apiFetch(path, options = {}) {
+  // Add Authorization header if token is set
+  if (authToken) {
+    options.headers = options.headers || {};
+    options.headers.Authorization = `Bearer ${authToken}`;
+  }
+
   const resp = await fetch(path, options);
   if (!resp.ok) {
     const text = await resp.text().catch(() => resp.statusText);
@@ -48,3 +70,6 @@ export function flushOffline() {
     method: 'POST',
   });
 }
+
+// Initialize auth token from localStorage on module load
+loadAuthToken();

@@ -8,6 +8,26 @@ let retryDelay = 1000;
 let commandQueue = [];
 let isConnected = false;
 let messageHandler = null;
+let authToken = null;
+
+// Auth token management
+function loadAuthToken() {
+  authToken = localStorage.getItem('signalfi-auth-token');
+  return authToken;
+}
+
+export function setAuthToken(token) {
+  authToken = token;
+  if (token) {
+    localStorage.setItem('signalfi-auth-token', token);
+  } else {
+    localStorage.removeItem('signalfi-auth-token');
+  }
+}
+
+export function clearAuthToken() {
+  setAuthToken(null);
+}
 
 export function registerMessageHandler(handler) {
   messageHandler = handler;
@@ -61,7 +81,11 @@ function dispatchMessage(msg) {
 
 function connect() {
   const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-  ws = new WebSocket(`${protocol}//${location.host}/ws`);
+  let wsUrl = `${protocol}//${location.host}/ws`;
+  if (authToken) {
+    wsUrl += `?token=${encodeURIComponent(authToken)}`;
+  }
+  ws = new WebSocket(wsUrl);
 
   ws.onopen = () => {
     isConnected = true;
@@ -95,5 +119,6 @@ function connect() {
 }
 
 export function initWS() {
+  loadAuthToken();
   connect();
 }
