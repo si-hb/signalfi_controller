@@ -67,6 +67,12 @@ function createAuthMiddleware(config) {
       return next();
     }
 
+    // Allow health checks from localhost (127.0.0.1 or ::1) without auth
+    const ip = req.ip || req.connection.remoteAddress;
+    if ((ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') && req.path === '/state') {
+      return next();
+    }
+
     // Extract Authorization header
     const authHeader = req.headers.authorization || '';
     const match = authHeader.match(/^Bearer\s+(.+)$/);
