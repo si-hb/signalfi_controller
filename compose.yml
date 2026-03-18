@@ -18,9 +18,16 @@ services:
       - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       - MQTT_TLS=${MQTT_TLS:-false}
       - AUTH_TOKEN=${AUTH_TOKEN:-}
+    networks:
+      - default
+      - root_default
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/state"]
       interval: 30s
       timeout: 5s
       retries: 3
       start_period: 10s
+
+networks:
+  root_default:
+    external: true
