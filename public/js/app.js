@@ -104,7 +104,7 @@ export function showToast(message, type = 'info') {
     toast.style.transition = 'opacity 0.3s';
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 350);
-  }, 2500);
+  }, 1250);
 }
 
 // ─── Sheet Management ─────────────────────────────────────────────────────────

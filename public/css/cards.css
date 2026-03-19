@@ -142,6 +142,7 @@
   grid-template-columns: repeat(2, 1fr);
   gap: 10px;
   padding: 10px 12px 12px;
+  align-items: start;
 }
 
 @media (min-width: 480px) {
@@ -172,7 +173,6 @@
   user-select: none;
   position: relative;
   transition: border-color 0.15s, background 0.15s;
-  min-height: 100px;
 }
 
 .device-card.selected {
@@ -194,21 +194,23 @@
   background: var(--bg-raised);
 }
 
+.card-icon-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+/* Grid view: status lives in icon-row; hide the card-body copy */
+.card-body .card-status {
+  display: none;
+}
+
 .card-icon {
   font-size: 28px;
-  margin-bottom: 6px;
   display: block;
   line-height: 1;
-}
-
-.card-icon.status-online {
-  filter: brightness(1) saturate(1);
-}
-
-.card-icon img {
-  width: 1em;
-  height: 1em;
-  display: block;
+  flex-shrink: 0;
 }
 
 .card-icon svg {
@@ -232,12 +234,13 @@
   opacity: 0.3;
 }
 
-.card-icon.status-busy {
-  color: var(--status-busy);
+.card-icon.status-warn {
+  opacity: 0.6;
 }
 
-.card-icon.status-warn {
-  color: var(--status-warn);
+.device-card.is-offline {
+  cursor: default;
+  opacity: 0.7;
 }
 
 .card-name {
@@ -255,7 +258,6 @@
   font-size: 10px;
   color: var(--text-muted);
   display: block;
-  margin-bottom: 6px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -295,10 +297,23 @@
   min-height: 52px;
 }
 
-.device-list.list-mode .card-icon {
-  font-size: 22px;
+.device-list.list-mode .card-icon-row {
   margin-bottom: 0;
   flex-shrink: 0;
+  gap: 0;
+}
+
+/* List view: status lives in card-body; hide the icon-row copy */
+.device-list.list-mode .card-icon-row .card-status {
+  display: none;
+}
+
+.device-list.list-mode .card-body .card-status {
+  display: flex;
+}
+
+.device-list.list-mode .card-icon {
+  font-size: 22px;
 }
 
 .device-list.list-mode .card-body {
@@ -309,14 +324,15 @@
   gap: 2px;
 }
 
+.device-list.list-mode .card-mac {
+  margin-bottom: 6px;
+}
+
 .device-list.list-mode .card-name {
   font-size: 14px;
   margin-bottom: 0;
 }
 
-.device-list.list-mode .card-status {
-  align-items: center;
-}
 
 .device-list.list-mode .device-card.selected::after {
   top: 50%;

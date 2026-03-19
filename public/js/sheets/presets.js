@@ -276,7 +276,6 @@ function wireEvents() {
         loops: preset.rpt,
         ...dest,
       });
-      showToast(`Announcing: ${name}`);
     } else {
       showToast('Preset loaded', 'success');
       closeSheet();

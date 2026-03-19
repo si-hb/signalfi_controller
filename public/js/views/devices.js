@@ -100,13 +100,6 @@ function getStatusClass(status) {
   return 'online';
 }
 
-function getStatusIcon(statusClass) {
-  switch (statusClass) {
-    case 'offline': return '⬡';
-    case 'warn': return '⟳';
-    default: return '⬢';
-  }
-}
 
 function makeSignalFiSVG(announcing = false) {
   const ledBase = announcing ? '' : ' fill-opacity="0.45"';
@@ -160,18 +153,16 @@ function makeDeviceCard(scout) {
   card.className = `device-card${statusClass === 'announce' ? ' announcing' : ''}`;
   card.dataset.mac = scout.mac;
 
-  if (window.selectionState.selectedMacs.has(scout.mac) || window.selectionState.broadcastMode) {
+  const isOffline = statusClass === 'offline';
+  if (!isOffline && (window.selectionState.selectedMacs.has(scout.mac) || window.selectionState.broadcastMode)) {
     card.classList.add('selected');
   }
+  if (isOffline) card.classList.add('is-offline');
 
-  // Icon
+  // Icon — always the SignalFi SVG; CSS handles opacity for offline/warn
   const icon = document.createElement('span');
   icon.className = `card-icon status-${statusClass}`;
-  if (statusClass === 'online' || statusClass === 'announce') {
-    icon.innerHTML = makeSignalFiSVG(statusClass === 'announce');
-  } else {
-    icon.textContent = getStatusIcon(statusClass);
-  }
+  icon.innerHTML = makeSignalFiSVG(statusClass === 'announce');
 
   // Card body wrapper (for list view)
   const cardBody = document.createElement('div');
@@ -185,20 +176,29 @@ function makeDeviceCard(scout) {
   mac.className = 'card-mac';
   mac.textContent = scout.mac || '';
 
-  const statusRow = document.createElement('div');
-  statusRow.className = 'card-status';
-  const dot = makeStatusDot(statusClass);
-  const statusText = document.createElement('span');
-  statusText.className = 'card-status-text';
-  statusText.textContent = scout.status || 'offline';
-  statusRow.appendChild(dot);
-  statusRow.appendChild(statusText);
+  function makeStatusRow() {
+    const row = document.createElement('div');
+    row.className = 'card-status';
+    row.appendChild(makeStatusDot(statusClass));
+    const text = document.createElement('span');
+    text.className = 'card-status-text';
+    text.textContent = scout.status || 'offline';
+    row.appendChild(text);
+    return row;
+  }
 
+  // Icon row (grid view): icon + status side-by-side
+  const iconRow = document.createElement('div');
+  iconRow.className = 'card-icon-row';
+  iconRow.appendChild(icon);
+  iconRow.appendChild(makeStatusRow());
+
+  // card-body status row (list view only — hidden in grid via CSS)
   cardBody.appendChild(name);
   cardBody.appendChild(mac);
-  cardBody.appendChild(statusRow);
+  cardBody.appendChild(makeStatusRow());
 
-  card.appendChild(icon);
+  card.appendChild(iconRow);
   card.appendChild(cardBody);
 
   // Click: select or identify; long-press: open device detail
@@ -225,6 +225,7 @@ function makeDeviceCard(scout) {
 
   card.addEventListener('click', () => {
     if (wasLongPress) { wasLongPress = false; return; }
+    if (card.classList.contains('is-offline')) return;
 
     if (window.selectionState.identifyMode) {
       sendCommand({ cmd: 'identify', mac: scout.mac });
@@ -522,27 +523,28 @@ export function updateScoutCard(mac, scout, allowFallback = true) {
 
   const statusClass = getStatusClass(scout.status);
 
-  // Update icon
+  // Update icon — always SignalFi SVG
   const icon = card.querySelector('.card-icon');
   if (icon) {
     icon.className = `card-icon status-${statusClass}`;
-    if (statusClass === 'online' || statusClass === 'announce') {
-      icon.innerHTML = makeSignalFiSVG(statusClass === 'announce');
-    } else {
-      icon.textContent = getStatusIcon(statusClass);
-    }
+    icon.innerHTML = makeSignalFiSVG(statusClass === 'announce');
   }
 
-  // Update status dot
-  const dot = card.querySelector('.status-dot');
-  if (dot) dot.className = `status-dot ${statusClass}`;
-
-  // Update status text
-  const statusText = card.querySelector('.card-status-text');
-  if (statusText) statusText.textContent = scout.status || 'offline';
+  // Update all status dots and texts (grid and list instances)
+  card.querySelectorAll('.status-dot').forEach(d => { d.className = `status-dot ${statusClass}`; });
+  card.querySelectorAll('.card-status-text').forEach(t => { t.textContent = scout.status || 'offline'; });
 
   // Update card-level classes
+  const isOffline = statusClass === 'offline';
   card.classList.toggle('announcing', statusClass === 'announce');
+  card.classList.toggle('is-offline', isOffline);
+
+  // Deselect if going offline
+  if (isOffline && window.selectionState.selectedMacs.has(mac)) {
+    window.selectionState.selectedMacs.delete(mac);
+    card.classList.remove('selected');
+    updateSelectionUI();
+  }
 
   // Update name if changed
   const nameEl = card.querySelector('.card-name');

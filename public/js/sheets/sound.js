@@ -277,4 +277,8 @@ export function openSoundSheet() {
     if (settings.loops !== undefined) state.loops = settings.loops;
   }
   renderSoundSheet();
+
+  // Scroll the selected audio item into view
+  const selected = document.querySelector('#sound-audio-list .audio-item.selected');
+  if (selected) selected.scrollIntoView({ block: 'nearest' });
 }
