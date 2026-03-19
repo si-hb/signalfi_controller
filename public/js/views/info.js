@@ -87,7 +87,7 @@ function buildInfoView() {
   flushBtn.className = 'btn-secondary btn-danger';
   flushBtn.id = 'flush-offline-btn';
   flushBtn.textContent = 'Flush Offline Devices';
-  flushBtn.style.margin = '12px 12px 0';
+  flushBtn.style.margin = '12px 0px 0';
   tableWrap.appendChild(flushBtn);
 
   const scrollWrap = document.createElement('div');
