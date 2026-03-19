@@ -35,6 +35,7 @@ const calState = {
 
 // Store volume state
 let storeTarget = 'all'; // 'all' | 'selected'
+let nodeTarget = 'all'; // 'all' | 'selected'
 
 // Each path segment must start with [a-z0-9]; underscores allowed anywhere except segment-start
 const NODE_REGEX = /^[a-z0-9][a-z0-9\/._\-]*(\/[a-z0-9][a-z0-9\/._\-]*)*$/;
@@ -67,11 +68,14 @@ function buildSettingsView() {
   calCard.className = 'settings-card';
 
   // Volume slider
-  const volRow = makeSliderRow('Cal Volume', 'cal-vol', 0, 100, calState.volume, '%');
+  const volRow = makeSliderRow('Volume', 'cal-vol', 0, 100, calState.volume, '%');
   calCard.appendChild(volRow);
 
   // Note slider (0–76 semitones)
   const noteRow = makeSliderRow('Note', 'cal-note', 0, 76, calState.semitone, '');
+  // Remove numeric slider value for NOTE; keep the musical note label instead.
+  const noteNumericDisplay = noteRow.querySelector('#cal-note-val');
+  if (noteNumericDisplay) noteNumericDisplay.remove();
   // Add note name display
   const noteDisplay = document.createElement('span');
   noteDisplay.id = 'cal-note-name';
@@ -134,7 +138,8 @@ function buildSettingsView() {
   storeHeading.style.justifyContent = 'space-between';
   storeHeading.style.alignItems = 'center';
   const storeHeadingTitle = document.createElement('span');
-  storeHeadingTitle.textContent = 'Set Default Volume';
+  storeHeadingTitle.id = 'store-volume-heading';
+  storeHeadingTitle.textContent = `SET DEFAULT VOLUME = ${calState.volume}%`;
   const storeDeviceCount = document.createElement('span');
   storeDeviceCount.id = 'store-device-count';
   storeDeviceCount.style.fontSize = '12px';
@@ -159,17 +164,6 @@ function buildSettingsView() {
     radioGroup.appendChild(option);
   });
 
-  const storeVolRow = document.createElement('div');
-  storeVolRow.style.cssText = 'display:flex;justify-content:flex-end;padding:10px 0 2px;font-size:13px;color:var(--text-muted);';
-  const storeVolLabel = document.createElement('span');
-  storeVolLabel.textContent = 'Volume: ';
-  const storeVolDisplay = document.createElement('span');
-  storeVolDisplay.id = 'store-vol-display';
-  storeVolDisplay.style.fontWeight = '600';
-  storeVolDisplay.style.color = 'var(--text-primary)';
-  storeVolRow.appendChild(storeVolLabel);
-  storeVolRow.appendChild(storeVolDisplay);
-
   const storeBtn = document.createElement('button');
   storeBtn.className = 'btn-primary cmd-btn';
   storeBtn.id = 'store-volume-btn';
@@ -177,9 +171,65 @@ function buildSettingsView() {
   storeBtn.textContent = 'Set Default Volume';
 
   storeCard.appendChild(radioGroup);
-  storeCard.appendChild(storeVolRow);
   storeCard.appendChild(storeBtn);
   view.appendChild(storeCard);
+
+  // ── Set Node Target ───────────────────────────────────────────────────────
+  const nodeHeading = document.createElement('div');
+  nodeHeading.className = 'section-heading';
+  nodeHeading.style.display = 'flex';
+  nodeHeading.style.justifyContent = 'space-between';
+  nodeHeading.style.alignItems = 'center';
+  const nodeHeadingTitle = document.createElement('span');
+  nodeHeadingTitle.textContent = 'Set Node Target';
+  const nodeDeviceCount = document.createElement('span');
+  nodeDeviceCount.id = 'node-device-count';
+  nodeDeviceCount.style.fontSize = '12px';
+  nodeDeviceCount.style.fontWeight = 'normal';
+  nodeDeviceCount.style.color = 'var(--text-muted)';
+  nodeHeading.appendChild(nodeHeadingTitle);
+  nodeHeading.appendChild(nodeDeviceCount);
+  view.appendChild(nodeHeading);
+
+  const nodeCard = document.createElement('div');
+  nodeCard.className = 'settings-card';
+
+  const nodeTargetGroup = document.createElement('div');
+  nodeTargetGroup.className = 'radio-group';
+  nodeTargetGroup.id = 'node-target-group';
+
+  ['All Devices', 'Selected Devices'].forEach((label, i) => {
+    const option = document.createElement('div');
+    option.className = 'radio-option' + (i === 0 ? ' selected' : '');
+    option.dataset.value = i === 0 ? 'all' : 'selected';
+    option.textContent = label;
+    nodeTargetGroup.appendChild(option);
+  });
+
+  const nodeDesc = document.createElement('p');
+  nodeDesc.style.fontSize = '13px';
+  nodeDesc.style.color = 'var(--text-muted)';
+  nodeDesc.style.marginBottom = '12px';
+  nodeDesc.textContent = 'Assign a node path to the target devices. Format: building/floor/room';
+
+  const nodeRow = document.createElement('div');
+  nodeRow.className = 'input-row';
+  const nodeInput = document.createElement('input');
+  nodeInput.type = 'text';
+  nodeInput.id = 'settings-node-input';
+  nodeInput.placeholder = 'building/floor/room';
+  nodeInput.setAttribute('autocapitalize', 'none');
+  nodeInput.setAttribute('autocorrect', 'off');
+  const nodeBtn = document.createElement('button');
+  nodeBtn.textContent = 'Set';
+  nodeBtn.id = 'settings-node-btn';
+  nodeRow.appendChild(nodeInput);
+  nodeRow.appendChild(nodeBtn);
+
+  nodeCard.appendChild(nodeTargetGroup);
+  nodeCard.appendChild(nodeDesc);
+  nodeCard.appendChild(nodeRow);
+  view.appendChild(nodeCard);
 
   // ── File Management ───────────────────────────────────────────────────────
   const fileHeading = document.createElement('div');
@@ -209,39 +259,6 @@ function buildSettingsView() {
   fileCard.appendChild(fileLabel);
   fileCard.appendChild(fileRow);
   view.appendChild(fileCard);
-
-  // ── Announce Node Target ─────────────────────────────────────────────────
-  const nodeHeading = document.createElement('div');
-  nodeHeading.className = 'section-heading';
-  nodeHeading.textContent = 'Set Node Target';
-  view.appendChild(nodeHeading);
-
-  const nodeCard = document.createElement('div');
-  nodeCard.className = 'settings-card';
-
-  const nodeDesc = document.createElement('p');
-  nodeDesc.style.fontSize = '13px';
-  nodeDesc.style.color = 'var(--text-muted)';
-  nodeDesc.style.marginBottom = '12px';
-  nodeDesc.textContent = 'Assign a node path to the selected devices. Format: building/floor/room';
-
-  const nodeRow = document.createElement('div');
-  nodeRow.className = 'input-row';
-  const nodeInput = document.createElement('input');
-  nodeInput.type = 'text';
-  nodeInput.id = 'settings-node-input';
-  nodeInput.placeholder = 'building/floor/room';
-  nodeInput.setAttribute('autocapitalize', 'none');
-  nodeInput.setAttribute('autocorrect', 'off');
-  const nodeBtn = document.createElement('button');
-  nodeBtn.textContent = 'Set';
-  nodeBtn.id = 'settings-node-btn';
-  nodeRow.appendChild(nodeInput);
-  nodeRow.appendChild(nodeBtn);
-
-  nodeCard.appendChild(nodeDesc);
-  nodeCard.appendChild(nodeRow);
-  view.appendChild(nodeCard);
 
   // Add bottom padding
   const pad = document.createElement('div');
@@ -349,8 +366,8 @@ function wireSettingsEvents() {
     calState.volume = parseInt(calVolSlider.value);
     document.getElementById('cal-vol-val').textContent = calState.volume + '%';
     if (window.appState) window.appState.defaultVolume = calState.volume / 100;
-    const volEl = document.getElementById('store-vol-display');
-    if (volEl) volEl.textContent = calState.volume + '%';
+    const headingEl = document.getElementById('store-volume-heading');
+    if (headingEl) headingEl.textContent = `SET DEFAULT VOLUME = ${calState.volume}%`;
     sendVolThrottled();
   });
 
@@ -359,7 +376,6 @@ function wireSettingsEvents() {
   calNoteSlider.addEventListener('input', () => {
     calState.semitone = parseInt(calNoteSlider.value);
     calState.freq = semitoneToHz(calState.semitone);
-    document.getElementById('cal-note-val').textContent = calState.semitone;
     document.getElementById('cal-note-name').textContent = semitoneToName(calState.semitone);
     const freqSlider = document.getElementById('cal-freq');
     const freqInput = document.getElementById('cal-freq-input');
@@ -396,7 +412,6 @@ function wireSettingsEvents() {
     if (freqSlider) freqSlider.value = calState.freq;
     if (noteSlider) noteSlider.value = calState.semitone;
     document.getElementById('cal-freq-val').textContent = calState.freq + 'Hz';
-    document.getElementById('cal-note-val').textContent = calState.semitone;
     document.getElementById('cal-note-name').textContent = semitoneToName(calState.semitone);
     sendFreqThrottled();
   });
@@ -429,6 +444,17 @@ function wireSettingsEvents() {
     document.querySelectorAll('#store-target-group .radio-option').forEach(o => {
       o.classList.toggle('selected', o.dataset.value === storeTarget);
     });
+  });
+
+  // Node target radio
+  document.getElementById('node-target-group').addEventListener('click', (e) => {
+    const option = e.target.closest('.radio-option');
+    if (!option) return;
+    nodeTarget = option.dataset.value;
+    document.querySelectorAll('#node-target-group .radio-option').forEach(o => {
+      o.classList.toggle('selected', o.dataset.value === nodeTarget);
+    });
+    updateStoreSection();
   });
 
   // Store volume button
@@ -467,15 +493,27 @@ function wireSettingsEvents() {
       showToast('Invalid node path (use lowercase letters, numbers, / and -)', 'error');
       return;
     }
-    const dest = getDestination();
-    if (dest.type !== 'selected' || !dest.target || dest.target.length === 0) {
-      showToast('Select devices first', 'warn');
-      return;
+    let targetMacs = [];
+    if (nodeTarget === 'all') {
+      const scouts = (window.appState && window.appState.scouts) || [];
+      targetMacs = scouts.map(s => s.mac).filter(Boolean);
+      if (targetMacs.length === 0) {
+        showToast('No devices available', 'warn');
+        return;
+      }
+    } else {
+      const dest = getDestination();
+      if (dest.type !== 'selected' || !dest.target || dest.target.length === 0) {
+        showToast('Select devices first', 'warn');
+        return;
+      }
+      targetMacs = dest.target;
     }
-    dest.target.forEach(mac => {
+
+    targetMacs.forEach(mac => {
       sendCommand({ cmd: 'setNode', mac, node: val });
     });
-    showToast(`Node set to "${val}" for ${dest.target.length} device(s)`);
+    showToast(`Node set to "${val}" for ${targetMacs.length} device(s)`);
   });
 
   // Preset delete delegation
@@ -497,10 +535,10 @@ function wireSettingsEvents() {
 }
 
 export function updateStoreSection() {
-  const volEl = document.getElementById('store-vol-display');
-  if (volEl) {
+  const headingEl = document.getElementById('store-volume-heading');
+  if (headingEl) {
     const vol = (window.appState && window.appState.defaultVolume) ?? 0.8;
-    volEl.textContent = Math.round(vol * 100) + '%';
+    headingEl.textContent = `SET DEFAULT VOLUME = ${Math.round(vol * 100)}%`;
   }
   const countEl = document.getElementById('store-device-count');
   if (countEl) {
@@ -511,6 +549,18 @@ export function updateStoreSection() {
     } else {
       const n = sel.selectedMacs.size;
       countEl.textContent = n > 0 ? `${n} selected` : '';
+    }
+  }
+
+  const nodeCountEl = document.getElementById('node-device-count');
+  if (nodeCountEl) {
+    const sel = window.selectionState;
+    if (!sel) return;
+    if (sel.broadcastMode) {
+      nodeCountEl.textContent = 'All Devices';
+    } else {
+      const n = sel.selectedMacs.size;
+      nodeCountEl.textContent = n > 0 ? `${n} selected` : '';
     }
   }
 }
