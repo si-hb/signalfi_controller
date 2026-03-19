@@ -1,3 +1,14 @@
+/** Apply a theme ('dark' | 'light') and persist the choice. */
+export function applyTheme(theme) {
+  document.documentElement.dataset.theme = theme;
+  localStorage.setItem('signalfi_theme', theme);
+}
+
+/** Read the persisted theme, defaulting to 'dark'. */
+export function getTheme() {
+  return localStorage.getItem('signalfi_theme') || 'dark';
+}
+
 /**
  * Throttle — fires immediately on the leading edge, then at most once per `ms`.
  * A trailing call is always scheduled so the final value is never dropped.

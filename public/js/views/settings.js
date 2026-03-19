@@ -5,7 +5,7 @@
 import { sendCommand } from '../ws.js';
 import { getDestination, showToast } from '../app.js';
 import { deletePreset } from '../api.js';
-import { sliderToGain, gainToSlider, roundGain, throttle } from '../utils.js';
+import { sliderToGain, gainToSlider, roundGain, throttle, applyTheme, getTheme } from '../utils.js';
 import { clearPresetHighlight } from '../sheets/presets.js';
 
 const NOTE_NAMES = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
@@ -40,6 +40,40 @@ const NODE_REGEX = /^[a-z0-9][a-z0-9\/._\-]*(\/[a-z0-9][a-z0-9\/._\-]*)*$/;
 function buildSettingsView() {
   const view = document.getElementById('view-settings');
   view.innerHTML = '';
+
+  // ── Appearance ───────────────────────────────────────────────────────────
+  const appearanceHeading = document.createElement('div');
+  appearanceHeading.className = 'section-heading';
+  appearanceHeading.textContent = 'Appearance';
+  view.appendChild(appearanceHeading);
+
+  const appearanceCard = document.createElement('div');
+  appearanceCard.className = 'settings-card';
+
+  const themeRow = document.createElement('div');
+  themeRow.className = 'toggle-row';
+  const themeLabel = document.createElement('span');
+  themeLabel.className = 'toggle-label';
+  themeLabel.textContent = 'Theme';
+
+  const themeGroup = document.createElement('div');
+  themeGroup.className = 'radio-group';
+  themeGroup.id = 'theme-group';
+  themeGroup.style.marginBottom = '0';
+
+  const currentTheme = getTheme();
+  [['dark', 'Dark'], ['light', 'Light']].forEach(([value, label]) => {
+    const option = document.createElement('div');
+    option.className = 'radio-option' + (currentTheme === value ? ' selected' : '');
+    option.dataset.value = value;
+    option.textContent = label;
+    themeGroup.appendChild(option);
+  });
+
+  themeRow.appendChild(themeLabel);
+  themeRow.appendChild(themeGroup);
+  appearanceCard.appendChild(themeRow);
+  view.appendChild(appearanceCard);
 
   // ── Presets ──────────────────────────────────────────────────────────────
   const presetsHeading = document.createElement('div');
@@ -349,6 +383,17 @@ function renderPresetList() {
 }
 
 function wireSettingsEvents() {
+  // Theme picker
+  document.getElementById('theme-group').addEventListener('click', (e) => {
+    const option = e.target.closest('.radio-option');
+    if (!option) return;
+    const theme = option.dataset.value;
+    applyTheme(theme);
+    document.querySelectorAll('#theme-group .radio-option').forEach(o => {
+      o.classList.toggle('selected', o.dataset.value === theme);
+    });
+  });
+
   const sendVolThrottled = throttle(() => {
     sendCommand({ cmd: 'setVolume', volume: roundGain(sliderToGain(calState.volume)), ...getDestination() });
   }, 100);
@@ -565,6 +610,10 @@ export function updateStoreSection() {
 export function renderSettings() {
   renderPresetList();
   updateStoreSection();
+}
+
+export function initTheme() {
+  applyTheme(getTheme());
 }
 
 export function initSettingsView() {

@@ -14,7 +14,31 @@
   --status-offline: #444444;
   --status-busy: #0eb8c0;
   --status-warn: #e87c2a;
+  --invalid-bg: #7a1a1a;
+  --invalid-color: #f5c518;
+  --invalid-border: #c0392b;
   --font-mono: "SF Mono", "Consolas", "Fira Mono", monospace;
+}
+
+[data-theme="light"] {
+  --bg-base: #f0f0f0;
+  --bg-panel: #ffffff;
+  --bg-raised: #e4e4e4;
+  --bg-selected: #c8eff1;
+  --border: #cccccc;
+  --accent: #097479;
+  --accent-bright: #0eb8c0;
+  --text-primary: #111111;
+  --text-muted: #666666;
+  --warn: #e87c2a;
+  --danger: #c0392b;
+  --status-online: #27ae60;
+  --status-offline: #aaaaaa;
+  --status-busy: #0eb8c0;
+  --status-warn: #e87c2a;
+  --invalid-bg: #fde8e8;
+  --invalid-color: #c0392b;
+  --invalid-border: #e74c3c;
 }
 
 *, *::before, *::after {
@@ -59,13 +83,13 @@ input:focus, select:focus {
 }
 
 input.input-invalid {
-  background: #7a1a1a;
-  color: #f5c518;
-  border-color: #c0392b;
+  background: var(--invalid-bg);
+  color: var(--invalid-color);
+  border-color: var(--invalid-border);
 }
 
 input.input-invalid:focus {
-  border-color: #e74c3c;
+  border-color: var(--invalid-border);
 }
 
 label {

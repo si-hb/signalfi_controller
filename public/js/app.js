@@ -4,7 +4,7 @@
 
 import { initWS, sendCommand, registerMessageHandler, setAuthToken as wsSetAuthToken } from './ws.js';
 import { initDevicesView, renderDevices, updateScoutCard, setSearchTerm, toggleViewMode } from './views/devices.js';
-import { initSettingsView, renderSettings, updateStoreSection } from './views/settings.js';
+import { initSettingsView, renderSettings, updateStoreSection, initTheme } from './views/settings.js';
 import { initInfoView, renderInfo, renderInfoRow } from './views/info.js';
 import { initLightingSheet, openLightingSheet } from './sheets/lighting.js';
 import { initSoundSheet, openSoundSheet, renderSoundSheet } from './sheets/sound.js';
@@ -552,6 +552,9 @@ async function loadInitialState() {
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
 async function init() {
+  // Apply persisted theme before anything renders
+  initTheme();
+
   // Initialize sheets (build DOM)
   initLightingSheet();
   initSoundSheet();
