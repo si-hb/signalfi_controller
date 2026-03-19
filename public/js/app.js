@@ -248,14 +248,30 @@ export function getDestination() {
     return { destination: 'broadcast', target: null };
   }
 
-  // Check if the selection corresponds to a whole group
-  for (const path of sel.selectedPaths) {
-    const scouts = window.appState.scouts || [];
-    const groupMacs = scouts
-      .filter(s => s.node && (s.node === path || s.node.startsWith(path + '/')))
-      .map(s => s.mac);
+  const scouts = (window.appState && window.appState.scouts) || [];
 
-    if (groupMacs.length === macs.length && groupMacs.every(m => sel.selectedMacs.has(m))) {
+  // Collect all ancestor group paths from the selected scouts' node paths.
+  // In the tree, a device's node field includes the device-name as the last segment,
+  // so group paths are formed by all prefixes up to (but not including) the last segment.
+  const candidatePaths = new Set();
+  for (const mac of macs) {
+    const scout = scouts.find(s => s.mac === mac);
+    if (!scout || !scout.node) continue;
+    const segments = scout.node.trim().split('/').filter(Boolean);
+    for (let i = 1; i < segments.length; i++) {
+      candidatePaths.add(segments.slice(0, i).join('/'));
+    }
+  }
+
+  // From most-specific (longest) to least-specific, find a group path whose online
+  // members exactly match the selected set.
+  const sortedPaths = [...candidatePaths].sort((a, b) => b.length - a.length);
+  for (const path of sortedPaths) {
+    const groupOnlineMacs = scouts
+      .filter(s => s.node && (s.node === path || s.node.startsWith(path + '/')) &&
+                   s.status && s.status !== 'offline')
+      .map(s => s.mac);
+    if (groupOnlineMacs.length === macs.length && groupOnlineMacs.every(m => sel.selectedMacs.has(m))) {
       return { destination: 'group', target: path };
     }
   }

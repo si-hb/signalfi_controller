@@ -128,12 +128,24 @@ function getAllMacsUnderPath(pathPrefix, scouts) {
 }
 
 function checkboxStateForPath(pathPrefix, scouts) {
-  const macs = getAllMacsUnderPath(pathPrefix, scouts);
-  if (macs.length === 0) return 'none';
+  const allMacs = getAllMacsUnderPath(pathPrefix, scouts);
+  if (allMacs.length === 0) return 'none';
+
+  if (window.selectionState.broadcastMode) {
+    // Broadcast selects all online devices; offline devices are excluded
+    const onlineMacs = allMacs.filter(m => {
+      const s = scouts.find(sc => sc.mac === m);
+      return s && getStatusClass(s.status) !== 'offline';
+    });
+    if (onlineMacs.length === 0) return 'none';
+    if (onlineMacs.length === allMacs.length) return 'checked';
+    return 'partial'; // some devices under this path are offline
+  }
+
   const sel = window.selectionState.selectedMacs;
-  const selected = macs.filter(m => sel.has(m)).length;
+  const selected = allMacs.filter(m => sel.has(m)).length;
   if (selected === 0) return 'none';
-  if (selected === macs.length) return 'checked';
+  if (selected === allMacs.length) return 'checked';
   return 'partial';
 }
 
@@ -234,6 +246,21 @@ function makeDeviceCard(scout) {
     }
 
     const sel = window.selectionState.selectedMacs;
+
+    if (window.selectionState.broadcastMode) {
+      // Exit broadcast; this device becomes deselected, all other online devices selected
+      window.selectionState.broadcastMode = false;
+      window.selectionState.selectedPaths.clear();
+      const allScouts = (window.appState && window.appState.scouts) || [];
+      allScouts.forEach(s => {
+        const isOffline = !s.status || s.status === 'offline';
+        if (s.mac !== scout.mac && !isOffline) sel.add(s.mac);
+      });
+      updateSelectionUI();
+      renderDevices();
+      return;
+    }
+
     if (sel.has(scout.mac)) {
       sel.delete(scout.mac);
     } else {
@@ -302,15 +329,25 @@ function makeAccordionRow(path, count, busyCount, depth) {
   checkbox.addEventListener('click', (e) => {
     e.stopPropagation();
     const sel = window.selectionState.selectedMacs;
-    const macs = getAllMacsUnderPath(path, scouts);
-    const currentState = checkboxStateForPath(path, scouts);
+    const allScouts = (window.appState && window.appState.scouts) || [];
+    const macs = getAllMacsUnderPath(path, allScouts);
+    const currentState = checkboxStateForPath(path, allScouts);
 
-    if (currentState === 'checked') {
-      // Deselect all
+    if (window.selectionState.broadcastMode) {
+      // Exit broadcast; treat this group as deselected, keep all other online devices selected
+      window.selectionState.broadcastMode = false;
+      window.selectionState.selectedPaths.clear();
+      const macSet = new Set(macs);
+      allScouts.forEach(s => {
+        const isOffline = !s.status || s.status === 'offline';
+        if (!isOffline && !macSet.has(s.mac)) sel.add(s.mac);
+      });
+    } else if (currentState === 'checked') {
+      // Deselect all in group
       macs.forEach(m => sel.delete(m));
       window.selectionState.selectedPaths.delete(path);
     } else {
-      // Select all
+      // Select all in group
       macs.forEach(m => sel.add(m));
       window.selectionState.selectedPaths.add(path);
     }
