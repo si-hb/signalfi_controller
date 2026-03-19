@@ -4,6 +4,7 @@
 
 import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet, showToast } from '../app.js';
+import { roundGain } from '../utils.js';
 
 function throttle(fn, ms) {
   let last = 0;
@@ -380,7 +381,7 @@ function wireEvents() {
         pattern: state.pattern,
         timeout: state.timeout,
         audio: sound.selectedFile,
-        volume: sound.volume,
+        volume: roundGain(sound.volume),
         loops: sound.loops,
         ...dest,
       });

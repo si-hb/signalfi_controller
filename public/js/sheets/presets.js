@@ -5,6 +5,7 @@
 import { savePreset, deletePreset } from '../api.js';
 import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet, showToast } from '../app.js';
+import { roundGain } from '../utils.js';
 import { getLightingState, setLightingState } from './lighting.js';
 import { getSoundState, setSoundState } from './sound.js';
 
@@ -82,6 +83,14 @@ function buildSheet() {
   liveRow.appendChild(liveLabel);
   liveRow.appendChild(toggleWrap);
   liveSection.appendChild(liveRow);
+
+  const stopBtn = document.createElement('button');
+  stopBtn.id = 'preset-stop-btn';
+  stopBtn.className = 'btn-secondary cmd-btn';
+  stopBtn.style.marginTop = '8px';
+  stopBtn.textContent = 'Stop';
+  liveSection.appendChild(stopBtn);
+
   body.appendChild(liveSection);
 
   // Preset list
@@ -206,6 +215,13 @@ function wireEvents() {
     liveMode = e.target.checked;
   });
 
+  // Stop button
+  document.getElementById('preset-stop-btn').addEventListener('click', () => {
+    sendCommand({ cmd: 'stop', ...getDestination() });
+    clearPresetHighlight();
+    showToast('Stopped');
+  });
+
   // Preset list (event delegation)
   document.getElementById('preset-list-container').addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.preset-delete');
@@ -256,7 +272,7 @@ function wireEvents() {
         pattern: preset.pat,
         timeout: preset.dur,
         audio: preset.aud || null,
-        volume: preset.vol,
+        volume: roundGain(preset.vol),
         loops: preset.rpt,
         ...dest,
       });
@@ -271,6 +287,11 @@ function wireEvents() {
 export function initPresetsSheet() {
   buildSheet();
   wireEvents();
+}
+
+export function clearPresetHighlight() {
+  currentPresetName = null;
+  renderPresetList();
 }
 
 export function openPresetsSheet() {

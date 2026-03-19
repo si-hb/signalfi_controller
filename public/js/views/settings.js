@@ -5,11 +5,8 @@
 import { sendCommand } from '../ws.js';
 import { getDestination, showToast } from '../app.js';
 import { deletePreset } from '../api.js';
-
-function throttle(fn, ms) {
-  let last = 0;
-  return (...args) => { const now = Date.now(); if (now - last >= ms) { last = now; fn(...args); } };
-}
+import { sliderToGain, gainToSlider, roundGain, throttle } from '../utils.js';
+import { clearPresetHighlight } from '../sheets/presets.js';
 
 const NOTE_NAMES = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
 
@@ -353,7 +350,7 @@ function renderPresetList() {
 
 function wireSettingsEvents() {
   const sendVolThrottled = throttle(() => {
-    sendCommand({ cmd: 'setVolume', volume: calState.volume / 100, ...getDestination() });
+    sendCommand({ cmd: 'setVolume', volume: roundGain(sliderToGain(calState.volume)), ...getDestination() });
   }, 100);
 
   const sendFreqThrottled = throttle(() => {
@@ -365,7 +362,7 @@ function wireSettingsEvents() {
   calVolSlider.addEventListener('input', () => {
     calState.volume = parseInt(calVolSlider.value);
     document.getElementById('cal-vol-val').textContent = calState.volume + '%';
-    if (window.appState) window.appState.defaultVolume = calState.volume / 100;
+    if (window.appState) window.appState.defaultVolume = sliderToGain(calState.volume);
     const headingEl = document.getElementById('store-volume-heading');
     if (headingEl) headingEl.textContent = `SET DEFAULT VOLUME = ${calState.volume}%`;
     sendVolThrottled();
@@ -394,7 +391,6 @@ function wireSettingsEvents() {
     document.getElementById('cal-freq-input').value = calState.freq;
     const noteSlider = document.getElementById('cal-note');
     if (noteSlider) noteSlider.value = calState.semitone;
-    document.getElementById('cal-note-val').textContent = calState.semitone;
     document.getElementById('cal-note-name').textContent = semitoneToName(calState.semitone);
     sendFreqThrottled();
   });
@@ -425,7 +421,7 @@ function wireSettingsEvents() {
         cmd: 'calibrate',
         signal,
         frequency: calState.freq,
-        volume: calState.volume / 100,
+        volume: roundGain(sliderToGain(calState.volume)),
         ...getDestination(),
       });
     });
@@ -434,6 +430,7 @@ function wireSettingsEvents() {
   // Stop button
   document.getElementById('cal-stop-btn').addEventListener('click', () => {
     sendCommand({ cmd: 'stop', ...getDestination() });
+    clearPresetHighlight();
   });
 
   // Store volume target radio
@@ -466,7 +463,7 @@ function wireSettingsEvents() {
       dest = getDestination();
     }
     const volume = (window.appState && window.appState.defaultVolume) ?? 0.8;
-    sendCommand({ cmd: 'storeVolume', volume, ...dest });
+    sendCommand({ cmd: 'storeVolume', volume: roundGain(volume), ...dest });
     showToast('Storing volume…');
   });
 
@@ -538,7 +535,7 @@ export function updateStoreSection() {
   const headingEl = document.getElementById('store-volume-heading');
   if (headingEl) {
     const vol = (window.appState && window.appState.defaultVolume) ?? 0.8;
-    headingEl.textContent = `SET DEFAULT VOLUME = ${Math.round(vol * 100)}%`;
+    headingEl.textContent = `SET DEFAULT VOLUME = ${gainToSlider(vol)}%`;
   }
   const countEl = document.getElementById('store-device-count');
   if (countEl) {

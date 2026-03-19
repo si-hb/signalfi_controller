@@ -4,11 +4,8 @@
 
 import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet } from '../app.js';
-
-function throttle(fn, ms) {
-  let last = 0;
-  return (...args) => { const now = Date.now(); if (now - last >= ms) { last = now; fn(...args); } };
-}
+import { sliderToGain, gainToSlider, roundGain, throttle } from '../utils.js';
+import { clearPresetHighlight } from './presets.js';
 
 const state = {
   selectedFile: null,
@@ -193,8 +190,8 @@ export function renderSoundSheet() {
 
   const volSlider = document.getElementById('sound-volume');
   const volValue = document.getElementById('sound-volume-value');
-  if (volSlider) volSlider.value = Math.round(state.volume * 100);
-  if (volValue) volValue.textContent = Math.round(state.volume * 100) + '%';
+  if (volSlider) volSlider.value = gainToSlider(state.volume);
+  if (volValue) volValue.textContent = gainToSlider(state.volume) + '%';
 
   const loopsValue = document.getElementById('sound-loops-value');
   if (loopsValue) loopsValue.textContent = state.loops;
@@ -215,10 +212,10 @@ function wireEvents() {
   // Volume slider — live throttled send
   const volSlider = document.getElementById('sound-volume');
   const sendVolume = throttle(() => {
-    sendCommand({ cmd: 'setVolume', volume: state.volume, ...getDestination() });
+    sendCommand({ cmd: 'setVolume', volume: roundGain(state.volume), ...getDestination() });
   }, 100);
   volSlider.addEventListener('input', () => {
-    state.volume = parseInt(volSlider.value) / 100;
+    state.volume = sliderToGain(parseInt(volSlider.value));
     document.getElementById('sound-volume-value').textContent = volSlider.value + '%';
     if (window.appState) window.appState.defaultVolume = state.volume;
     const volEl = document.getElementById('store-vol-display');
@@ -253,7 +250,7 @@ function wireEvents() {
         pattern: light.pattern,
         timeout: light.timeout,
         audio: state.selectedFile,
-        volume: state.volume,
+        volume: roundGain(state.volume),
         loops: state.loops,
         ...dest,
       });
@@ -263,6 +260,7 @@ function wireEvents() {
   // Stop button
   document.getElementById('sound-stop-btn').addEventListener('click', () => {
     sendCommand({ cmd: 'stop', ...getDestination() });
+    clearPresetHighlight();
   });
 }
 
