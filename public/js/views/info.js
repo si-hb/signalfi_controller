@@ -4,6 +4,7 @@
 
 import { resetNodes, flushOffline } from '../api.js';
 import { showToast } from '../app.js';
+import { sendCommand } from '../ws.js';
 
 const STATUS_PRIORITY = {
   identifying: 0,
@@ -35,6 +36,39 @@ function getStatusClass(status) {
   return 'online';
 }
 
+// ─── Node Tree Selection ──────────────────────────────────────────────────────
+const nodeTreeSel = new Set(); // set of selected path strings
+
+let pathCounts = new Map();
+
+function getAffectedMacs(selPaths, scouts) {
+  const macs = new Set();
+  for (const scout of scouts) {
+    if (!scout.node) continue;
+    for (const p of selPaths) {
+      if (scout.node === p || scout.node.startsWith(p + '/')) {
+        macs.add(scout.mac);
+        break;
+      }
+    }
+  }
+  return macs;
+}
+
+function updateNodeTreeTally() {
+  const tallyEl = document.getElementById('node-tree-tally');
+  if (!tallyEl) return;
+  const scouts = (window.appState && window.appState.scouts) || [];
+  const n = getAffectedMacs(nodeTreeSel, scouts).size;
+  if (n === 0) {
+    tallyEl.hidden = true;
+    tallyEl.textContent = '';
+  } else {
+    tallyEl.hidden = false;
+    tallyEl.textContent = `${n} device${n !== 1 ? 's' : ''} selected`;
+  }
+}
+
 function buildInfoView() {
   const view = document.getElementById('view-info');
   view.innerHTML = '';
@@ -59,17 +93,48 @@ function buildInfoView() {
   const nodeCard = document.createElement('div');
   nodeCard.className = 'settings-card';
 
+  // Top toolbar: reset button + tally
+  const nodeToolbar = document.createElement('div');
+  nodeToolbar.style.cssText = 'display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;gap:8px;';
+
   const resetBtn = document.createElement('button');
-  resetBtn.className = 'btn-secondary';
+  resetBtn.className = 'btn-secondary btn-danger';
   resetBtn.id = 'reset-nodes-btn';
-  resetBtn.textContent = 'Reset Node Assignments';
-  resetBtn.style.marginBottom = '12px';
+  resetBtn.textContent = 'Clear Node Group Assignment';
+
+  const tally = document.createElement('span');
+  tally.id = 'node-tree-tally';
+  tally.hidden = true;
+  tally.style.cssText = 'font-size:12px;color:var(--accent-bright);font-weight:600;white-space:nowrap;';
+
+  nodeToolbar.appendChild(resetBtn);
+  nodeToolbar.appendChild(tally);
+  nodeCard.appendChild(nodeToolbar);
+
+  // Inline confirm row
+  const confirmRow = document.createElement('div');
+  confirmRow.id = 'reset-nodes-confirm';
+  confirmRow.className = 'confirm-row';
+  confirmRow.hidden = true;
+  const confirmMsg = document.createElement('span');
+  confirmMsg.id = 'reset-nodes-confirm-msg';
+  confirmMsg.style.cssText = 'font-size:13px;color:var(--text-muted);flex:1;';
+  const confirmYes = document.createElement('button');
+  confirmYes.className = 'btn-primary btn-danger';
+  confirmYes.id = 'reset-nodes-confirm-yes';
+  confirmYes.textContent = 'Yes, Reset';
+  const confirmNo = document.createElement('button');
+  confirmNo.className = 'btn-secondary';
+  confirmNo.textContent = 'Cancel';
+  confirmRow.appendChild(confirmMsg);
+  confirmRow.appendChild(confirmYes);
+  confirmRow.appendChild(confirmNo);
+  nodeCard.appendChild(confirmRow);
 
   const nodeTree = document.createElement('div');
   nodeTree.className = 'node-tree';
   nodeTree.id = 'info-node-tree';
 
-  nodeCard.appendChild(resetBtn);
   nodeCard.appendChild(nodeTree);
   view.appendChild(nodeCard);
 
@@ -151,22 +216,74 @@ function buildInfoView() {
     }
   });
 
-  resetBtn.addEventListener('click', async () => {
-    try {
-      await resetNodes();
-      showToast('Node assignments reset', 'success');
-      // Clear nodes in state
-      if (window.appState) {
-        window.appState.nodes = [];
-        if (window.appState.scouts) {
+  resetBtn.addEventListener('click', () => {
+    const scouts = (window.appState && window.appState.scouts) || [];
+    const hasSel = nodeTreeSel.size > 0;
+    const n = hasSel ? getAffectedMacs(nodeTreeSel, scouts).size : scouts.filter(s => s.node).length;
+    const msg = hasSel
+      ? `Reset node assignments for ${n} selected device${n !== 1 ? 's' : ''}?`
+      : `Reset node assignments for all ${n} device${n !== 1 ? 's' : ''}?`;
+    const confirmMsgEl = document.getElementById('reset-nodes-confirm-msg');
+    if (confirmMsgEl) confirmMsgEl.textContent = msg;
+    document.getElementById('reset-nodes-confirm').hidden = false;
+    resetBtn.disabled = true;
+  });
+
+  confirmYes.addEventListener('click', async () => {
+    document.getElementById('reset-nodes-confirm').hidden = true;
+    resetBtn.disabled = false;
+    const scouts = (window.appState && window.appState.scouts) || [];
+    const hasSel = nodeTreeSel.size > 0;
+
+    if (!hasSel) {
+      // No selection — reset all via REST (existing behaviour)
+      try {
+        await resetNodes();
+        if (window.appState) {
+          window.appState.nodes = [];
           window.appState.scouts = window.appState.scouts.map(s => ({ ...s, node: null }));
         }
+        nodeTreeSel.clear();
+        renderInfo();
+        showToast('Node assignments reset', 'success');
+      } catch (err) {
+        showToast('Failed to reset nodes', 'error');
+        console.error(err);
       }
-      renderInfo();
-    } catch (err) {
-      showToast('Failed to reset nodes', 'error');
-      console.error(err);
+      return;
     }
+
+    // Selective reset — send setNode with node:'' via WS
+    // Deduplicate: remove child paths when a parent is already selected
+    const sorted = [...nodeTreeSel].sort((a, b) => a.length - b.length);
+    const effective = sorted.filter(p =>
+      !sorted.some(other => other !== p && p.startsWith(other + '/'))
+    );
+
+    effective.forEach(path => {
+      // Check whether this is a leaf (single device) or a branch (group topic)
+      const allPaths = [...(pathCounts ? pathCounts.keys() : [])];
+      const isLeaf = !allPaths.some(ap => ap.startsWith(path + '/'));
+      const macsUnder = scouts.filter(s => s.node && (s.node === path || s.node.startsWith(path + '/'))).map(s => s.mac);
+
+      if (macsUnder.length === 1 || isLeaf) {
+        // Single device — use individual MAC command
+        sendCommand({ cmd: 'setNode', mac: macsUnder[0], node: '' });
+      } else {
+        // Multiple devices under this path — use group topic
+        sendCommand({ cmd: 'setNode', node: '', destination: 'group', target: path });
+      }
+    });
+
+    const n = getAffectedMacs(nodeTreeSel, scouts).size;
+    nodeTreeSel.clear();
+    renderInfo();
+    showToast(`Node assignments reset for ${n} device${n !== 1 ? 's' : ''}`, 'success');
+  });
+
+  confirmNo.addEventListener('click', () => {
+    document.getElementById('reset-nodes-confirm').hidden = true;
+    resetBtn.disabled = false;
   });
 }
 
@@ -235,7 +352,7 @@ function renderNodeTree() {
   const scouts = (window.appState && window.appState.scouts) || [];
 
   // Build path counts from scouts
-  const pathCounts = new Map();
+  pathCounts = new Map();
   const pathBusy = new Map();
 
   scouts.forEach(scout => {
@@ -267,23 +384,65 @@ function renderNodeTree() {
     const depth = path.split('/').length - 1;
     const row = document.createElement('div');
     row.className = 'node-tree-row';
-    row.style.paddingLeft = (14 + depth * 16) + 'px';
+    row.style.cssText = `padding-left:${14 + depth * 16}px;cursor:pointer;`;
+
+    // Determine selection state for this path
+    const macsUnder = scouts.filter(s => s.node && (s.node === path || s.node.startsWith(path + '/'))).map(s => s.mac);
+    const affectedMacs = getAffectedMacs(nodeTreeSel, scouts);
+    const selectedUnder = macsUnder.filter(m => affectedMacs.has(m)).length;
+    const cbState = selectedUnder === 0 ? 'none' : selectedUnder === macsUnder.length ? 'checked' : 'partial';
+
+    if (cbState !== 'none') row.classList.add('selected');
+
+    // Checkbox
+    const cb = document.createElement('span');
+    cb.className = 'node-tree-cb';
+    if (cbState === 'checked') { cb.classList.add('checked'); cb.textContent = '✓'; }
+    else if (cbState === 'partial') { cb.classList.add('partial'); cb.textContent = '−'; }
 
     const name = document.createElement('span');
     name.className = 'node-tree-name';
     name.textContent = path;
 
-    const count = document.createElement('span');
-    count.className = 'node-tree-count';
+    row.appendChild(cb);
+    row.appendChild(name);
+
+    // Leaf nodes always contain exactly 1 device — skip count unless busy
+    const isLeaf = !allPaths.some(p => p.startsWith(path + '/'));
     const c = pathCounts.get(path) || 0;
     const b = pathBusy.get(path) || 0;
-    count.textContent = b > 0 ? `${b}/${c} busy` : `${c} device${c !== 1 ? 's' : ''}`;
-    if (b > 0) count.style.color = 'var(--status-busy)';
+    if (!isLeaf || b > 0) {
+      const count = document.createElement('span');
+      count.className = 'node-tree-count';
+      count.textContent = b > 0 ? `${b}/${c} busy` : `${c} device${c !== 1 ? 's' : ''}`;
+      if (b > 0) count.style.color = 'var(--status-busy)';
+      row.appendChild(count);
+    }
 
-    row.appendChild(name);
-    row.appendChild(count);
+    // Click to toggle selection
+    row.addEventListener('click', () => {
+      const allCovered = macsUnder.length > 0 && macsUnder.every(m => affectedMacs.has(m));
+      if (allCovered) {
+        // Deselect: remove this path and any child paths
+        nodeTreeSel.delete(path);
+        for (const p of [...nodeTreeSel]) {
+          if (p.startsWith(path + '/')) nodeTreeSel.delete(p);
+        }
+      } else {
+        // Select: add this path; remove child paths (parent covers them)
+        nodeTreeSel.add(path);
+        for (const p of [...nodeTreeSel]) {
+          if (p !== path && p.startsWith(path + '/')) nodeTreeSel.delete(p);
+        }
+      }
+      renderNodeTree();
+      updateNodeTreeTally();
+    });
+
     tree.appendChild(row);
   });
+
+  updateNodeTreeTally();
 }
 
 function renderDeviceTable() {

@@ -162,7 +162,7 @@ function handleCommand(config, msg, broadcast) {
     return;
   }
 
-  if (cmd === 'setNode' && msg.mac) {
+  if (cmd === 'setNode' && msg.mac && !destination) {
     const prefix = config.mqtt.topicPrefix;
     publishToTopics([`${prefix}/${msg.mac}/$action`], { act: 'nod', nod: msg.node || '' });
     return;
@@ -249,6 +249,10 @@ function handleCommand(config, msg, broadcast) {
 
     case 'storeVolume':
       payload = { act: 'vrt', vol: msg.volume ?? 0.5 };
+      break;
+
+    case 'setNode':
+      payload = { act: 'nod', nod: msg.node || '' };
       break;
 
     case 'calibrate': {

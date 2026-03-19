@@ -211,6 +211,23 @@
   display: block;
 }
 
+.card-icon svg {
+  display: block;
+}
+
+@keyframes signalfi-led {
+  0%, 100% { fill-opacity: 0.08; }
+  50%       { fill-opacity: 1; }
+}
+
+.card-icon.status-announce .sf-led {
+  animation: signalfi-led 0.9s ease-in-out infinite;
+}
+.card-icon.status-announce .sf-led-t { animation-delay: 0s; }
+.card-icon.status-announce .sf-led-r { animation-delay: 0.225s; }
+.card-icon.status-announce .sf-led-b { animation-delay: 0.45s; }
+.card-icon.status-announce .sf-led-l { animation-delay: 0.675s; }
+
 .card-icon.status-offline {
   opacity: 0.3;
 }

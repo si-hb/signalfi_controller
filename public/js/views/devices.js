@@ -103,10 +103,23 @@ function getStatusClass(status) {
 function getStatusIcon(statusClass) {
   switch (statusClass) {
     case 'offline': return '⬡';
-    case 'announce': return '📢';
     case 'warn': return '⟳';
     default: return '⬢';
   }
+}
+
+function makeSignalFiSVG(announcing = false) {
+  const ledBase = announcing ? '' : ' fill-opacity="0.45"';
+  const mkLed = (cls, x, y, w, h) =>
+    `<rect x="${x}" y="${y}" width="${w}" height="${h}" rx="0.529" fill="#fff"${ledBase} class="${cls}"/>`;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16.933 16.933" width="1em" height="1em" aria-hidden="true">` +
+    `<rect width="16.933" height="16.933" rx="3.175" fill="#0eb8c0"/>` +
+    `<rect x="1.058" y="1.058" width="14.817" height="14.817" rx="2.778" fill="#0a1c1e"/>` +
+    mkLed('sf-led sf-led-t', 7.937, 2.646, 1.058, 4.508) +
+    mkLed('sf-led sf-led-r', 9.790, 7.938, 4.498, 1.058) +
+    mkLed('sf-led sf-led-b', 7.937, 9.790, 1.058, 4.498) +
+    mkLed('sf-led sf-led-l', 2.646, 7.938, 4.498, 1.058) +
+    `</svg>`;
 }
 
 // ─── Selection helpers ───────────────────────────────────────────────────────
@@ -154,12 +167,8 @@ function makeDeviceCard(scout) {
   // Icon
   const icon = document.createElement('span');
   icon.className = `card-icon status-${statusClass}`;
-  if (statusClass === 'online') {
-    const img = document.createElement('img');
-    img.src = '/images/signalfi_icon.svg';
-    img.alt = '';
-    img.setAttribute('aria-hidden', 'true');
-    icon.appendChild(img);
+  if (statusClass === 'online' || statusClass === 'announce') {
+    icon.innerHTML = makeSignalFiSVG(statusClass === 'announce');
   } else {
     icon.textContent = getStatusIcon(statusClass);
   }
@@ -517,8 +526,8 @@ export function updateScoutCard(mac, scout, allowFallback = true) {
   const icon = card.querySelector('.card-icon');
   if (icon) {
     icon.className = `card-icon status-${statusClass}`;
-    if (statusClass === 'online') {
-      icon.innerHTML = '<img src="/images/signalfi_icon.svg" alt="" aria-hidden="true">';
+    if (statusClass === 'online' || statusClass === 'announce') {
+      icon.innerHTML = makeSignalFiSVG(statusClass === 'announce');
     } else {
       icon.textContent = getStatusIcon(statusClass);
     }

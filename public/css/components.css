@@ -601,6 +601,39 @@ input[type=range]::-moz-range-thumb {
   color: var(--text-muted);
 }
 
+.node-tree-row.selected {
+  background: rgba(14, 184, 192, 0.08);
+}
+
+.node-tree-row:active {
+  background: rgba(14, 184, 192, 0.14);
+}
+
+.node-tree-cb {
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.node-tree-cb.checked {
+  background: var(--accent-bright);
+  border-color: var(--accent-bright);
+  color: #fff;
+}
+
+.node-tree-cb.partial {
+  background: rgba(14, 184, 192, 0.25);
+  border-color: var(--accent-bright);
+  color: var(--accent-bright);
+}
+
 /* Scrollable table wrapper */
 .table-scroll-wrap {
   overflow-x: auto;
