@@ -886,6 +886,12 @@ select:disabled {
   border-color: var(--accent);
 }
 
+.log-filter-datetime {
+  font-size: 12px;
+  padding: 6px 8px;
+  color-scheme: dark;
+}
+
 .log-toggle-row {
   flex-wrap: wrap;
 }

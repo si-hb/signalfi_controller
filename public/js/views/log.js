@@ -88,6 +88,8 @@ let logFilters = {
   node:         '',
   payloadKey:   '',
   payloadValue: '',
+  dateFrom:     '',   // datetime-local string, e.g. "2025-03-01T00:00"
+  dateTo:       '',
   showRx:       true,
   showTx:       true,
   showServer:   true,
@@ -116,6 +118,15 @@ function buildQueryString() {
 
   if (logFilters.mac)  params.set('mac',  logFilters.mac.trim());
   if (logFilters.node) params.set('node', logFilters.node.trim());
+
+  if (logFilters.dateFrom) {
+    const ms = new Date(logFilters.dateFrom).getTime();
+    if (!isNaN(ms)) params.set('from', String(ms));
+  }
+  if (logFilters.dateTo) {
+    const ms = new Date(logFilters.dateTo).getTime();
+    if (!isNaN(ms)) params.set('to', String(ms));
+  }
 
   // Derive direction / category arrays from toggles
   const dirs = [];
@@ -190,6 +201,14 @@ function passesFilters(entry) {
   const node = logFilters.node.trim();
   if (mac  && !(entry.mac  && entry.mac.includes(mac)))   return false;
   if (node && !(entry.node && entry.node.includes(node)))  return false;
+  if (logFilters.dateFrom) {
+    const ms = new Date(logFilters.dateFrom).getTime();
+    if (!isNaN(ms) && entry.ts < ms) return false;
+  }
+  if (logFilters.dateTo) {
+    const ms = new Date(logFilters.dateTo).getTime();
+    if (!isNaN(ms) && entry.ts > ms) return false;
+  }
   return matchesPayloadFilter(entry);
 }
 
@@ -455,10 +474,12 @@ function syncFilterUI() {
 }
 
 function wireFilterBar() {
-  const macInput   = document.getElementById('log-filter-mac');
-  const nodeInput  = document.getElementById('log-filter-node');
-  const keyInput   = document.getElementById('log-filter-key');
-  const valueInput = document.getElementById('log-filter-value');
+  const macInput       = document.getElementById('log-filter-mac');
+  const nodeInput      = document.getElementById('log-filter-node');
+  const keyInput       = document.getElementById('log-filter-key');
+  const valueInput     = document.getElementById('log-filter-value');
+  const dateFromInput  = document.getElementById('log-filter-date-from');
+  const dateToInput    = document.getElementById('log-filter-date-to');
 
   let debounceTimer = null;
   function scheduleRefresh() {
@@ -488,6 +509,14 @@ function wireFilterBar() {
   valueInput.addEventListener('input', (e) => {
     logFilters.payloadValue = e.target.value;
     scheduleRender();
+  });
+  dateFromInput.addEventListener('change', (e) => {
+    logFilters.dateFrom = e.target.value;
+    scheduleRefresh();
+  });
+  dateToInput.addEventListener('change', (e) => {
+    logFilters.dateTo = e.target.value;
+    scheduleRefresh();
   });
 
   const toggles = [
@@ -519,10 +548,14 @@ function wireFilterBar() {
     logFilters.node         = '';
     logFilters.payloadKey   = '';
     logFilters.payloadValue = '';
-    macInput.value    = '';
-    nodeInput.value   = '';
-    keyInput.value    = '';
-    valueInput.value  = '';
+    logFilters.dateFrom     = '';
+    logFilters.dateTo       = '';
+    macInput.value        = '';
+    nodeInput.value       = '';
+    keyInput.value        = '';
+    valueInput.value      = '';
+    dateFromInput.value   = '';
+    dateToInput.value     = '';
     fetchLog(false);
   });
 
@@ -541,6 +574,26 @@ function buildLogView() {
   // ── Filter bar (sticky) ──
   const filterBar = document.createElement('div');
   filterBar.className = 'log-filter-bar';
+
+  // Row 0: Date range
+  const dateRow = document.createElement('div');
+  dateRow.className = 'log-filter-row';
+
+  const dateFromInput = document.createElement('input');
+  dateFromInput.type = 'datetime-local';
+  dateFromInput.id = 'log-filter-date-from';
+  dateFromInput.className = 'log-filter-input log-filter-datetime';
+  dateFromInput.title = 'From date/time';
+
+  const dateToInput = document.createElement('input');
+  dateToInput.type = 'datetime-local';
+  dateToInput.id = 'log-filter-date-to';
+  dateToInput.className = 'log-filter-input log-filter-datetime';
+  dateToInput.title = 'To date/time';
+
+  dateRow.appendChild(dateFromInput);
+  dateRow.appendChild(dateToInput);
+  filterBar.appendChild(dateRow);
 
   // Row 1: MAC + Node
   const inputRow1 = document.createElement('div');
@@ -647,12 +700,34 @@ function buildLogView() {
   view.appendChild(pad);
 }
 
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+
+/** Return a datetime-local string (YYYY-MM-DDTHH:MM) for the given Date */
+function toDateTimeLocal(d) {
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+/** Set the date range inputs and logFilters to span today (midnight → now) */
+function setTodayRange() {
+  const now   = new Date();
+  const start = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+  logFilters.dateFrom = toDateTimeLocal(start);
+  logFilters.dateTo   = toDateTimeLocal(now);
+
+  const fromEl = document.getElementById('log-filter-date-from');
+  const toEl   = document.getElementById('log-filter-date-to');
+  if (fromEl) fromEl.value = logFilters.dateFrom;
+  if (toEl)   toEl.value   = logFilters.dateTo;
+}
+
 // ─── Public API ───────────────────────────────────────────────────────────────
 
 export function initLogView() {
   buildLogView();
   wireFilterBar();
   syncFilterUI();
+  setTodayRange();
 }
 
 export async function refreshLog() {

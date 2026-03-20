@@ -107,17 +107,17 @@ class LogStore {
    * @param {number}   [opts.limit]      — max rows to return (capped at 500)
    * @param {number}   [opts.offset]     — rows to skip
    */
-  query({ mac, node, directions, categories, sort = 'desc', limit = 200, offset = 0 } = {}) {
+  query({ mac, node, directions, categories, sort = 'desc', limit = 200, offset = 0, from = null, to = null } = {}) {
     const lim = Math.min(Number(limit) || 200, 500);
     const off = Number(offset) || 0;
 
     if (this._db) {
-      return this._queryDb({ mac, node, directions, categories, sort, limit: lim, offset: off });
+      return this._queryDb({ mac, node, directions, categories, sort, limit: lim, offset: off, from, to });
     }
-    return this._queryMemory({ mac, node, directions, categories, sort, limit: lim, offset: off });
+    return this._queryMemory({ mac, node, directions, categories, sort, limit: lim, offset: off, from, to });
   }
 
-  _queryDb({ mac, node, directions, categories, sort, limit, offset }) {
+  _queryDb({ mac, node, directions, categories, sort, limit, offset, from, to }) {
     const where  = [];
     const params = [];
 
@@ -132,6 +132,8 @@ class LogStore {
       where.push(`category IN (${categories.map(() => '?').join(',')})`);
       params.push(...categories);
     }
+    if (from != null) { where.push('ts >= ?'); params.push(from); }
+    if (to   != null) { where.push('ts <= ?'); params.push(to);   }
 
     const whereClause = where.length ? 'WHERE ' + where.join(' AND ') : '';
     const order = sort === 'asc' ? 'ASC' : 'DESC';
@@ -141,12 +143,14 @@ class LogStore {
     return this._db.prepare(sql).all(...params);
   }
 
-  _queryMemory({ mac, node, directions, categories, sort, limit, offset }) {
+  _queryMemory({ mac, node, directions, categories, sort, limit, offset, from, to }) {
     let entries = this._entries.filter(e => {
       if (mac  && !(e.mac  && e.mac.includes(mac)))   return false;
       if (node && !(e.node && e.node.includes(node)))  return false;
       if (directions && directions.length && !directions.includes(e.direction)) return false;
       if (categories && categories.length && !categories.includes(e.category))  return false;
+      if (from != null && e.ts < from) return false;
+      if (to   != null && e.ts > to)   return false;
       return true;
     });
 

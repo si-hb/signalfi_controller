@@ -137,10 +137,12 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     const sort       = req.query.sort === 'asc' ? 'asc' : 'desc';
     const limit      = req.query.limit  ? parseInt(req.query.limit,  10) : 200;
     const offset     = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+    const from       = req.query.from   ? parseInt(req.query.from,   10) : null;
+    const to         = req.query.to     ? parseInt(req.query.to,     10) : null;
 
     try {
       res.set('Cache-Control', 'no-store');
-      const entries = logStore.query({ mac, node, directions, categories, sort, limit, offset });
+      const entries = logStore.query({ mac, node, directions, categories, sort, limit, offset, from, to });
       res.json({ entries });
     } catch (err) {
       const ts = new Date().toISOString();

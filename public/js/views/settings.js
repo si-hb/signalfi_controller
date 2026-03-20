@@ -186,7 +186,12 @@ function buildSettingsView() {
   storeHeading.style.alignItems = 'center';
   const storeHeadingTitle = document.createElement('span');
   storeHeadingTitle.id = 'store-volume-heading';
-  storeHeadingTitle.textContent = `SET DEFAULT VOLUME = ${sliderToDb(calState.volume)} dB`;
+  storeHeadingTitle.textContent = 'SET DEFAULT VOLUME = ';
+  const storeVolumeValue = document.createElement('span');
+  storeVolumeValue.id = 'store-volume-value';
+  storeVolumeValue.style.textTransform = 'none';
+  storeVolumeValue.textContent = `${sliderToDb(calState.volume)} dB`;
+  storeHeadingTitle.appendChild(storeVolumeValue);
   const storeDeviceCount = document.createElement('span');
   storeDeviceCount.id = 'store-device-count';
   storeDeviceCount.style.fontSize = '12px';
@@ -434,8 +439,8 @@ function wireSettingsEvents() {
       calVolDbInput.value = sliderToDb(calState.volume);
     }
     if (window.appState) window.appState.defaultVolume = sliderToGain(calState.volume);
-    const headingEl = document.getElementById('store-volume-heading');
-    if (headingEl) headingEl.textContent = `SET DEFAULT VOLUME = ${sliderToDb(calState.volume)} dB`;
+    const valEl = document.getElementById('store-volume-value');
+    if (valEl) valEl.textContent = `${sliderToDb(calState.volume)} dB`;
     sendVolThrottled();
   });
 
@@ -449,8 +454,8 @@ function wireSettingsEvents() {
         calVolSlider.value = slider;
         calVolDbInput.value = sliderToDb(slider);
         if (window.appState) window.appState.defaultVolume = sliderToGain(slider);
-        const headingEl = document.getElementById('store-volume-heading');
-        if (headingEl) headingEl.textContent = `SET DEFAULT VOLUME = ${sliderToDb(slider)} dB`;
+        const valEl = document.getElementById('store-volume-value');
+        if (valEl) valEl.textContent = `${sliderToDb(slider)} dB`;
         sendVolThrottled();
       } else {
         calVolDbInput.value = sliderToDb(calState.volume);
@@ -702,10 +707,10 @@ function wireSettingsEvents() {
 }
 
 export function updateStoreSection() {
-  const headingEl = document.getElementById('store-volume-heading');
-  if (headingEl) {
+  const valEl = document.getElementById('store-volume-value');
+  if (valEl) {
     const vol = (window.appState && window.appState.defaultVolume) ?? 0.8;
-    headingEl.textContent = `SET DEFAULT VOLUME = ${gainToDb(vol)} dB`;
+    valEl.textContent = `${gainToDb(vol)} dB`;
   }
   const countEl = document.getElementById('store-device-count');
   if (countEl) {
