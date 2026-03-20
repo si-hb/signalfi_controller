@@ -129,6 +129,7 @@ function createRouter(config, state, persistence, broadcast, logStore) {
   // -------------------------------------------------------------------------
   router.get('/log', (req, res) => {
     if (!logStore) return res.json({ entries: [] });
+    console.log(`[ROUTES] GET /log dir=${req.query.direction || '*'} cat=${req.query.category || '*'} sort=${req.query.sort || 'desc'}`);
 
     const mac        = req.query.mac  || null;
     const node       = req.query.node || null;
