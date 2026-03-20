@@ -81,13 +81,15 @@ function expandPayload(raw) {
 let logEntries = [];   // currently displayed entries
 let logOffset  = 0;    // how many entries already loaded (for pagination)
 let logFilters = {
-  mac:        '',
-  node:       '',
-  showRx:     true,
-  showTx:     true,
-  showServer: true,
-  showClient: true,
-  sort:       'desc',  // 'desc' = newest first
+  mac:          '',
+  node:         '',
+  payloadKey:   '',
+  payloadValue: '',
+  showRx:       true,
+  showTx:       true,
+  showServer:   true,
+  showClient:   true,
+  sort:         'desc',  // 'desc' = newest first
 };
 
 // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -116,12 +118,9 @@ function buildQueryString() {
   const dirs = [];
   const cats = [];
 
-  if (logFilters.showRx) { dirs.push('rx'); cats.push('mqtt'); }
-  if (logFilters.showTx) { dirs.push('tx'); }
-  // If any of rx/tx are on, mqtt category must be included
-  if (!logFilters.showRx && !logFilters.showTx) {
-    // No MQTT — still allow sys entries if server/client are on
-  }
+  if (logFilters.showRx || logFilters.showTx) cats.push('mqtt');
+  if (logFilters.showRx) dirs.push('rx');
+  if (logFilters.showTx) dirs.push('tx');
   if (logFilters.showServer) { dirs.push('sys'); cats.push('server'); }
   if (logFilters.showClient) {
     if (!dirs.includes('sys')) dirs.push('sys');
@@ -140,6 +139,42 @@ function buildQueryString() {
   return params.toString();
 }
 
+function matchesPayloadFilter(entry) {
+  const keyFilter = logFilters.payloadKey.trim().toLowerCase();
+  const valFilter = logFilters.payloadValue.trim().toLowerCase();
+  if (!keyFilter && !valFilter) return true;
+  if (!entry.payload) return false;
+
+  let obj;
+  try { obj = JSON.parse(entry.payload); } catch { obj = null; }
+  if (!obj || typeof obj !== 'object' || Array.isArray(obj)) {
+    // Plain string payload — only value filter can match
+    if (keyFilter) return false;
+    return entry.payload.toLowerCase().includes(valFilter);
+  }
+
+  if (keyFilter) {
+    const found = Object.keys(obj).some(k =>
+      k.toLowerCase().includes(keyFilter) ||
+      (KEY_NAMES[k] || '').toLowerCase().includes(keyFilter)
+    );
+    if (!found) return false;
+  }
+
+  if (valFilter) {
+    const found = Object.entries(obj).some(([k, v]) => {
+      const strVal = typeof v === 'string' ? v : String(v);
+      const expanded = k === 'act' && typeof v === 'string'
+        ? (ACTION_VALUES[v] || v) : strVal;
+      return strVal.toLowerCase().includes(valFilter) ||
+             expanded.toLowerCase().includes(valFilter);
+    });
+    if (!found) return false;
+  }
+
+  return true;
+}
+
 function passesFilters(entry) {
   if (entry.direction === 'rx' && !logFilters.showRx) return false;
   if (entry.direction === 'tx' && !logFilters.showTx) return false;
@@ -151,7 +186,7 @@ function passesFilters(entry) {
   const node = logFilters.node.trim();
   if (mac  && !(entry.mac  && entry.mac.includes(mac)))   return false;
   if (node && !(entry.node && entry.node.includes(node)))  return false;
-  return true;
+  return matchesPayloadFilter(entry);
 }
 
 // ─── Entry DOM builder ───────────────────────────────────────────────────────
@@ -262,7 +297,10 @@ function renderLogList() {
   if (!list) return;
   list.innerHTML = '';
 
-  if (logEntries.length === 0) {
+  // Apply client-side payload key/value filter
+  const visible = logEntries.filter(matchesPayloadFilter);
+
+  if (visible.length === 0) {
     const empty = document.createElement('div');
     empty.className = 'log-empty';
     empty.textContent = 'No log entries match the current filters.';
@@ -274,7 +312,7 @@ function renderLogList() {
   let lastDate = null;
   const frag = document.createDocumentFragment();
 
-  for (const entry of logEntries) {
+  for (const entry of visible) {
     const date = fmtDate(entry.ts);
     if (date !== lastDate) {
       lastDate = date;
@@ -389,13 +427,22 @@ function syncFilterUI() {
 }
 
 function wireFilterBar() {
-  const macInput  = document.getElementById('log-filter-mac');
-  const nodeInput = document.getElementById('log-filter-node');
+  const macInput   = document.getElementById('log-filter-mac');
+  const nodeInput  = document.getElementById('log-filter-node');
+  const keyInput   = document.getElementById('log-filter-key');
+  const valueInput = document.getElementById('log-filter-value');
 
   let debounceTimer = null;
   function scheduleRefresh() {
     clearTimeout(debounceTimer);
     debounceTimer = setTimeout(() => fetchLog(false), 400);
+  }
+
+  // Payload key/value: client-side only — re-render without re-fetching
+  let renderTimer = null;
+  function scheduleRender() {
+    clearTimeout(renderTimer);
+    renderTimer = setTimeout(() => renderLogList(), 200);
   }
 
   macInput.addEventListener('input', (e) => {
@@ -405,6 +452,14 @@ function wireFilterBar() {
   nodeInput.addEventListener('input', (e) => {
     logFilters.node = e.target.value;
     scheduleRefresh();
+  });
+  keyInput.addEventListener('input', (e) => {
+    logFilters.payloadKey = e.target.value;
+    scheduleRender();
+  });
+  valueInput.addEventListener('input', (e) => {
+    logFilters.payloadValue = e.target.value;
+    scheduleRender();
   });
 
   const toggles = [
@@ -432,10 +487,14 @@ function wireFilterBar() {
   });
 
   document.getElementById('log-clear-btn').addEventListener('click', () => {
-    logFilters.mac = '';
-    logFilters.node = '';
-    macInput.value  = '';
-    nodeInput.value = '';
+    logFilters.mac          = '';
+    logFilters.node         = '';
+    logFilters.payloadKey   = '';
+    logFilters.payloadValue = '';
+    macInput.value    = '';
+    nodeInput.value   = '';
+    keyInput.value    = '';
+    valueInput.value  = '';
     fetchLog(false);
   });
 
@@ -454,27 +513,49 @@ function buildLogView() {
   const filterBar = document.createElement('div');
   filterBar.className = 'log-filter-bar';
 
-  // Text inputs row
-  const inputRow = document.createElement('div');
-  inputRow.className = 'log-filter-row';
+  // Row 1: MAC + Node
+  const inputRow1 = document.createElement('div');
+  inputRow1.className = 'log-filter-row';
 
   const macInput = document.createElement('input');
   macInput.type = 'text';
   macInput.id = 'log-filter-mac';
-  macInput.placeholder = 'MAC filter…';
+  macInput.placeholder = 'MAC…';
   macInput.className = 'log-filter-input';
   macInput.autocomplete = 'off';
 
   const nodeInput = document.createElement('input');
   nodeInput.type = 'text';
   nodeInput.id = 'log-filter-node';
-  nodeInput.placeholder = 'Node filter…';
+  nodeInput.placeholder = 'Node…';
   nodeInput.className = 'log-filter-input';
   nodeInput.autocomplete = 'off';
 
-  inputRow.appendChild(macInput);
-  inputRow.appendChild(nodeInput);
-  filterBar.appendChild(inputRow);
+  inputRow1.appendChild(macInput);
+  inputRow1.appendChild(nodeInput);
+  filterBar.appendChild(inputRow1);
+
+  // Row 2: payload Key + Value
+  const inputRow2 = document.createElement('div');
+  inputRow2.className = 'log-filter-row';
+
+  const keyInput = document.createElement('input');
+  keyInput.type = 'text';
+  keyInput.id = 'log-filter-key';
+  keyInput.placeholder = 'Payload key…';
+  keyInput.className = 'log-filter-input';
+  keyInput.autocomplete = 'off';
+
+  const valueInput = document.createElement('input');
+  valueInput.type = 'text';
+  valueInput.id = 'log-filter-value';
+  valueInput.placeholder = 'Payload value…';
+  valueInput.className = 'log-filter-input';
+  valueInput.autocomplete = 'off';
+
+  inputRow2.appendChild(keyInput);
+  inputRow2.appendChild(valueInput);
+  filterBar.appendChild(inputRow2);
 
   // Toggle buttons row
   const toggleRow = document.createElement('div');

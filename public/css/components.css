@@ -441,6 +441,67 @@ input[type=range]::-moz-range-thumb {
   text-overflow: ellipsis;
 }
 
+/* ── Scene summary grid ─────────────────────────────────────────────────── */
+
+.scene-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.scene-summary-cell {
+  background: var(--surface-2);
+  border-radius: 8px;
+  padding: 8px 10px;
+  min-width: 0;
+}
+
+.scene-summary-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  margin-bottom: 3px;
+}
+
+.scene-summary-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.scene-summary-swatch {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  border: 1px solid rgba(255,255,255,0.12);
+}
+
+.preset-overwrite {
+  padding: 8px;
+  color: var(--accent);
+  flex-shrink: 0;
+  font-size: 16px;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preset-overwrite:active {
+  background: rgba(14,184,192,0.15);
+  border-radius: 8px;
+}
+
 .preset-delete {
   padding: 8px;
   color: var(--danger);

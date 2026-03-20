@@ -7,10 +7,12 @@ import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet, showToast } from '../app.js';
 import { getLightingState, setLightingState } from './lighting.js';
 import { getSoundState, setSoundState } from './sound.js';
+import { gainToDb } from '../utils.js';
 
 const PATTERN_NAMES = ['Off','Solid','Blink','Rotate','Pulse','Flash','Wave Out','Wave In','Audio','Left','Right','Up','Down'];
 
 let liveMode = false;
+let recallMode = false;
 let currentPresetName = null;
 
 function buildSheet() {
@@ -43,12 +45,27 @@ function buildSheet() {
   const body = document.createElement('div');
   body.className = 'sheet-body';
 
+  // Scene summary
+  const summarySection = document.createElement('div');
+  summarySection.className = 'sheet-section';
+  summarySection.id = 'preset-summary-section';
+  const summaryLabel = document.createElement('div');
+  summaryLabel.className = 'sheet-section-label';
+  summaryLabel.textContent = 'Current Scene';
+  const summaryGrid = document.createElement('div');
+  summaryGrid.className = 'scene-summary-grid';
+  summaryGrid.id = 'scene-summary-grid';
+  summarySection.appendChild(summaryLabel);
+  summarySection.appendChild(summaryGrid);
+  body.appendChild(summarySection);
+
   // Save section
   const saveSection = document.createElement('div');
   saveSection.className = 'sheet-section';
+  saveSection.id = 'preset-save-section';
   const saveLabel = document.createElement('div');
   saveLabel.className = 'sheet-section-label';
-  saveLabel.textContent = 'Save Current Configuration';
+  saveLabel.textContent = 'Save Current Scene';
   const inputRow = document.createElement('div');
   inputRow.className = 'input-row';
   const nameInput = document.createElement('input');
@@ -68,6 +85,7 @@ function buildSheet() {
   // Live toggle
   const liveSection = document.createElement('div');
   liveSection.className = 'sheet-section';
+  liveSection.id = 'preset-live-section';
   const liveRow = document.createElement('div');
   liveRow.className = 'toggle-row';
   const liveLabel = document.createElement('span');
@@ -86,14 +104,17 @@ function buildSheet() {
   liveRow.appendChild(toggleWrap);
   liveSection.appendChild(liveRow);
 
+  body.appendChild(liveSection);
+
+  // Stop button (always visible)
+  const stopSection = document.createElement('div');
+  stopSection.className = 'sheet-section';
   const stopBtn = document.createElement('button');
   stopBtn.id = 'preset-stop-btn';
   stopBtn.className = 'btn-secondary cmd-btn';
-  stopBtn.style.marginTop = '8px';
   stopBtn.textContent = 'Stop';
-  liveSection.appendChild(stopBtn);
-
-  body.appendChild(liveSection);
+  stopSection.appendChild(stopBtn);
+  body.appendChild(stopSection);
 
   // Preset list
   const listSection = document.createElement('div');
@@ -109,6 +130,53 @@ function buildSheet() {
   body.appendChild(listSection);
 
   el.appendChild(body);
+}
+
+function renderSceneSummary() {
+  const grid = document.getElementById('scene-summary-grid');
+  if (!grid) return;
+
+  const light = getLightingState();
+  const sound = getSoundState();
+
+  const patternName = PATTERN_NAMES[light.pattern] || ('Pattern ' + light.pattern);
+  const brightnessPercent = Math.round((light.brightness / 255) * 100) + '%';
+  const timeoutText = light.timeout === 0 ? '∞' : light.timeout + 's';
+  const audioBase = sound.selectedFile
+    ? sound.selectedFile.replace(/^.*[\\/]/, '').replace(/\.[^.]+$/, '')
+    : 'None';
+  const audioText = sound.selectedFile ? audioBase + ' × ' + sound.loops : audioBase;
+  const volDb = Math.round(gainToDb(sound.volume)) + ' dB';
+
+  const props = [
+    { label: 'Colour',     value: light.colour.toUpperCase(), swatch: light.colour },
+    { label: 'Pattern',    value: patternName },
+    { label: 'Audio',      value: audioText },
+    { label: 'Brightness', value: brightnessPercent },
+    { label: 'Timeout',    value: timeoutText },
+    { label: 'Volume',     value: volDb },
+  ];
+
+  grid.innerHTML = '';
+  props.forEach(({ label, value, swatch }) => {
+    const cell = document.createElement('div');
+    cell.className = 'scene-summary-cell';
+    const lbl = document.createElement('div');
+    lbl.className = 'scene-summary-label';
+    lbl.textContent = label;
+    const val = document.createElement('div');
+    val.className = 'scene-summary-value';
+    if (swatch) {
+      const dot = document.createElement('span');
+      dot.className = 'scene-summary-swatch';
+      dot.style.background = swatch;
+      val.appendChild(dot);
+    }
+    val.appendChild(document.createTextNode(value));
+    cell.appendChild(lbl);
+    cell.appendChild(val);
+    grid.appendChild(cell);
+  });
 }
 
 function renderPresetList() {
@@ -161,9 +229,18 @@ function renderPresetList() {
     deleteBtn.textContent = '🗑';
     deleteBtn.dataset.name = preset.name;
 
+    const overwriteBtn = document.createElement('button');
+    overwriteBtn.className = 'preset-overwrite';
+    overwriteBtn.setAttribute('aria-label', 'Update preset with current scene');
+    overwriteBtn.textContent = '⬇';
+    overwriteBtn.dataset.name = preset.name;
+
     item.appendChild(heart);
     item.appendChild(info);
-    item.appendChild(deleteBtn);
+    if (!recallMode) {
+      item.appendChild(overwriteBtn);
+      item.appendChild(deleteBtn);
+    }
     container.appendChild(item);
   });
 }
@@ -226,6 +303,38 @@ function wireEvents() {
 
   // Preset list (event delegation)
   document.getElementById('preset-list-container').addEventListener('click', async (e) => {
+    const overwriteBtn = e.target.closest('.preset-overwrite');
+    if (overwriteBtn) {
+      e.stopPropagation();
+      const name = overwriteBtn.dataset.name;
+      const light = getLightingState();
+      const sound = getSoundState();
+      const preset = {
+        name,
+        clr: light.colour.replace(/^#/, ''),
+        brt: light.brightness,
+        pat: light.pattern,
+        dur: light.timeout,
+        aud: sound.selectedFile || '',
+        vol: sound.volume,
+        rpt: sound.loops,
+      };
+      try {
+        await savePreset(preset);
+        if (window.appState) {
+          const idx = window.appState.presets.findIndex(p => p.name === name);
+          if (idx >= 0) window.appState.presets[idx] = preset;
+        }
+        currentPresetName = name;
+        renderPresetList();
+        showToast('Preset updated', 'success');
+      } catch (err) {
+        showToast('Failed to update preset', 'error');
+        console.error(err);
+      }
+      return;
+    }
+
     const deleteBtn = e.target.closest('.preset-delete');
     if (deleteBtn) {
       e.stopPropagation();
@@ -264,6 +373,7 @@ function wireEvents() {
 
     currentPresetName = name;
     renderPresetList();
+    renderSceneSummary();
 
     if (liveMode) {
       const dest = getDestination();
@@ -279,7 +389,6 @@ function wireEvents() {
       });
     } else {
       showToast('Preset loaded', 'success');
-      closeSheet();
     }
   });
 }
@@ -294,8 +403,25 @@ export function clearPresetHighlight() {
   renderPresetList();
 }
 
-export function openPresetsSheet() {
+export function openPresetsSheet(isRecallMode = false) {
+  recallMode = isRecallMode;
+
+  // Sections hidden in recall mode
+  ['preset-summary-section', 'preset-save-section', 'preset-live-section'].forEach(id => {
+    const node = document.getElementById(id);
+    if (node) node.hidden = isRecallMode;
+  });
+
   const toggle = document.getElementById('preset-live-toggle');
-  if (toggle) toggle.checked = liveMode;
+  if (toggle) {
+    if (isRecallMode) {
+      liveMode = true;
+      toggle.checked = true;
+    } else {
+      toggle.checked = liveMode;
+    }
+  }
+
+  if (!isRecallMode) renderSceneSummary();
   renderPresetList();
 }

@@ -145,7 +145,7 @@ export function openSheet(sheetId, options = {}) {
 
   // Run sheet-specific open logic
   if (sheetId === 'lighting') openLightingSheet();
-  else if (sheetId === 'presets') openPresetsSheet();
+  else if (sheetId === 'presets') openPresetsSheet(options.recallMode || false);
   // 'device' is opened via openDeviceSheet(scout) externally
 }
 
@@ -540,7 +540,7 @@ function wireTopBar() {
   });
 
   document.getElementById('btn-presets').addEventListener('click', () => {
-    openSheet('presets');
+    openSheet('presets', { recallMode: true });
   });
 
   // MQTT status buttons — show info view on click
