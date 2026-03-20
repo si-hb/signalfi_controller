@@ -5,7 +5,6 @@
 import { savePreset, deletePreset } from '../api.js';
 import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet, showToast } from '../app.js';
-import { roundGain } from '../utils.js';
 import { getLightingState, setLightingState } from './lighting.js';
 import { getSoundState, setSoundState } from './sound.js';
 
@@ -26,15 +25,18 @@ function buildSheet() {
   // Header
   const header = document.createElement('div');
   header.className = 'sheet-header';
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'sheet-title-group';
   const title = document.createElement('span');
   title.className = 'sheet-title';
   title.textContent = 'Presets';
+  titleGroup.appendChild(title);
   const closeBtn = document.createElement('button');
   closeBtn.className = 'sheet-close';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = '✕';
   closeBtn.addEventListener('click', closeSheet);
-  header.appendChild(title);
+  header.appendChild(titleGroup);
   header.appendChild(closeBtn);
   el.appendChild(header);
 
@@ -272,7 +274,6 @@ function wireEvents() {
         pattern: preset.pat,
         timeout: preset.dur,
         audio: preset.aud || null,
-        volume: roundGain(preset.vol),
         loops: preset.rpt,
         ...dest,
       });

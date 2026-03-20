@@ -207,13 +207,15 @@ function handleCommand(config, msg, broadcast) {
       // Accept both flat fields (from UI) and short-key payload sub-object
       payload = {
         act: 'ply',
-        vol: msg.volume  ?? p.vol ?? 0.5,
         rpt: msg.loops   ?? p.rpt ?? 0,
         clr: normaliseColour(msg.colour ?? p.clr),
         pat: msg.pattern ?? p.pat ?? 1,
         dur: (msg.timeout ?? p.dur ?? 10) * 1000,
         brt: msg.brightness ?? p.brt ?? 200,
       };
+      // Only include vol when explicitly provided — omitting it lets devices use their stored default
+      const vol = msg.volume ?? p.vol;
+      if (vol != null) payload.vol = vol;
       const aud = msg.audio ?? p.aud ?? '';
       if (aud) payload.aud = aud;
       break;

@@ -84,12 +84,18 @@ function buildSheet() {
   countEl.id = 'scene-selection-count';
   titleGroup.appendChild(title);
   titleGroup.appendChild(countEl);
+  const presetsHeaderBtn = document.createElement('button');
+  presetsHeaderBtn.className = 'sheet-close';
+  presetsHeaderBtn.id = 'scene-presets-btn';
+  presetsHeaderBtn.setAttribute('aria-label', 'Presets');
+  presetsHeaderBtn.textContent = '♡';
   const closeBtn = document.createElement('button');
   closeBtn.className = 'sheet-close';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = '✕';
   closeBtn.addEventListener('click', closeSheet);
   header.appendChild(titleGroup);
+  header.appendChild(presetsHeaderBtn);
   header.appendChild(closeBtn);
   el.appendChild(header);
 
@@ -318,10 +324,6 @@ function buildSheet() {
   // Footer
   const footer = document.createElement('div');
   footer.className = 'sheet-footer';
-  const presetsBtn = document.createElement('button');
-  presetsBtn.className = 'sheet-presets-btn cmd-btn';
-  presetsBtn.id = 'scene-presets-btn';
-  presetsBtn.textContent = '♡';
   const announceBtn = document.createElement('button');
   announceBtn.className = 'sheet-announce-btn cmd-btn';
   announceBtn.id = 'lighting-announce-btn';
@@ -330,7 +332,6 @@ function buildSheet() {
   stopBtn.className = 'sheet-stop-btn cmd-btn';
   stopBtn.id = 'lighting-stop-btn';
   stopBtn.textContent = 'Stop';
-  footer.appendChild(presetsBtn);
   footer.appendChild(announceBtn);
   footer.appendChild(stopBtn);
   el.appendChild(footer);
@@ -364,7 +365,7 @@ function renderLightingSheet() {
   const tRange = document.getElementById('lighting-timeout');
   const tValue = document.getElementById('lighting-timeout-value');
   if (tRange) tRange.value = state.timeout;
-  if (tValue) tValue.textContent = state.timeout + 's';
+  if (tValue) tValue.textContent = state.timeout === 0 ? '∞' : state.timeout + 's';
 }
 
 function wireEvents() {
@@ -510,7 +511,7 @@ function wireEvents() {
   const tRange = document.getElementById('lighting-timeout');
   tRange.addEventListener('input', () => {
     state.timeout = parseInt(tRange.value);
-    document.getElementById('lighting-timeout-value').textContent = state.timeout + 's';
+    document.getElementById('lighting-timeout-value').textContent = state.timeout === 0 ? '∞' : state.timeout + 's';
   });
 
   // ── Footer ────────────────────────────────────────────────────────────────────
@@ -536,7 +537,7 @@ function wireEvents() {
   });
 
   document.getElementById('scene-presets-btn').addEventListener('click', () => {
-    openSheet('presets');
+    openSheet('presets', { returnTo: 'lighting', keepVisible: 'lighting' });
   });
 }
 
@@ -549,7 +550,12 @@ function updateSelectionCount() {
   const el = document.getElementById('scene-selection-count');
   if (!el) return;
   const { broadcastMode, selectedMacs } = window.selectionState;
-  el.textContent = broadcastMode ? 'All Devices' : `${selectedMacs.size} Selected`;
+  if (broadcastMode) {
+    el.textContent = 'All Devices Selected';
+  } else {
+    const n = selectedMacs.size;
+    el.textContent = `${n} ${n === 1 ? 'Device' : 'Devices'} Selected`;
+  }
 }
 
 export function openLightingSheet() {

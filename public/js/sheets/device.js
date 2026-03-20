@@ -77,16 +77,19 @@ function buildSheet() {
   // Header (dynamic — filled on open)
   const header = document.createElement('div');
   header.className = 'sheet-header';
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'sheet-title-group';
   const title = document.createElement('span');
   title.className = 'sheet-title';
   title.id = 'device-sheet-title';
   title.textContent = 'Device';
+  titleGroup.appendChild(title);
   const closeBtn = document.createElement('button');
   closeBtn.className = 'sheet-close';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = '✕';
   closeBtn.addEventListener('click', () => advanceQueue());
-  header.appendChild(title);
+  header.appendChild(titleGroup);
   header.appendChild(closeBtn);
   el.appendChild(header);
 

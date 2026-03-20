@@ -12,6 +12,16 @@ import { initPresetsSheet, openPresetsSheet } from './sheets/presets.js';
 import { initDeviceSheet, openDeviceSheet, updateDeviceSheetForScout, onBackdropClose } from './sheets/device.js';
 import { fetchState, fetchAudio, setAuthToken as apiSetAuthToken, loadAuthToken } from './api.js';
 
+// ─── Render Scheduling ────────────────────────────────────────────────────────
+
+let _renderPending = false;
+
+export function scheduleRender() {
+  if (_renderPending) return;
+  _renderPending = true;
+  requestAnimationFrame(() => { _renderPending = false; renderDevices(); });
+}
+
 // ─── Authentication Setup ─────────────────────────────────────────────────────
 
 /**
@@ -109,14 +119,27 @@ export function showToast(message, type = 'info') {
 
 // ─── Sheet Management ─────────────────────────────────────────────────────────
 
-export function openSheet(sheetId) {
+let _returnSheetId = null;
+
+export function openSheet(sheetId, options = {}) {
+  _returnSheetId = options.returnTo || null;
+  const keepId = options.keepVisible || null;
   const overlay = document.getElementById('sheet-overlay');
-  const sheets = overlay.querySelectorAll('.sheet');
-  sheets.forEach(s => s.hidden = true);
+
+  overlay.querySelectorAll('.sheet').forEach(s => {
+    if (keepId && s.id === `sheet-${keepId}`) return; // leave visible underneath
+    s.hidden = true;
+    s.classList.remove('sheet--over');
+    s.classList.remove('sheet--dimmed');
+  });
 
   const sheet = document.getElementById(`sheet-${sheetId}`);
   if (!sheet) return;
   sheet.hidden = false;
+  if (keepId) {
+    sheet.classList.add('sheet--over');
+    document.getElementById(`sheet-${keepId}`).classList.add('sheet--dimmed');
+  }
   overlay.hidden = false;
 
   // Run sheet-specific open logic
@@ -127,8 +150,27 @@ export function openSheet(sheetId) {
 
 export function closeSheet() {
   const overlay = document.getElementById('sheet-overlay');
+  if (_returnSheetId) {
+    const returnTo = _returnSheetId;
+    _returnSheetId = null;
+    // If the return-to sheet is still visible (stacked mode), just hide the top sheet
+    const returnSheet = document.getElementById(`sheet-${returnTo}`);
+    if (returnSheet && !returnSheet.hidden) {
+      overlay.querySelectorAll('.sheet').forEach(s => {
+        if (s.id !== `sheet-${returnTo}`) { s.hidden = true; s.classList.remove('sheet--over'); }
+      });
+      returnSheet.classList.remove('sheet--dimmed');
+      return;
+    }
+    openSheet(returnTo);
+    return;
+  }
   overlay.hidden = true;
-  overlay.querySelectorAll('.sheet').forEach(s => s.hidden = true);
+  overlay.querySelectorAll('.sheet').forEach(s => {
+    s.hidden = true;
+    s.classList.remove('sheet--over');
+    s.classList.remove('sheet--dimmed');
+  });
 }
 
 // Close sheet when clicking backdrop
@@ -343,7 +385,7 @@ export function handleWsMessage(msg) {
         }
       }
 
-      if (needsDeviceRender) renderDevices();
+      if (needsDeviceRender) scheduleRender();
       renderSettings();
       renderInfo();
       if (msg.mqttOnline !== undefined) updateMqttIndicator(msg.mqttOnline ? 'connected' : 'disconnected');
@@ -381,7 +423,7 @@ export function handleWsMessage(msg) {
       if (nodeChanged) {
         // Node path changed — must fully re-render so the card moves to the correct group.
         // updateScoutCard only does in-place DOM updates and would leave the card in its old group.
-        renderDevices();
+        scheduleRender();
       } else {
         // Pure status transition — update in-place, skipping renderDevices() for idle transitions
         // to avoid resorting the list unnecessarily.

@@ -3,7 +3,7 @@
  */
 
 import { sendCommand } from '../ws.js';
-import { updateSelectionUI, showToast, openSheet } from '../app.js';
+import { updateSelectionUI, showToast, openSheet, scheduleRender } from '../app.js';
 import { openDeviceSheet } from '../sheets/device.js';
 
 const EXPAND_STORAGE_KEY = 'signalfi_expanded';
@@ -552,8 +552,9 @@ function updateAccordionCheckboxes() {
 export function updateScoutCard(mac, scout, allowFallback = true) {
   const card = document.querySelector(`.device-card[data-mac="${CSS.escape(mac)}"]`);
   if (!card) {
-    // Card may not be in current tree — full re-render (skipped for idle transitions to avoid resorting)
-    if (allowFallback) renderDevices();
+    // Card may not be in current tree — full re-render (skipped for idle transitions to avoid resorting).
+    // scheduleRender coalesces any concurrent WS updates into a single animation-frame render.
+    if (allowFallback) scheduleRender();
     return;
   }
 

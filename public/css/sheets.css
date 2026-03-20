@@ -182,13 +182,18 @@
   color: #fff;
 }
 
-/* Scene sheet footer: [♡] | Announce(flex:2) | Stop(flex:1) */
+/* Scene sheet footer: Announce(flex:2) | Stop(flex:1) */
 #sheet-lighting .sheet-footer .sheet-stop-btn {
   flex: 1;
 }
 
 #sheet-lighting .sheet-footer .sheet-announce-btn {
   flex: 2;
+}
+
+/* Scene header: gap between ♡ and ✕ */
+#sheet-lighting .sheet-header #scene-presets-btn {
+  margin-right: 4px;
 }
 
 /* Hide timeout when Sound tab is active */
@@ -204,6 +209,31 @@
 
 .timeout-row .sheet-section-label {
   margin-bottom: 8px;
+}
+
+/* Sheet stacked over another — positioned absolutely so the sheet below stays visible */
+.sheet--over {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: 2;
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
+}
+
+/* Sheet dimmed when another sheet is stacked on top of it */
+.sheet--dimmed {
+  position: relative;
+  pointer-events: none;
+}
+
+.sheet--dimmed::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  border-radius: inherit;
+  z-index: 1;
 }
 
 /* Tablet / desktop: center modal instead of bottom sheet */
