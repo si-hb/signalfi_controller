@@ -23,6 +23,7 @@ services:
       - "traefik.enable=true"
       - "traefik.http.routers.signalfi-https.rule=Host(`signalfi.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.signalfi-https.entrypoints=websecure"
+      - "traefik.http.routers.signalfi-https.middlewares=signalfi-ratelimit"
       - "traefik.http.routers.signalfi-https.service=signalfi"
       - "traefik.http.routers.signalfi-https.tls.certresolver=letsencrypt"
       - "traefik.http.routers.signalfi-http.rule=Host(`signalfi.apis.symphonyinteractive.ca`)"
@@ -30,6 +31,9 @@ services:
       - "traefik.http.routers.signalfi-http.middlewares=redirect-https"
       - "traefik.http.services.signalfi.loadbalancer.server.port=3000"
       - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
+      - "traefik.http.middlewares.signalfi-ratelimit.ratelimit.average=20"
+      - "traefik.http.middlewares.signalfi-ratelimit.ratelimit.burst=40"
+      - "traefik.http.middlewares.signalfi-ratelimit.ratelimit.period=1s"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/state"]
       interval: 30s
