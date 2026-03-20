@@ -911,6 +911,21 @@ select:disabled {
   opacity: 0.8;
 }
 
+.log-toggle-btn--danger {
+  color: var(--danger);
+}
+
+.log-toggle-btn--danger:active {
+  background: rgba(192,57,43,0.15);
+  border-color: var(--danger);
+}
+
+.log-toggle-btn--armed {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
 /* Entry list */
 .log-entry-list {
   font-family: var(--font-mono, ui-monospace, monospace);

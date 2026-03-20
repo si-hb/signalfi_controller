@@ -70,6 +70,12 @@
   background: var(--bg-raised);
 }
 
+.top-bar-btn--armed {
+  background: var(--danger) !important;
+  color: #fff !important;
+  border-radius: 10px;
+}
+
 /* Selection count */
 #selection-count {
   flex: 1;

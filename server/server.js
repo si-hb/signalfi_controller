@@ -509,6 +509,14 @@ async function main() {
 
       console.log(`[${ts()}] [WS] Command from ${remoteIp}: cmd=${msg.cmd}`);
 
+      if (msg.cmd === 'clearLog') {
+        if (_logStore) {
+          _logStore.clear();
+          console.log(`[${ts()}] [WS] Log cleared by ${remoteIp}`);
+        }
+        return;
+      }
+
       try {
         handleCommand(config, msg, broadcast);
       } catch (err) {

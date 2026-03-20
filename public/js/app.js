@@ -6,7 +6,7 @@ import { initWS, sendCommand, registerMessageHandler, setAuthToken as wsSetAuthT
 import { initDevicesView, renderDevices, updateScoutCard, setSearchTerm, toggleViewMode } from './views/devices.js';
 import { initSettingsView, renderSettings, updateStoreSection, initTheme } from './views/settings.js';
 import { initInfoView, renderInfo, renderInfoRow } from './views/info.js';
-import { initLogView, refreshLog, handleLogEntry } from './views/log.js';
+import { initLogView, refreshLog, handleLogEntry, handleLogClearTap } from './views/log.js';
 import { initLightingSheet, openLightingSheet } from './sheets/lighting.js';
 import { renderSoundSheet } from './sheets/sound.js';
 import { initPresetsSheet, openPresetsSheet } from './sheets/presets.js';
@@ -205,6 +205,8 @@ export function showView(viewName) {
 
   if (viewName === 'log') refreshLog();
 
+  const btnLogClear = document.getElementById('btn-log-clear');
+
   if (viewName !== 'devices') {
     // Show clean header on settings/info/log
     if (topBarDefault) topBarDefault.hidden = false;
@@ -219,6 +221,7 @@ export function showView(viewName) {
     if (btnSearch) btnSearch.hidden = true;
     if (btnViewToggle) btnViewToggle.hidden = true;
     if (btnIdentify) btnIdentify.hidden = true;
+    if (btnLogClear) btnLogClear.hidden = (viewName !== 'log');
   } else {
     const btnSelectAll = document.getElementById('btn-select-all');
     const btnSearch = document.getElementById('btn-search');
@@ -228,6 +231,7 @@ export function showView(viewName) {
     if (btnSearch) btnSearch.hidden = false;
     if (btnViewToggle) btnViewToggle.hidden = false;
     if (btnIdentify) btnIdentify.hidden = false;
+    if (btnLogClear) btnLogClear.hidden = true;
     updateSelectionUI();
   }
 }
@@ -547,6 +551,11 @@ function wireTopBar() {
   ['btn-mqtt-status', 'btn-mqtt-status-sel'].forEach(id => {
     document.getElementById(id).addEventListener('click', () => showView('info'));
   });
+
+  const btnLogClear = document.getElementById('btn-log-clear');
+  if (btnLogClear) {
+    btnLogClear.addEventListener('click', () => handleLogClearTap(btnLogClear));
+  }
 }
 
 // ─── Wire Tab Navigation ─────────────────────────────────────────────────────

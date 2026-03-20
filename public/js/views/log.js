@@ -2,6 +2,8 @@
  * Log view — live MQTT message and system event log
  */
 
+import { sendCommand } from '../ws.js';
+
 const LOG_PAGE_SIZE = 200;
 
 // ─── Payload expansion maps ───────────────────────────────────────────────────
@@ -498,6 +500,7 @@ function wireFilterBar() {
     fetchLog(false);
   });
 
+
   document.getElementById('log-load-more').addEventListener('click', () => {
     fetchLog(true);
   });
@@ -586,15 +589,15 @@ function buildLogView() {
   refreshBtn.textContent = '↻';
   refreshBtn.title = 'Refresh';
 
-  const clearBtn = document.createElement('button');
-  clearBtn.id = 'log-clear-btn';
-  clearBtn.className = 'log-toggle-btn';
-  clearBtn.textContent = '✕';
-  clearBtn.title = 'Clear filters';
+  const clearFiltersBtn = document.createElement('button');
+  clearFiltersBtn.id = 'log-clear-btn';
+  clearFiltersBtn.className = 'log-toggle-btn';
+  clearFiltersBtn.textContent = '✕';
+  clearFiltersBtn.title = 'Clear filters';
 
   toggleRow.appendChild(sortBtn);
   toggleRow.appendChild(refreshBtn);
-  toggleRow.appendChild(clearBtn);
+  toggleRow.appendChild(clearFiltersBtn);
   filterBar.appendChild(toggleRow);
   view.appendChild(filterBar);
 
@@ -628,4 +631,32 @@ export function initLogView() {
 
 export async function refreshLog() {
   await fetchLog(false);
+}
+
+let _clearPending = false;
+let _clearTimer   = null;
+
+export function handleLogClearTap(btn) {
+  if (!_clearPending) {
+    _clearPending = true;
+    btn.textContent = 'OK?';
+    btn.classList.add('top-bar-btn--armed');
+    _clearTimer = setTimeout(() => {
+      _clearPending = false;
+      btn.textContent = '🗑';
+      btn.classList.remove('top-bar-btn--armed');
+    }, 3000);
+    return;
+  }
+
+  clearTimeout(_clearTimer);
+  _clearPending = false;
+  btn.textContent = '🗑';
+  btn.classList.remove('top-bar-btn--armed');
+
+  logEntries = [];
+  logOffset  = 0;
+  renderLogList();
+
+  sendCommand({ cmd: 'clearLog' });
 }

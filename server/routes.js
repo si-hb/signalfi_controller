@@ -149,6 +149,24 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     }
   });
 
+  // -------------------------------------------------------------------------
+  // POST /api/log/clear — delete all log entries
+  // -------------------------------------------------------------------------
+  router.post('/log/clear', (_req, res) => {
+    if (!logStore) {
+      console.warn('[ROUTES] POST /log/clear — logStore not available');
+      return res.json({ ok: true });
+    }
+    try {
+      logStore.clear();
+      console.log('[ROUTES] Log cleared');
+      res.json({ ok: true });
+    } catch (err) {
+      console.error('[ROUTES] POST /log/clear error:', err.message);
+      res.status(500).json({ error: 'Failed to clear log' });
+    }
+  });
+
   return router;
 }
 

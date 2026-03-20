@@ -154,6 +154,21 @@ class LogStore {
     return entries.slice(offset, offset + limit);
   }
 
+  /**
+   * Delete all log entries.
+   */
+  clear() {
+    if (this._db) {
+      try {
+        this._db.prepare('DELETE FROM log').run();
+      } catch (err) {
+        console.error('[LOGGER] DB clear error:', err.message);
+      }
+    } else {
+      this._entries = [];
+    }
+  }
+
   close() {
     if (this._db) {
       try { this._db.close(); } catch {}
