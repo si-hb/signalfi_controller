@@ -140,6 +140,7 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     const offset     = req.query.offset ? parseInt(req.query.offset, 10) : 0;
 
     try {
+      res.set('Cache-Control', 'no-store');
       const entries = logStore.query({ mac, node, directions, categories, sort, limit, offset });
       res.json({ entries });
     } catch (err) {

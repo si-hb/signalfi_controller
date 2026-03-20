@@ -137,6 +137,7 @@ function buildQueryString() {
   params.set('sort',  logFilters.sort);
   params.set('limit', String(LOG_PAGE_SIZE));
   params.set('offset', String(logOffset));
+  params.set('_', Date.now());  // cache-buster — prevents proxy caching
 
   return params.toString();
 }
@@ -346,7 +347,14 @@ async function fetchLog(append = false) {
   const qs = buildQueryString();
   if (!qs) {
     logEntries = [];
-    renderLogList();
+    const list = document.getElementById('log-entry-list');
+    if (list) {
+      list.innerHTML = '';
+      const msg = document.createElement('div');
+      msg.className = 'log-empty';
+      msg.textContent = 'Enable at least one category filter to view log entries.';
+      list.appendChild(msg);
+    }
     return;
   }
 
