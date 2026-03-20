@@ -215,3 +215,33 @@
     max-width: 560px;
   }
 }
+
+/* Configure sheet: full-height on mobile so tab bar and footer never jump */
+@media (max-width: 767px) {
+  #sheet-lighting {
+    height: 100dvh;
+    max-height: 100dvh;
+    border-radius: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Active tab panel fills remaining space and scrolls internally */
+  #sheet-lighting .sheet-tab-panel.active {
+    flex: 1;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    min-height: 0;
+  }
+
+  /* Timeout row and footer stay pinned at the bottom */
+  #sheet-lighting .timeout-row,
+  #sheet-lighting .sheet-footer {
+    flex-shrink: 0;
+  }
+
+  #sheet-lighting .sheet-footer {
+    position: static;
+  }
+}

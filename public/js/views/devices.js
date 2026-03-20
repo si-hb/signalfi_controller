@@ -213,30 +213,29 @@ function makeDeviceCard(scout) {
   card.appendChild(iconRow);
   card.appendChild(cardBody);
 
-  // Click: select or identify; long-press: open device detail
-  let longPressTimer = null;
-  let wasLongPress = false;
+  // Corner: check mark (when selected) + info button
+  const corner = document.createElement('div');
+  corner.className = 'card-corner';
 
-  card.addEventListener('pointerdown', () => {
-    wasLongPress = false;
-    longPressTimer = setTimeout(() => {
-      longPressTimer = null;
-      wasLongPress = true;
-      openSheet('device');
-      openDeviceSheet(scout);
-    }, 600);
+  const checkEl = document.createElement('span');
+  checkEl.className = 'card-check';
+  checkEl.textContent = '✓';
+
+  const infoBtn = document.createElement('button');
+  infoBtn.className = 'card-info-btn';
+  infoBtn.setAttribute('aria-label', 'Device info');
+  infoBtn.textContent = 'ⓘ';
+  infoBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    openSheet('device');
+    openDeviceSheet(scout);
   });
 
-  card.addEventListener('pointerup', () => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-  });
-
-  card.addEventListener('pointermove', () => {
-    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-  });
+  corner.appendChild(checkEl);
+  corner.appendChild(infoBtn);
+  card.appendChild(corner);
 
   card.addEventListener('click', () => {
-    if (wasLongPress) { wasLongPress = false; return; }
     if (card.classList.contains('is-offline')) return;
 
     if (window.selectionState.identifyMode) {

@@ -7,7 +7,7 @@ import { initDevicesView, renderDevices, updateScoutCard, setSearchTerm, toggleV
 import { initSettingsView, renderSettings, updateStoreSection, initTheme } from './views/settings.js';
 import { initInfoView, renderInfo, renderInfoRow } from './views/info.js';
 import { initLightingSheet, openLightingSheet } from './sheets/lighting.js';
-import { initSoundSheet, openSoundSheet, renderSoundSheet } from './sheets/sound.js';
+import { renderSoundSheet } from './sheets/sound.js';
 import { initPresetsSheet, openPresetsSheet } from './sheets/presets.js';
 import { initDeviceSheet, openDeviceSheet, updateDeviceSheetForScout, onBackdropClose } from './sheets/device.js';
 import { fetchState, fetchAudio, setAuthToken as apiSetAuthToken, loadAuthToken } from './api.js';
@@ -121,7 +121,6 @@ export function openSheet(sheetId) {
 
   // Run sheet-specific open logic
   if (sheetId === 'lighting') openLightingSheet();
-  else if (sheetId === 'sound') openSoundSheet();
   else if (sheetId === 'presets') openPresetsSheet();
   // 'device' is opened via openDeviceSheet(scout) externally
 }
@@ -250,7 +249,14 @@ export function getDestination() {
 
   const scouts = (window.appState && window.appState.scouts) || [];
 
-  // Collect all ancestor group paths from the selected scouts' node paths.
+  // Rule 1: if every online device is selected → broadcast
+  const onlineScouts = scouts.filter(s => s.status && s.status !== 'offline');
+  if (onlineScouts.length > 0 && onlineScouts.length === macs.length &&
+      onlineScouts.every(s => sel.selectedMacs.has(s.mac))) {
+    return { destination: 'broadcast', target: null };
+  }
+
+  // Rule 2: check group paths — collect all ancestor group paths from selected scouts.
   // In the tree, a device's node field includes the device-name as the last segment,
   // so group paths are formed by all prefixes up to (but not including) the last segment.
   const candidatePaths = new Set();
@@ -263,8 +269,8 @@ export function getDestination() {
     }
   }
 
-  // From most-specific (longest) to least-specific, find a group path whose online
-  // members exactly match the selected set.
+  // Rule 2 cont: from most-specific (longest) to least-specific, find a group path
+  // whose online members exactly match the selected set.
   const sortedPaths = [...candidatePaths].sort((a, b) => b.length - a.length);
   for (const path of sortedPaths) {
     const groupOnlineMacs = scouts
@@ -276,6 +282,7 @@ export function getDestination() {
     }
   }
 
+  // Rule 3: individual MACs
   return { destination: 'selected', target: macs };
 }
 
@@ -508,7 +515,6 @@ function wireTabNav() {
 
 function wireActionBar() {
   document.getElementById('btn-lighting').addEventListener('click', () => openSheet('lighting'));
-  document.getElementById('btn-sound').addEventListener('click', () => openSheet('sound'));
 
   document.getElementById('btn-announce').addEventListener('click', () => {
     Promise.all([
@@ -573,7 +579,6 @@ async function init() {
 
   // Initialize sheets (build DOM)
   initLightingSheet();
-  initSoundSheet();
   initPresetsSheet();
   initDeviceSheet(openSheet);
 

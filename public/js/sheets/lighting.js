@@ -1,15 +1,11 @@
 /**
- * Lighting sheet — colour, patterns, timeout
+ * Configure sheet — colour, patterns, timeout, sound
  */
 
 import { sendCommand } from '../ws.js';
-import { getDestination, closeSheet, showToast } from '../app.js';
-import { roundGain } from '../utils.js';
-
-function throttle(fn, ms) {
-  let last = 0;
-  return (...args) => { const now = Date.now(); if (now - last >= ms) { last = now; fn(...args); } };
-}
+import { getDestination, closeSheet } from '../app.js';
+import { roundGain, sliderToGain, gainToSlider, throttle } from '../utils.js';
+import { getSoundState, setSoundState, renderSoundSheet } from './sound.js';
 
 // Module-level state for current lighting settings
 const state = {
@@ -53,14 +49,6 @@ const PATTERNS = [
   { id: 12, name: 'Down', icon: '↓' },
 ];
 
-function hexToRgb(hex) {
-  const clean = hex.replace('#', '');
-  const r = parseInt(clean.slice(0, 2), 16);
-  const g = parseInt(clean.slice(2, 4), 16);
-  const b = parseInt(clean.slice(4, 6), 16);
-  return { r, g, b };
-}
-
 function isValidHex(str) {
   return /^#?[0-9a-fA-F]{6}$/.test(str);
 }
@@ -85,7 +73,7 @@ function buildSheet() {
   header.className = 'sheet-header';
   const title = document.createElement('span');
   title.className = 'sheet-title';
-  title.textContent = 'Lighting';
+  title.textContent = 'Configure';
   const closeBtn = document.createElement('button');
   closeBtn.className = 'sheet-close';
   closeBtn.setAttribute('aria-label', 'Close');
@@ -98,7 +86,7 @@ function buildSheet() {
   // Tabs
   const tabBar = document.createElement('div');
   tabBar.className = 'sheet-tabs';
-  ['Color', 'Patterns'].forEach((label, i) => {
+  ['Color', 'Patterns', 'Sound'].forEach((label, i) => {
     const tab = document.createElement('button');
     tab.className = 'sheet-tab' + (i === 0 ? ' active' : '');
     tab.textContent = label;
@@ -107,7 +95,7 @@ function buildSheet() {
   });
   el.appendChild(tabBar);
 
-  // Color panel
+  // ── Color panel ──────────────────────────────────────────────────────────────
   const colorPanel = document.createElement('div');
   colorPanel.className = 'sheet-tab-panel active';
   colorPanel.dataset.panel = 'color';
@@ -184,7 +172,7 @@ function buildSheet() {
 
   el.appendChild(colorPanel);
 
-  // Patterns panel
+  // ── Patterns panel ───────────────────────────────────────────────────────────
   const patternsPanel = document.createElement('div');
   patternsPanel.className = 'sheet-tab-panel';
   patternsPanel.dataset.panel = 'patterns';
@@ -209,7 +197,85 @@ function buildSheet() {
   patternsPanel.appendChild(patternsBody);
   el.appendChild(patternsPanel);
 
-  // Timeout section
+  // ── Sound panel ──────────────────────────────────────────────────────────────
+  const soundPanel = document.createElement('div');
+  soundPanel.className = 'sheet-tab-panel';
+  soundPanel.dataset.panel = 'sound';
+  const soundBody = document.createElement('div');
+  soundBody.className = 'sheet-body';
+
+  // Audio file list
+  const audioSection = document.createElement('div');
+  audioSection.className = 'sheet-section';
+  const audioLabel = document.createElement('div');
+  audioLabel.className = 'sheet-section-label';
+  audioLabel.textContent = 'Audio File';
+  const audioList = document.createElement('ul');
+  audioList.className = 'audio-list';
+  audioList.id = 'sound-audio-list';
+  audioSection.appendChild(audioLabel);
+  audioSection.appendChild(audioList);
+  soundBody.appendChild(audioSection);
+
+  // Volume slider
+  const volumeSection = document.createElement('div');
+  volumeSection.className = 'sheet-section';
+  volumeSection.id = 'sound-volume-section';
+  const volumeLabel = document.createElement('div');
+  volumeLabel.className = 'sheet-section-label';
+  volumeLabel.textContent = 'Volume';
+  const volSliderRow = document.createElement('div');
+  volSliderRow.className = 'slider-row';
+  const volSLabel = document.createElement('label');
+  volSLabel.textContent = 'Level';
+  const volSlider = document.createElement('input');
+  volSlider.type = 'range';
+  volSlider.id = 'sound-volume';
+  volSlider.min = '0';
+  volSlider.max = '100';
+  const volValue = document.createElement('span');
+  volValue.className = 'slider-value';
+  volValue.id = 'sound-volume-value';
+  volSliderRow.appendChild(volSLabel);
+  volSliderRow.appendChild(volSlider);
+  volSliderRow.appendChild(volValue);
+  volumeSection.appendChild(volumeLabel);
+  volumeSection.appendChild(volSliderRow);
+  soundBody.appendChild(volumeSection);
+
+  // Loops stepper
+  const loopsSection = document.createElement('div');
+  loopsSection.className = 'sheet-section';
+  loopsSection.id = 'sound-loops-section';
+  const loopsLabel = document.createElement('div');
+  loopsLabel.className = 'sheet-section-label';
+  loopsLabel.textContent = 'Loops';
+  const stepper = document.createElement('div');
+  stepper.className = 'stepper';
+  const minusBtn = document.createElement('button');
+  minusBtn.className = 'stepper-btn';
+  minusBtn.id = 'sound-loops-minus';
+  minusBtn.setAttribute('aria-label', 'Decrease loops');
+  minusBtn.textContent = '−';
+  const loopsValue = document.createElement('span');
+  loopsValue.className = 'stepper-value';
+  loopsValue.id = 'sound-loops-value';
+  const plusBtn = document.createElement('button');
+  plusBtn.className = 'stepper-btn';
+  plusBtn.id = 'sound-loops-plus';
+  plusBtn.setAttribute('aria-label', 'Increase loops');
+  plusBtn.textContent = '+';
+  stepper.appendChild(minusBtn);
+  stepper.appendChild(loopsValue);
+  stepper.appendChild(plusBtn);
+  loopsSection.appendChild(loopsLabel);
+  loopsSection.appendChild(stepper);
+  soundBody.appendChild(loopsSection);
+
+  soundPanel.appendChild(soundBody);
+  el.appendChild(soundPanel);
+
+  // ── Timeout row (shared footer section above footer) ─────────────────────────
   const timeoutRow = document.createElement('div');
   timeoutRow.className = 'timeout-row';
   const timeoutLabel = document.createElement('div');
@@ -295,6 +361,8 @@ function wireEvents() {
     });
   });
 
+  // ── Color tab ─────────────────────────────────────────────────────────────────
+
   // Swatches
   el.querySelectorAll('.swatch').forEach(sw => {
     sw.addEventListener('click', () => {
@@ -323,7 +391,6 @@ function wireEvents() {
     if (isValidHex(val)) {
       state.colour = normalizeHex(val);
       picker.value = state.colour;
-      // Don't trigger commands while typing
     }
   });
   hexIn.addEventListener('blur', () => {
@@ -340,7 +407,7 @@ function wireEvents() {
     if (e.key === 'Enter') hexIn.blur();
   });
 
-  // Brightness slider — live throttled send
+  // Brightness slider
   const bSlider = document.getElementById('lighting-brightness');
   const sendBrightness = throttle(() => {
     sendCommand({ cmd: 'setBrightness', brightness: state.brightness, ...getDestination() });
@@ -351,7 +418,8 @@ function wireEvents() {
     sendBrightness();
   });
 
-  // Pattern buttons
+  // ── Patterns tab ──────────────────────────────────────────────────────────────
+
   el.querySelectorAll('.pattern-btn').forEach(btn => {
     btn.addEventListener('click', () => {
       state.pattern = parseInt(btn.dataset.pattern);
@@ -361,34 +429,66 @@ function wireEvents() {
     });
   });
 
-  // Timeout slider
+  // ── Sound tab ─────────────────────────────────────────────────────────────────
+
+  // Audio file list
+  document.getElementById('sound-audio-list').addEventListener('click', (e) => {
+    const item = e.target.closest('.audio-item');
+    if (!item) return;
+    setSoundState({ selectedFile: item.dataset.file || null });
+  });
+
+  // Volume slider
+  const sVolSlider = document.getElementById('sound-volume');
+  const sendVolume = throttle(() => {
+    const snd = getSoundState();
+    sendCommand({ cmd: 'setVolume', volume: roundGain(snd.volume), ...getDestination() });
+  }, 100);
+  sVolSlider.addEventListener('input', () => {
+    const gain = sliderToGain(parseInt(sVolSlider.value));
+    setSoundState({ volume: gain });
+    if (window.appState) window.appState.defaultVolume = gain;
+    const volEl = document.getElementById('store-vol-display');
+    if (volEl) volEl.textContent = sVolSlider.value + '%';
+    sendVolume();
+  });
+
+  // Loops stepper
+  document.getElementById('sound-loops-minus').addEventListener('click', () => {
+    const snd = getSoundState();
+    if (snd.loops > 0) setSoundState({ loops: snd.loops - 1 });
+  });
+  document.getElementById('sound-loops-plus').addEventListener('click', () => {
+    const snd = getSoundState();
+    if (snd.loops < 10) setSoundState({ loops: snd.loops + 1 });
+  });
+
+  // ── Timeout ───────────────────────────────────────────────────────────────────
+
   const tRange = document.getElementById('lighting-timeout');
   tRange.addEventListener('input', () => {
     state.timeout = parseInt(tRange.value);
     document.getElementById('lighting-timeout-value').textContent = state.timeout + 's';
   });
 
-  // Announce button
+  // ── Footer ────────────────────────────────────────────────────────────────────
+
   document.getElementById('lighting-announce-btn').addEventListener('click', () => {
     const dest = getDestination();
-    // Import sound state for combined announce
-    import('./sound.js').then(({ getSoundState }) => {
-      const sound = getSoundState();
-      sendCommand({
-        cmd: 'announce',
-        colour: state.colour,
-        brightness: state.brightness,
-        pattern: state.pattern,
-        timeout: state.timeout,
-        audio: sound.selectedFile,
-        volume: roundGain(sound.volume),
-        loops: sound.loops,
-        ...dest,
-      });
+    const sound = getSoundState();
+    sendCommand({
+      cmd: 'announce',
+      colour: state.colour,
+      brightness: state.brightness,
+      pattern: state.pattern,
+      timeout: state.timeout,
+      audio: sound.selectedFile,
+      volume: roundGain(sound.volume),
+      loops: sound.loops,
+      ...dest,
     });
   });
 
-  // Stop button
   document.getElementById('lighting-stop-btn').addEventListener('click', () => {
     sendCommand({ cmd: 'stop', ...getDestination() });
   });
@@ -400,13 +500,24 @@ export function initLightingSheet() {
 }
 
 export function openLightingSheet() {
-  // Populate from app state if available
   const settings = window.appState && window.appState.settings;
   if (settings) {
     if (settings.colour) state.colour = settings.colour;
     if (settings.brightness !== undefined) state.brightness = settings.brightness;
     if (settings.pattern !== undefined) state.pattern = settings.pattern;
     if (settings.timeout !== undefined) state.timeout = settings.timeout;
+
+    // Load sound settings
+    const soundUpdates = {};
+    if (settings.audio !== undefined) soundUpdates.selectedFile = settings.audio;
+    if (settings.volume !== undefined) soundUpdates.volume = settings.volume;
+    if (settings.loops !== undefined) soundUpdates.loops = settings.loops;
+    if (Object.keys(soundUpdates).length > 0) setSoundState(soundUpdates);
   }
   renderLightingSheet();
+  renderSoundSheet();
+
+  // Scroll selected audio file into view if sound tab was previously open
+  const selected = document.querySelector('#sound-audio-list .audio-item.selected');
+  if (selected) selected.scrollIntoView({ block: 'nearest' });
 }

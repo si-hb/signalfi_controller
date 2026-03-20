@@ -201,6 +201,7 @@
 }
 
 .action-btn-announce {
+  flex: 2;
   background: var(--accent);
   border-color: var(--accent);
   color: #000;

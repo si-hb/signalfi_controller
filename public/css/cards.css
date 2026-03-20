@@ -180,14 +180,42 @@
   background: var(--bg-selected);
 }
 
-.device-card.selected::after {
-  content: "✓";
+.card-corner {
   position: absolute;
   top: 6px;
   right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.card-check {
+  display: none;
   color: var(--accent-bright);
   font-size: 14px;
   font-weight: 700;
+  line-height: 1;
+}
+
+.device-card.selected .card-check {
+  display: block;
+}
+
+.card-info-btn {
+  font-size: 15px;
+  color: var(--text-muted);
+  line-height: 1;
+  padding: 0;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.card-info-btn:active {
+  color: var(--accent-bright);
 }
 
 .device-card:active {
@@ -334,7 +362,7 @@
 }
 
 
-.device-list.list-mode .device-card.selected::after {
+.device-list.list-mode .card-corner {
   top: 50%;
   transform: translateY(-50%);
   right: 16px;
