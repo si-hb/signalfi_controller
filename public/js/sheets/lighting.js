@@ -4,7 +4,7 @@
 
 import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet } from '../app.js';
-import { roundGain, sliderToGain, gainToSlider, throttle } from '../utils.js';
+import { roundGain, sliderToGain, throttle } from '../utils.js';
 import { getSoundState, setSoundState, renderSoundSheet } from './sound.js';
 
 // Module-level state for current lighting settings
@@ -358,6 +358,7 @@ function wireEvents() {
       tab.classList.add('active');
       const panel = el.querySelector(`.sheet-tab-panel[data-panel="${tab.dataset.tab}"]`);
       if (panel) panel.classList.add('active');
+      el.dataset.activeTab = tab.dataset.tab;
     });
   });
 

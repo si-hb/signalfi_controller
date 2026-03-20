@@ -46,7 +46,7 @@ function buildSheet() {
   saveSection.className = 'sheet-section';
   const saveLabel = document.createElement('div');
   saveLabel.className = 'sheet-section-label';
-  saveLabel.textContent = 'Save Current Settings';
+  saveLabel.textContent = 'Save Current Configuration';
   const inputRow = document.createElement('div');
   inputRow.className = 'input-row';
   const nameInput = document.createElement('input');

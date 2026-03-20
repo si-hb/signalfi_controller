@@ -150,6 +150,11 @@
   color: #fff;
 }
 
+/* Hide timeout when Sound tab is active */
+#sheet-lighting[data-active-tab="sound"] .timeout-row {
+  display: none;
+}
+
 /* Timeout row */
 .timeout-row {
   padding: 12px 16px;
