@@ -3,7 +3,7 @@
  * DOM is built and wired inside the Configure sheet (lighting.js).
  */
 
-import { gainToSlider } from '../utils.js';
+import { gainToSlider, sliderToDb } from '../utils.js';
 
 const state = {
   selectedFile: null,
@@ -71,8 +71,11 @@ export function renderSoundSheet() {
   renderAudioList();
   const volSlider = document.getElementById('sound-volume');
   const volValue = document.getElementById('sound-volume-value');
-  if (volSlider) volSlider.value = gainToSlider(state.volume);
-  if (volValue) volValue.textContent = gainToSlider(state.volume) + '%';
+  const sliderPos = gainToSlider(state.volume);
+  if (volSlider) volSlider.value = sliderPos;
+  if (volValue && document.activeElement !== volValue) {
+    volValue.value = sliderToDb(sliderPos);
+  }
   const loopsValue = document.getElementById('sound-loops-value');
   if (loopsValue) loopsValue.textContent = state.loops;
   updateControlsDisabled();

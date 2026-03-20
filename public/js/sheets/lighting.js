@@ -3,8 +3,8 @@
  */
 
 import { sendCommand } from '../ws.js';
-import { getDestination, closeSheet } from '../app.js';
-import { roundGain, sliderToGain, throttle } from '../utils.js';
+import { getDestination, closeSheet, openSheet } from '../app.js';
+import { roundGain, sliderToGain, sliderToDb, dbToSlider, throttle } from '../utils.js';
 import { getSoundState, setSoundState, renderSoundSheet } from './sound.js';
 
 // Module-level state for current lighting settings
@@ -25,12 +25,15 @@ export function setLightingState(newState) {
 }
 
 const SWATCHES = [
-  { name: 'white', hex: '#ffffff', label: 'White' },
-  { name: 'red', hex: '#e53935', label: 'Red' },
-  { name: 'orange', hex: '#fb8c00', label: 'Orange' },
-  { name: 'green', hex: '#43a047', label: 'Green' },
-  { name: 'blue', hex: '#1e88e5', label: 'Blue' },
-  { name: 'cyan', hex: '#0eb8c0', label: 'Cyan' },
+  { name: 'white',   hex: '#ffffff', label: 'White' },
+  { name: 'red',     hex: '#ff0000', label: 'Red' },
+  { name: 'scarlet', hex: '#e53935', label: 'Scarlet' },
+  { name: 'orange',  hex: '#fb8c00', label: 'Orange' },
+  { name: 'green',   hex: '#00ff00', label: 'Green' },
+  { name: 'emerald', hex: '#43a047', label: 'Emerald' },
+  { name: 'blue',    hex: '#0000ff', label: 'Blue' },
+  { name: 'cobalt',  hex: '#1e88e5', label: 'Cobalt' },
+  { name: 'cyan',    hex: '#0eb8c0', label: 'Cyan' },
 ];
 
 const PATTERNS = [
@@ -71,15 +74,22 @@ function buildSheet() {
   // Header
   const header = document.createElement('div');
   header.className = 'sheet-header';
+  const titleGroup = document.createElement('div');
+  titleGroup.className = 'sheet-title-group';
   const title = document.createElement('span');
   title.className = 'sheet-title';
-  title.textContent = 'Configure';
+  title.textContent = 'Scene';
+  const countEl = document.createElement('span');
+  countEl.className = 'sheet-subtitle';
+  countEl.id = 'scene-selection-count';
+  titleGroup.appendChild(title);
+  titleGroup.appendChild(countEl);
   const closeBtn = document.createElement('button');
   closeBtn.className = 'sheet-close';
   closeBtn.setAttribute('aria-label', 'Close');
   closeBtn.textContent = '✕';
   closeBtn.addEventListener('click', closeSheet);
-  header.appendChild(title);
+  header.appendChild(titleGroup);
   header.appendChild(closeBtn);
   el.appendChild(header);
 
@@ -233,12 +243,17 @@ function buildSheet() {
   volSlider.id = 'sound-volume';
   volSlider.min = '0';
   volSlider.max = '100';
-  const volValue = document.createElement('span');
-  volValue.className = 'slider-value';
-  volValue.id = 'sound-volume-value';
+  const volDbInput = document.createElement('input');
+  volDbInput.type = 'text';
+  volDbInput.className = 'db-input';
+  volDbInput.id = 'sound-volume-value';
+  const volDbUnit = document.createElement('span');
+  volDbUnit.className = 'db-unit';
+  volDbUnit.textContent = 'dB';
   volSliderRow.appendChild(volSLabel);
   volSliderRow.appendChild(volSlider);
-  volSliderRow.appendChild(volValue);
+  volSliderRow.appendChild(volDbInput);
+  volSliderRow.appendChild(volDbUnit);
   volumeSection.appendChild(volumeLabel);
   volumeSection.appendChild(volSliderRow);
   soundBody.appendChild(volumeSection);
@@ -303,6 +318,10 @@ function buildSheet() {
   // Footer
   const footer = document.createElement('div');
   footer.className = 'sheet-footer';
+  const presetsBtn = document.createElement('button');
+  presetsBtn.className = 'sheet-presets-btn cmd-btn';
+  presetsBtn.id = 'scene-presets-btn';
+  presetsBtn.textContent = '♡';
   const announceBtn = document.createElement('button');
   announceBtn.className = 'sheet-announce-btn cmd-btn';
   announceBtn.id = 'lighting-announce-btn';
@@ -311,6 +330,7 @@ function buildSheet() {
   stopBtn.className = 'sheet-stop-btn cmd-btn';
   stopBtn.id = 'lighting-stop-btn';
   stopBtn.textContent = 'Stop';
+  footer.appendChild(presetsBtn);
   footer.appendChild(announceBtn);
   footer.appendChild(stopBtn);
   el.appendChild(footer);
@@ -450,7 +470,7 @@ function wireEvents() {
     setSoundState({ volume: gain });
     if (window.appState) window.appState.defaultVolume = gain;
     const volEl = document.getElementById('store-vol-display');
-    if (volEl) volEl.textContent = sVolSlider.value + '%';
+    if (volEl) volEl.textContent = sliderToDb(parseInt(sVolSlider.value)) + ' dB';
     sendVolume();
   });
 
@@ -462,6 +482,27 @@ function wireEvents() {
   document.getElementById('sound-loops-plus').addEventListener('click', () => {
     const snd = getSoundState();
     if (snd.loops < 10) setSoundState({ loops: snd.loops + 1 });
+  });
+
+  // Sound volume dB text input
+  const sVolDbInput = document.getElementById('sound-volume-value');
+  const applySoundVolDb = () => {
+    const db = parseFloat(sVolDbInput.value);
+    if (!isNaN(db)) {
+      const slider = dbToSlider(Math.max(-40, Math.min(0, db)));
+      sVolSlider.value = slider;
+      const gain = sliderToGain(slider);
+      setSoundState({ volume: gain });
+      if (window.appState) window.appState.defaultVolume = gain;
+      sendVolume();
+    } else {
+      renderSoundSheet();
+    }
+  };
+  sVolDbInput.addEventListener('blur', applySoundVolDb);
+  sVolDbInput.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') sVolDbInput.blur();
+    else if (e.key === 'Escape') { renderSoundSheet(); sVolDbInput.blur(); }
   });
 
   // ── Timeout ───────────────────────────────────────────────────────────────────
@@ -493,11 +534,22 @@ function wireEvents() {
   document.getElementById('lighting-stop-btn').addEventListener('click', () => {
     sendCommand({ cmd: 'stop', ...getDestination() });
   });
+
+  document.getElementById('scene-presets-btn').addEventListener('click', () => {
+    openSheet('presets');
+  });
 }
 
 export function initLightingSheet() {
   buildSheet();
   wireEvents();
+}
+
+function updateSelectionCount() {
+  const el = document.getElementById('scene-selection-count');
+  if (!el) return;
+  const { broadcastMode, selectedMacs } = window.selectionState;
+  el.textContent = broadcastMode ? 'All Devices' : `${selectedMacs.size} Selected`;
 }
 
 export function openLightingSheet() {
@@ -517,6 +569,7 @@ export function openLightingSheet() {
   }
   renderLightingSheet();
   renderSoundSheet();
+  updateSelectionCount();
 
   // Scroll selected audio file into view if sound tab was previously open
   const selected = document.querySelector('#sound-audio-list .audio-item.selected');

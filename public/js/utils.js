@@ -57,3 +57,21 @@ export function gainToSlider(gain) {
   if (gain >= 1) return 100;
   return Math.round((Math.log10(gain) / 2 + 1) * 100);
 }
+
+/** Convert a dB value back to a slider position (0–100). */
+export function dbToSlider(db) {
+  const s = (db / 40 + 1) * 100;
+  return Math.max(0, Math.min(100, Math.round(s)));
+}
+
+/** Convert a slider position (0–100) to a dB string, e.g. "-20.0" or "-∞". */
+export function sliderToDb(slider) {
+  if (slider <= 0) return '-∞';
+  return (40 * (slider / 100 - 1)).toFixed(1);
+}
+
+/** Convert a linear gain (0.0–1.0) to a dB string, e.g. "-20.0" or "-∞". */
+export function gainToDb(gain) {
+  if (gain <= 0) return '-∞';
+  return (20 * Math.log10(gain)).toFixed(1);
+}

@@ -4,8 +4,8 @@
 
 import { sendCommand } from '../ws.js';
 import { getDestination, showToast } from '../app.js';
-import { deletePreset } from '../api.js';
-import { sliderToGain, gainToSlider, roundGain, throttle, applyTheme, getTheme } from '../utils.js';
+import { deletePreset, savePreset } from '../api.js';
+import { sliderToGain, gainToSlider, roundGain, throttle, applyTheme, getTheme, sliderToDb, gainToDb, dbToSlider } from '../utils.js';
 import { clearPresetHighlight } from '../sheets/presets.js';
 
 const NOTE_NAMES = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
@@ -99,7 +99,20 @@ function buildSettingsView() {
   calCard.className = 'settings-card';
 
   // Volume slider
-  const volRow = makeSliderRow('Volume', 'cal-vol', 0, 100, calState.volume, '%');
+  const volRow = makeSliderRow('Volume', 'cal-vol', 0, 100, calState.volume, '');
+  const volInitSpan = volRow.querySelector('#cal-vol-val');
+  if (volInitSpan) {
+    const calVolDbInput = document.createElement('input');
+    calVolDbInput.type = 'text';
+    calVolDbInput.className = 'db-input';
+    calVolDbInput.id = 'cal-vol-val';
+    calVolDbInput.value = sliderToDb(calState.volume);
+    const calVolDbUnit = document.createElement('span');
+    calVolDbUnit.className = 'db-unit';
+    calVolDbUnit.textContent = 'dB';
+    volInitSpan.replaceWith(calVolDbInput);
+    calVolDbInput.after(calVolDbUnit);
+  }
   calCard.appendChild(volRow);
 
   // Note slider (0–76 semitones)
@@ -117,17 +130,20 @@ function buildSettingsView() {
   calCard.appendChild(noteRow);
 
   // Freq slider
-  const freqRow = makeSliderRow('Freq', 'cal-freq', 200, 10000, calState.freq, 'Hz');
-  const freqInput = document.createElement('input');
-  freqInput.type = 'number';
-  freqInput.id = 'cal-freq-input';
-  freqInput.min = '200';
-  freqInput.max = '10000';
-  freqInput.step = '100';
-  freqInput.value = calState.freq;
-  freqInput.style.width = '80px';
-  freqInput.style.flexShrink = '0';
-  freqRow.appendChild(freqInput);
+  const freqRow = makeSliderRow('Freq', 'cal-freq', 200, 10000, calState.freq, '');
+  const freqInitSpan = freqRow.querySelector('#cal-freq-val');
+  if (freqInitSpan) {
+    const calFreqTextInput = document.createElement('input');
+    calFreqTextInput.type = 'text';
+    calFreqTextInput.className = 'db-input';
+    calFreqTextInput.id = 'cal-freq-val';
+    calFreqTextInput.value = calState.freq;
+    const calFreqUnit = document.createElement('span');
+    calFreqUnit.className = 'db-unit';
+    calFreqUnit.textContent = 'Hz';
+    freqInitSpan.replaceWith(calFreqTextInput);
+    calFreqTextInput.after(calFreqUnit);
+  }
   calCard.appendChild(freqRow);
 
   // Tone buttons
@@ -170,7 +186,7 @@ function buildSettingsView() {
   storeHeading.style.alignItems = 'center';
   const storeHeadingTitle = document.createElement('span');
   storeHeadingTitle.id = 'store-volume-heading';
-  storeHeadingTitle.textContent = `SET DEFAULT VOLUME = ${calState.volume}%`;
+  storeHeadingTitle.textContent = `SET DEFAULT VOLUME = ${sliderToDb(calState.volume)} dB`;
   const storeDeviceCount = document.createElement('span');
   storeDeviceCount.id = 'store-device-count';
   storeDeviceCount.style.fontSize = '12px';
@@ -369,6 +385,12 @@ function renderPresetList() {
     info.appendChild(name);
     info.appendChild(detail);
 
+    const editBtn = document.createElement('button');
+    editBtn.className = 'preset-edit';
+    editBtn.setAttribute('aria-label', 'Rename preset');
+    editBtn.textContent = '✏️';
+    editBtn.dataset.name = preset.name;
+
     const deleteBtn = document.createElement('button');
     deleteBtn.className = 'preset-delete';
     deleteBtn.setAttribute('aria-label', 'Delete preset');
@@ -377,6 +399,7 @@ function renderPresetList() {
 
     item.appendChild(heart);
     item.appendChild(info);
+    item.appendChild(editBtn);
     item.appendChild(deleteBtn);
     container.appendChild(item);
   });
@@ -404,26 +427,54 @@ function wireSettingsEvents() {
 
   // Cal volume slider — live volume update only (does not trigger playback)
   const calVolSlider = document.getElementById('cal-vol');
+  const calVolDbInput = document.getElementById('cal-vol-val');
   calVolSlider.addEventListener('input', () => {
     calState.volume = parseInt(calVolSlider.value);
-    document.getElementById('cal-vol-val').textContent = calState.volume + '%';
+    if (calVolDbInput && document.activeElement !== calVolDbInput) {
+      calVolDbInput.value = sliderToDb(calState.volume);
+    }
     if (window.appState) window.appState.defaultVolume = sliderToGain(calState.volume);
     const headingEl = document.getElementById('store-volume-heading');
-    if (headingEl) headingEl.textContent = `SET DEFAULT VOLUME = ${calState.volume}%`;
+    if (headingEl) headingEl.textContent = `SET DEFAULT VOLUME = ${sliderToDb(calState.volume)} dB`;
     sendVolThrottled();
   });
 
+  // Cal volume dB text input
+  if (calVolDbInput) {
+    const applyCalVolDb = () => {
+      const db = parseFloat(calVolDbInput.value);
+      if (!isNaN(db)) {
+        const slider = dbToSlider(Math.max(-40, Math.min(0, db)));
+        calState.volume = slider;
+        calVolSlider.value = slider;
+        calVolDbInput.value = sliderToDb(slider);
+        if (window.appState) window.appState.defaultVolume = sliderToGain(slider);
+        const headingEl = document.getElementById('store-volume-heading');
+        if (headingEl) headingEl.textContent = `SET DEFAULT VOLUME = ${sliderToDb(slider)} dB`;
+        sendVolThrottled();
+      } else {
+        calVolDbInput.value = sliderToDb(calState.volume);
+      }
+    };
+    calVolDbInput.addEventListener('blur', applyCalVolDb);
+    calVolDbInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') calVolDbInput.blur();
+      else if (e.key === 'Escape') { calVolDbInput.value = sliderToDb(calState.volume); calVolDbInput.blur(); }
+    });
+  }
+
   // Note slider — sync freq and display only, no command sent
   const calNoteSlider = document.getElementById('cal-note');
+  const calFreqTextInput = document.getElementById('cal-freq-val');
   calNoteSlider.addEventListener('input', () => {
     calState.semitone = parseInt(calNoteSlider.value);
     calState.freq = semitoneToHz(calState.semitone);
     document.getElementById('cal-note-name').textContent = semitoneToName(calState.semitone);
     const freqSlider = document.getElementById('cal-freq');
-    const freqInput = document.getElementById('cal-freq-input');
     if (freqSlider) freqSlider.value = Math.min(10000, Math.max(200, calState.freq));
-    if (freqInput) freqInput.value = calState.freq;
-    document.getElementById('cal-freq-val').textContent = calState.freq + 'Hz';
+    if (calFreqTextInput && document.activeElement !== calFreqTextInput) {
+      calFreqTextInput.value = calState.freq;
+    }
     sendFreqThrottled();
   });
 
@@ -432,30 +483,36 @@ function wireSettingsEvents() {
   calFreqSlider.addEventListener('input', () => {
     calState.freq = parseInt(calFreqSlider.value);
     calState.semitone = Math.max(0, Math.min(76, hzToNearestSemitone(calState.freq)));
-    document.getElementById('cal-freq-val').textContent = calState.freq + 'Hz';
-    document.getElementById('cal-freq-input').value = calState.freq;
+    if (calFreqTextInput && document.activeElement !== calFreqTextInput) {
+      calFreqTextInput.value = calState.freq;
+    }
     const noteSlider = document.getElementById('cal-note');
     if (noteSlider) noteSlider.value = calState.semitone;
     document.getElementById('cal-note-name').textContent = semitoneToName(calState.semitone);
     sendFreqThrottled();
   });
 
-  // Freq number input — sync sliders and display only, no command sent
-  const calFreqInput = document.getElementById('cal-freq-input');
-  calFreqInput.addEventListener('change', () => {
-    const val = parseInt(calFreqInput.value);
-    if (isNaN(val) || val < 200 || val > 10000) { calFreqInput.value = calState.freq; return; }
-    calState.freq = Math.round(val / 100) * 100;
-    calFreqInput.value = calState.freq;
-    calState.semitone = Math.max(0, Math.min(76, hzToNearestSemitone(calState.freq)));
-    const freqSlider = document.getElementById('cal-freq');
-    const noteSlider = document.getElementById('cal-note');
-    if (freqSlider) freqSlider.value = calState.freq;
-    if (noteSlider) noteSlider.value = calState.semitone;
-    document.getElementById('cal-freq-val').textContent = calState.freq + 'Hz';
-    document.getElementById('cal-note-name').textContent = semitoneToName(calState.semitone);
-    sendFreqThrottled();
-  });
+  // Freq text input — parse, clamp to nearest 100, sync sliders
+  if (calFreqTextInput) {
+    const applyCalFreq = () => {
+      const val = parseInt(calFreqTextInput.value);
+      if (isNaN(val) || val < 200 || val > 10000) { calFreqTextInput.value = calState.freq; return; }
+      calState.freq = Math.round(val / 100) * 100;
+      calFreqTextInput.value = calState.freq;
+      calState.semitone = Math.max(0, Math.min(76, hzToNearestSemitone(calState.freq)));
+      const freqSlider = document.getElementById('cal-freq');
+      const noteSlider = document.getElementById('cal-note');
+      if (freqSlider) freqSlider.value = calState.freq;
+      if (noteSlider) noteSlider.value = calState.semitone;
+      document.getElementById('cal-note-name').textContent = semitoneToName(calState.semitone);
+      sendFreqThrottled();
+    };
+    calFreqTextInput.addEventListener('blur', applyCalFreq);
+    calFreqTextInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') calFreqTextInput.blur();
+      else if (e.key === 'Escape') { calFreqTextInput.value = calState.freq; calFreqTextInput.blur(); }
+    });
+  }
 
   // Tone / Pink / Sweep buttons — only these trigger playback
   document.querySelectorAll('[data-cal-type]').forEach(btn => {
@@ -558,20 +615,88 @@ function wireSettingsEvents() {
     showToast(`Node set to "${val}" for ${targetMacs.length} device(s)`);
   });
 
-  // Preset delete delegation
+  // Preset list delegation (edit + delete)
   document.getElementById('settings-preset-list').addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.preset-delete');
-    if (!deleteBtn) return;
-    const name = deleteBtn.dataset.name;
-    try {
-      await deletePreset(name);
-      if (window.appState) {
-        window.appState.presets = window.appState.presets.filter(p => p.name !== name);
+    if (deleteBtn) {
+      const name = deleteBtn.dataset.name;
+      try {
+        await deletePreset(name);
+        if (window.appState) {
+          window.appState.presets = window.appState.presets.filter(p => p.name !== name);
+        }
+        renderPresetList();
+        showToast('Preset deleted');
+      } catch (err) {
+        showToast('Failed to delete preset', 'error');
       }
-      renderPresetList();
-      showToast('Preset deleted');
-    } catch (err) {
-      showToast('Failed to delete preset', 'error');
+      return;
+    }
+
+    const editBtn = e.target.closest('.preset-edit');
+    if (editBtn) {
+      const oldName = editBtn.dataset.name;
+      const item = editBtn.closest('.preset-item');
+      if (!item) return;
+      const nameEl = item.querySelector('.preset-name');
+      if (!nameEl) return;
+
+      // Replace name span with inline input
+      const input = document.createElement('input');
+      input.type = 'text';
+      input.className = 'preset-rename-input';
+      input.value = oldName;
+      nameEl.replaceWith(input);
+      input.focus();
+      input.select();
+
+      // Hide edit/delete while renaming
+      editBtn.style.display = 'none';
+      const delBtn = item.querySelector('.preset-delete');
+      if (delBtn) delBtn.style.display = 'none';
+
+      const confirmBtn = document.createElement('button');
+      confirmBtn.className = 'preset-edit';
+      confirmBtn.textContent = '✓';
+      confirmBtn.style.color = 'var(--accent-bright)';
+      const cancelBtn = document.createElement('button');
+      cancelBtn.className = 'preset-edit';
+      cancelBtn.textContent = '✕';
+
+      item.appendChild(confirmBtn);
+      item.appendChild(cancelBtn);
+
+      const cancelRename = () => {
+        renderPresetList();
+      };
+
+      const commitRename = async () => {
+        const newName = input.value.trim();
+        if (!newName || newName === oldName) { cancelRename(); return; }
+        const preset = (window.appState && window.appState.presets || []).find(p => p.name === oldName);
+        if (!preset) { cancelRename(); return; }
+        try {
+          await savePreset({ ...preset, name: newName });
+          await deletePreset(oldName);
+          if (window.appState) {
+            window.appState.presets = window.appState.presets.map(p =>
+              p.name === oldName ? { ...p, name: newName } : p
+            );
+          }
+          renderPresetList();
+          showToast('Preset renamed');
+        } catch (err) {
+          showToast('Failed to rename preset', 'error');
+          renderPresetList();
+        }
+      };
+
+      confirmBtn.addEventListener('click', commitRename);
+      cancelBtn.addEventListener('click', cancelRename);
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') commitRename();
+        else if (e.key === 'Escape') cancelRename();
+      });
     }
   });
 }
@@ -580,7 +705,7 @@ export function updateStoreSection() {
   const headingEl = document.getElementById('store-volume-heading');
   if (headingEl) {
     const vol = (window.appState && window.appState.defaultVolume) ?? 0.8;
-    headingEl.textContent = `SET DEFAULT VOLUME = ${gainToSlider(vol)}%`;
+    headingEl.textContent = `SET DEFAULT VOLUME = ${gainToDb(vol)} dB`;
   }
   const countEl = document.getElementById('store-device-count');
   if (countEl) {

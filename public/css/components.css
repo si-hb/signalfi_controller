@@ -103,11 +103,42 @@ input[type=range]::-moz-range-thumb {
 }
 
 .slider-value {
-  width: 44px;
+  width: 72px;
   text-align: right;
   font-size: 13px;
   color: var(--text-muted);
   flex-shrink: 0;
+}
+
+/* dB text input (inline, beside a range slider) */
+.db-input {
+  width: 42px;
+  text-align: right;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid transparent;
+  border-radius: 0;
+  color: var(--text-muted);
+  font-size: 13px;
+  padding: 0 2px;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.db-input:hover {
+  border-bottom-color: var(--border);
+}
+
+.db-input:focus {
+  border-bottom-color: var(--accent-bright);
+  color: var(--text-primary);
+}
+
+.db-unit {
+  font-size: 13px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  padding-left: 2px;
 }
 
 /* Colour swatch row */
@@ -137,12 +168,15 @@ input[type=range]::-moz-range-thumb {
   box-shadow: 0 0 0 2px var(--accent-bright);
 }
 
-.swatch.white { background: #ffffff; }
-.swatch.red { background: #e53935; }
-.swatch.orange { background: #fb8c00; }
-.swatch.green { background: #43a047; }
-.swatch.blue { background: #1e88e5; }
-.swatch.cyan { background: #0eb8c0; }
+.swatch.white   { background: #ffffff; }
+.swatch.red     { background: #ff0000; }
+.swatch.scarlet { background: #e53935; }
+.swatch.orange  { background: #fb8c00; }
+.swatch.green   { background: #00ff00; }
+.swatch.emerald { background: #43a047; }
+.swatch.blue    { background: #0000ff; }
+.swatch.cobalt  { background: #1e88e5; }
+.swatch.cyan    { background: #0eb8c0; }
 
 /* Color input row */
 .color-input-row {
@@ -422,6 +456,36 @@ input[type=range]::-moz-range-thumb {
 .preset-delete:active {
   background: rgba(192,57,43,0.15);
   border-radius: 8px;
+}
+
+.preset-edit {
+  padding: 8px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  font-size: 16px;
+  min-height: 44px;
+  min-width: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.preset-edit:active {
+  background: var(--surface-hover);
+  border-radius: 8px;
+}
+
+.preset-rename-input {
+  flex: 1;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--accent-bright);
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
+  padding: 2px 4px;
+  outline: none;
+  min-width: 0;
 }
 
 /* Info table */

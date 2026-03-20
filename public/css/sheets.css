@@ -34,10 +34,22 @@
   padding: 16px 16px 0;
 }
 
+.sheet-title-group {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
 .sheet-title {
   font-size: 16px;
   font-weight: 700;
-  flex: 1;
+}
+
+.sheet-subtitle {
+  font-size: 11px;
+  color: var(--text-muted);
 }
 
 .sheet-close {
@@ -148,6 +160,35 @@
   background: var(--danger);
   border-color: var(--danger);
   color: #fff;
+}
+
+.sheet-presets-btn {
+  flex: 1;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-primary);
+  border-radius: 12px;
+  font-size: 26px;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 44px;
+}
+
+.sheet-presets-btn:active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+/* Scene sheet footer: [♡] | Announce(flex:2) | Stop(flex:1) */
+#sheet-lighting .sheet-footer .sheet-stop-btn {
+  flex: 1;
+}
+
+#sheet-lighting .sheet-footer .sheet-announce-btn {
+  flex: 2;
 }
 
 /* Hide timeout when Sound tab is active */
