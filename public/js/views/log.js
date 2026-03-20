@@ -359,7 +359,7 @@ async function fetchLog(append = false) {
   }
 
   try {
-    const res = await fetch(`/api/log?${qs}`);
+    const res = await fetch(`/api/log?${qs}`, { cache: 'no-store' });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     const fetched = data.entries || [];

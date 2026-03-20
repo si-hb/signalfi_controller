@@ -2,7 +2,6 @@
 
 const express    = require('express');
 const fs         = require('fs');
-const path       = require('path');
 const mqttModule = require('./mqtt');
 
 /**
@@ -22,7 +21,7 @@ function createRouter(config, state, persistence, broadcast, logStore) {
   // -------------------------------------------------------------------------
   // GET /api/state
   // -------------------------------------------------------------------------
-  router.get('/state', (req, res) => {
+  router.get('/state', (_req, res) => {
     res.json(state.getState());
   });
 
@@ -35,7 +34,7 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     'oc-fra.wav','oc-orc.wav','royal.wav','royer.wav','startme.wav','stereo.wav',
   ];
 
-  router.get('/audio', (req, res) => {
+  router.get('/audio', (_req, res) => {
     try {
       let files = [];
       if (fs.existsSync(audioDir)) {
@@ -90,7 +89,7 @@ function createRouter(config, state, persistence, broadcast, logStore) {
   // -------------------------------------------------------------------------
   // POST /api/scouts/reset-nodes — clears nodes, rebuilds from current scouts
   // -------------------------------------------------------------------------
-  router.post('/scouts/reset-nodes', (req, res) => {
+  router.post('/scouts/reset-nodes', (_req, res) => {
     const updatedNodes = state.resetNodes();
     persistence.saveNodes(dataDir, updatedNodes);
     broadcast({ type: 'nodeUpdate', nodes: updatedNodes });
@@ -101,7 +100,7 @@ function createRouter(config, state, persistence, broadcast, logStore) {
   // POST /api/scouts/flush-offline — remove offline scouts from state and
   // clear their retained messages from the MQTT broker
   // -------------------------------------------------------------------------
-  router.post('/scouts/flush-offline', (req, res) => {
+  router.post('/scouts/flush-offline', (_req, res) => {
     const prefix      = config.mqtt.topicPrefix;
     const removedMacs = state.flushOfflineScouts();
 
@@ -150,23 +149,6 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     }
   });
 
-  // -------------------------------------------------------------------------
-  // POST /api/log/clear — delete all log entries
-  // -------------------------------------------------------------------------
-  router.post('/log/clear', (_req, res) => {
-    if (!logStore) {
-      console.warn('[ROUTES] POST /log/clear — logStore not available');
-      return res.json({ ok: true });
-    }
-    try {
-      logStore.clear();
-      console.log('[ROUTES] Log cleared');
-      res.json({ ok: true });
-    } catch (err) {
-      console.error('[ROUTES] POST /log/clear error:', err.message);
-      res.status(500).json({ error: 'Failed to clear log' });
-    }
-  });
 
   return router;
 }
