@@ -251,3 +251,249 @@ The Node-RED Dashboard uses a dark theme (background `#111111`, accent `#097479`
 | **Preset** | A saved combination of audio file, volume, LED colour, pattern, brightness, repeat count, and timeout. |
 | **Symphony Interactive** | The company that manufactures Signalfi devices and operates the cloud MQTT broker. |
 | **OLED** | An organic LED display on some Signalfi hardware variants, with a configurable brightness level. |
+
+---
+
+## SignalFi Web Application
+
+The web application is a complete replacement for the Node-RED dashboard. It is a responsive, mobile-first control panel that runs in any modern browser and communicates with the same MQTT broker via a Node.js/Express backend.
+
+**Primary use case:** a phone in portrait orientation held by an AV technician walking a venue.
+
+---
+
+## Running the Server
+
+```bash
+npm install
+node server/server.js
+```
+
+The server defaults to `http://0.0.0.0:3000`. Configuration is via `config.json` or environment variables.
+
+### `config.json` options
+
+```json
+{
+  "mqtt": {
+    "host": "apis.symphonyinteractive.ca",
+    "port": 1883,
+    "username": "",
+    "password": "",
+    "tls": false,
+    "clientId": "signalfi-web",
+    "topicPrefix": "scout"
+  },
+  "http": {
+    "host": "0.0.0.0",
+    "port": 3000,
+    "staticDir": "./public"
+  },
+  "paths": {
+    "dataDir": "./data",
+    "firmwareDir": "./firmware",
+    "audioDir": "./audio"
+  },
+  "auth": {
+    "token": ""
+  }
+}
+```
+
+Set `auth.token` to enable Bearer-token authentication on all REST and WebSocket endpoints. Leave blank to disable auth.
+
+---
+
+## Architecture
+
+| Layer | Technology |
+|---|---|
+| Backend | Node.js, Express, `ws` WebSocket library, `mqtt` client |
+| Frontend | Vanilla JS ES modules — no build step, no framework |
+| Real-time | WebSocket (`/ws`) — server pushes `state`, `scoutUpdate`, `nodeUpdate`, `mqttStatus` messages |
+| Persistence | JSON files in `./data/` (`scouts.json`, `presets.json`, `nodes.json`, `settings.json`) |
+| REST API | `GET /api/state`, `POST/DELETE /api/presets`, `GET /api/audio` |
+
+### Frontend file structure
+
+```
+public/
+  index.html
+  js/
+    app.js              — entry point, WebSocket, sheet management, selection logic
+    ws.js               — WebSocket connection and message dispatch
+    api.js              — REST calls (presets, audio, state fetch)
+    utils.js            — throttle, audio-taper math, dB helpers, theme
+    views/
+      devices.js        — device accordion/card rendering, search, view-mode
+      settings.js       — settings view (presets, calibration, store volume, node, file)
+      info.js           — info view (device inventory table)
+    sheets/
+      lighting.js       — Scene configuration sheet (Color / Patterns / Sound tabs)
+      presets.js        — Presets sheet (save, recall, delete, rename)
+      device.js         — Device info sheet, identifying queue
+      sound.js          — Sound state module
+  css/
+    layout.css          — app shell, navigation, views
+    cards.css           — device cards and accordion rows
+    sheets.css          — bottom sheet component and all sheet-specific styles
+    components.css      — shared UI components (sliders, toggles, swatches, buttons)
+```
+
+---
+
+## Feature Reference
+
+### Device View
+
+Devices are displayed in an **accordion tree** organised by node path. Each level of the path hierarchy is a collapsible group; devices with no node path appear in an "Unorganized" section at the bottom.
+
+**View modes** — toggle between card grid (2–5 columns depending on viewport) and list mode via the icon in the top bar.
+
+**Search** — live filter across device name, MAC address, and node path.
+
+**Selection** — tap a card to select / deselect it. Tap the group checkbox in an accordion header to select / deselect all devices in that group. The **Select All** button enters *broadcast mode* — all devices are targeted and the MQTT broadcast topic is used regardless of individual selection state. Tapping any device while in broadcast mode exits broadcast mode, selecting all other online devices. Deselecting a group while in broadcast mode exits broadcast mode, selecting all devices not in that group.
+
+**Destination priority** — when an action is sent, the server resolves the MQTT topic using this precedence:
+
+1. Broadcast — if broadcast mode is active, or if the selected set equals all online devices.
+2. Group path — if the selected set exactly matches all online devices under a single node path.
+3. Individual MACs — one MQTT message per selected device.
+
+**Device cards** — each card shows the SignalFi SVG icon (animated during announce), device name or node leaf, MAC address, and status badge. An **ⓘ** button opens the Device Info sheet.
+
+**Pull-to-refresh** — pull down in the device list to trigger a `get` broadcast to all devices.
+
+### Action Bar
+
+Three persistent buttons at the bottom of the screen:
+
+| Button | Action |
+|---|---|
+| **🎛️ Scene** | Opens the Scene configuration sheet |
+| **Announce** | Sends `announce` with current scene settings to the current selection |
+| **Stop** | Sends `stop` to the current selection |
+
+When multiple devices are selected the Announce button sends a single MQTT message to the appropriate broadcast or group topic rather than individual per-device messages.
+
+### Scene Sheet
+
+A three-tab bottom sheet for configuring an announcement. Opens full-screen on mobile.
+
+The header shows the title "Scene", a device count subtitle ("*N* Device(s) Selected" / "All Devices Selected"), a **♡ Presets** icon button, and a close button.
+
+#### Color tab
+
+- **9 colour swatches** — White, Red, Scarlet, Orange, Green, Emerald, Blue, Cobalt, Cyan. Swatches are labelled with their exact hex values; the named colours (Scarlet, Emerald, Cobalt) are distinct from the pure primaries.
+- **Custom colour** — native colour picker plus a free-text hex input.
+- **Brightness** — slider 0–255.
+
+#### Patterns tab
+
+13 LED patterns with icon and name: Off, Solid, Blink, Rotate, Pulse, Flash, Wave Out, Wave In, Audio, Left, Right, Up, Down.
+
+#### Sound tab
+
+- **Audio file list** — scrollable list of `.wav` files available on the server. Select "None (LEDs only)" to omit audio from the announcement.
+- **Volume** — audio-taper slider (A-type logarithmic curve) with a dB readout. The value can be typed directly into the dB input field; Enter commits, Escape cancels.
+- **Loops** — stepper (0–10).
+
+Volume and Loops controls are visually dimmed and disabled when no audio file is selected.
+
+#### Timeout
+
+Shared across Color and Patterns tabs (hidden on Sound tab). Range 0–300 seconds. A value of 0 displays **∞** (no timeout).
+
+#### Footer
+
+**Announce** (primary action) and **Stop** buttons.
+
+### Presets Sheet
+
+Accessible from the ♡ button in the Scene header, or as a standalone sheet from the Settings view.
+
+When opened from the Scene sheet the Scene page remains visible and dimmed underneath (modal stack). Closing the Presets sheet returns to the Scene sheet.
+
+- **Save** — enter a name and save the current Color, Patterns, Sound, and Timeout settings as a preset.
+- **Live Announce on Tap** — when enabled, tapping a preset immediately sends an `announce` command (without volume, so devices use their stored default). When disabled, tapping a preset loads its settings into the Scene sheet.
+- **Preset list** — tap to load, ✏️ to rename inline, 🗑 to delete.
+- **Stop** button — stops playback on the current selection and clears the active preset highlight.
+
+### Device Info Sheet
+
+Opened via the **ⓘ** button on a device card. Displays:
+
+- Device name (node path leaf or MAC), MAC address, IP address, firmware version, node path, subnet, gateway, DHCP status, USB/FTP status.
+- **Acknowledge** — clears an active announcement.
+- **Reboot** — reboots the device (with confirmation).
+- **OTA Update** — triggers firmware pull (with confirmation).
+- **Identifying queue** — if multiple devices enter *identifying* state simultaneously, they are queued. The sheet shows one at a time with a banner ("Device is Identifying — *N* more pending"). Dismissing the current device (acknowledge or close) advances to the next.
+
+### Settings View
+
+Accessed via the gear icon in the top bar.
+
+#### Appearance
+
+Dark / Light theme toggle (persisted to `localStorage`).
+
+#### Presets
+
+Full preset list with ✏️ rename and 🗑 delete actions.
+
+#### Calibration
+
+Send test signals to the current selection for speaker and LED verification.
+
+- **Volume** — slider with dB text input (type an exact dB value, −40 to 0 dB). Sends `setVolume` live as the slider moves.
+- **Note** — semitone slider (0–76, A2–G#8); drives the Frequency slider and displays the musical note name.
+- **Freq** — frequency slider (200–10,000 Hz, 100 Hz steps) with a text input for direct entry. Also driven by the Note slider.
+- **Tone / Pink / Sweep / Stop** — send calibration signals.
+
+#### Store Default Volume
+
+Set the stored default volume on devices (all devices or selected only). The heading shows the current dB level.
+
+#### Set Node Target
+
+Assign a node path string to all or selected devices. Path is validated against `^[a-z0-9][a-z0-9/._-]*(\/[a-z0-9][a-z0-9/._-]*)*$` before sending.
+
+#### File Management
+
+Pull a named `.wav` file from the server to device storage.
+
+---
+
+## Volume System
+
+All volume controls use an **A-type audio taper** (logarithmic) mapping:
+
+```text
+gain  = 10 ^ (2 × (sliderPosition/100 − 1))
+dB    = 40 × (sliderPosition/100 − 1)
+```
+
+The slider midpoint (50) corresponds to −20 dB (gain ≈ 0.1), matching the feel of a hardware potentiometer. Values are displayed in dB throughout the UI. Slider position 0 displays **−∞**. Volume is transmitted as a linear gain value (0.0–1.0, rounded to 4 decimal places).
+
+When recalling a preset with **Live Announce on Tap** enabled, the `vol` field is intentionally omitted from the MQTT payload so each device uses its own stored default volume.
+
+---
+
+## Real-Time Updates
+
+The server sends three message types over WebSocket:
+
+| Type | When sent | Client action |
+| --- | --- | --- |
+| `state` | On connect; after any MQTT state change (debounced 200 ms) | Full app state refresh |
+| `scoutUpdate` | On each individual device status change | In-place card update (or re-render if node path changed) |
+| `nodeUpdate` | When the node tree changes | Info view refresh |
+| `mqttStatus` | On MQTT connect/disconnect | MQTT indicator update |
+
+Multiple `scoutUpdate` messages arriving in the same animation frame are coalesced into a single DOM render pass via `requestAnimationFrame` batching.
+
+---
+
+## Authentication
+
+Set `auth.token` in `config.json` (or `AUTH_TOKEN` environment variable) to enable token authentication. All REST endpoints require `Authorization: Bearer <token>`. The WebSocket upgrade accepts the token via the same header or a `?token=` query parameter. The browser prompts for the token on first load and stores it in `localStorage`.

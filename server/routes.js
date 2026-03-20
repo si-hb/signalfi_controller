@@ -12,8 +12,9 @@ const mqttModule = require('./mqtt');
  * @param {object}   state       - State module
  * @param {object}   persistence - Persistence module
  * @param {function} broadcast   - Broadcast function(message) → sends to all WS clients
+ * @param {object}   [logStore]  - LogStore instance (optional)
  */
-function createRouter(config, state, persistence, broadcast) {
+function createRouter(config, state, persistence, broadcast, logStore) {
   const router  = express.Router();
   const dataDir = config.paths.dataDir;
   const audioDir = config.paths.audioDir;
@@ -114,6 +115,38 @@ function createRouter(config, state, persistence, broadcast) {
     broadcast({ type: 'state', ...state.getState() });
 
     res.json({ removed: removedMacs });
+  });
+
+  // -------------------------------------------------------------------------
+  // GET /api/log — query the event log
+  // Query params:
+  //   mac        — MAC substring filter
+  //   node       — node path substring filter
+  //   direction  — comma-separated: rx,tx,sys
+  //   category   — comma-separated: mqtt,server,client
+  //   sort       — asc | desc (default desc)
+  //   limit      — max rows (default 200, capped at 500)
+  //   offset     — rows to skip (default 0)
+  // -------------------------------------------------------------------------
+  router.get('/log', (req, res) => {
+    if (!logStore) return res.json({ entries: [] });
+
+    const mac        = req.query.mac  || null;
+    const node       = req.query.node || null;
+    const directions = req.query.direction ? req.query.direction.split(',').filter(Boolean) : null;
+    const categories = req.query.category  ? req.query.category.split(',').filter(Boolean)  : null;
+    const sort       = req.query.sort === 'asc' ? 'asc' : 'desc';
+    const limit      = req.query.limit  ? parseInt(req.query.limit,  10) : 200;
+    const offset     = req.query.offset ? parseInt(req.query.offset, 10) : 0;
+
+    try {
+      const entries = logStore.query({ mac, node, directions, categories, sort, limit, offset });
+      res.json({ entries });
+    } catch (err) {
+      const ts = new Date().toISOString();
+      console.error(`[${ts}] [ROUTES] Log query error:`, err.message);
+      res.status(500).json({ error: 'Log query failed', entries: [] });
+    }
   });
 
   return router;

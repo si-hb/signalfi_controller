@@ -10,6 +10,11 @@ const mqttModule  = require('./mqtt');
 const state       = require('./state');
 const persistence = require('./persistence');
 const createRouter = require('./routes');
+const LogStore    = require('./logger');
+
+// Module-level references set once main() wires everything up
+let _logStore    = null;
+let _broadcastFn = null;
 
 // ---------------------------------------------------------------------------
 // Timestamp helper
@@ -98,6 +103,55 @@ function normaliseColour(val, fallback = 'ffffff') {
 }
 
 // ---------------------------------------------------------------------------
+// Topic / MAC helpers
+// ---------------------------------------------------------------------------
+
+/**
+ * Extract a MAC address or group node path from an MQTT topic.
+ * Returns { mac, node } — one or both may be null.
+ *
+ * Topic shapes:
+ *   scout/$broadcast/$action          → { mac: null, node: null }
+ *   scout/$group/sym/office/$action   → { mac: null, node: 'sym/office' }
+ *   scout/AABBCCDDEEFF/$action        → { mac: 'AABBCCDDEEFF', node: null }
+ */
+function extractTopicMeta(topic) {
+  const parts = topic.split('/');
+  if (parts[1] === '$broadcast') return { mac: null, node: null };
+  if (parts[1] === '$group') {
+    const node = parts.slice(2, -1).join('/');
+    return { mac: null, node: node || null };
+  }
+  return { mac: parts[1] || null, node: null };
+}
+
+/**
+ * Build a short human-readable description of a WS client from its User-Agent.
+ */
+function describeClient(ip, ua) {
+  if (!ua) return ip;
+
+  let browser = '';
+  if (/Edg\//i.test(ua))     browser = 'Edge';
+  else if (/Chrome/i.test(ua))  browser = 'Chrome';
+  else if (/Firefox/i.test(ua)) browser = 'Firefox';
+  else if (/Safari/i.test(ua))  browser = 'Safari';
+  else if (/curl/i.test(ua))    browser = 'curl';
+
+  let device = '';
+  if (/iPad/i.test(ua))                 device = 'iPad';
+  else if (/iPhone/i.test(ua))          device = 'iPhone';
+  else if (/Android.*Mobile/i.test(ua)) device = 'Android';
+  else if (/Android/i.test(ua))         device = 'Android Tablet';
+  else if (/Macintosh/i.test(ua))       device = 'Mac';
+  else if (/Windows NT/i.test(ua))      device = 'Windows';
+  else if (/Linux/i.test(ua))           device = 'Linux';
+
+  const parts = [browser, device].filter(Boolean).join(' / ');
+  return parts ? `${ip} (${parts})` : ip;
+}
+
+// ---------------------------------------------------------------------------
 // MQTT topic builder helpers
 // ---------------------------------------------------------------------------
 function buildTopics(config, destination, target) {
@@ -124,6 +178,12 @@ function publishToTopics(topics, payload) {
   for (const topic of topics) {
     console.log(`[${ts()}] [PUBLISH] ${topic} → ${raw}`);
     mqttModule.publish(topic, raw);
+
+    if (_logStore) {
+      const { mac, node } = extractTopicMeta(topic);
+      const entry = _logStore.add({ ts: Date.now(), direction: 'tx', category: 'mqtt', mac, topic, payload: raw, node });
+      if (_broadcastFn) _broadcastFn({ type: 'logEntry', entry });
+    }
   }
 }
 
@@ -317,6 +377,10 @@ async function main() {
   state.loadState(persisted);
   console.log(`[${ts()}] [SERVER] Loaded persisted state: ${persisted.scouts.length} scouts, ${persisted.presets.length} presets`);
 
+  // ---- Log store ----
+  const logStore = new LogStore(config.paths.dataDir);
+  _logStore = logStore;
+
   // ---- Build Express app ----
   const app = express();
   app.use(express.json());
@@ -383,6 +447,8 @@ async function main() {
     }
   }
 
+  _broadcastFn = broadcast;
+
   // Debounced full-state broadcast (aggregates rapid MQTT messages)
   let fullStateBroadcastHandle = null;
   function scheduledFullStateBroadcast() {
@@ -399,12 +465,22 @@ async function main() {
   }
 
   // ---- Mount REST routes with auth middleware ----
-  app.use('/api', createAuthMiddleware(config), createRouter(config, state, persistence, broadcast));
+  app.use('/api', createAuthMiddleware(config), createRouter(config, state, persistence, broadcast, logStore));
 
   // ---- WS connection handler ----
   wss.on('connection', (ws, req) => {
-    const remoteIp = req.socket.remoteAddress;
-    console.log(`[${ts()}] [WS] Client connected from ${remoteIp} (total: ${wss.clients.size})`);
+    const remoteIp  = req.socket.remoteAddress;
+    const userAgent = req.headers['user-agent'] || '';
+    const clientDesc = describeClient(remoteIp, userAgent);
+    console.log(`[${ts()}] [WS] Client connected from ${clientDesc} (total: ${wss.clients.size})`);
+
+    if (_logStore) {
+      const entry = _logStore.add({
+        ts: Date.now(), direction: 'sys', category: 'client',
+        payload: JSON.stringify({ event: 'connect', ip: remoteIp, client: clientDesc }),
+      });
+      broadcast({ type: 'logEntry', entry });
+    }
 
     // Send full state snapshot immediately
     try {
@@ -441,7 +517,14 @@ async function main() {
     });
 
     ws.on('close', () => {
-      console.log(`[${ts()}] [WS] Client disconnected from ${remoteIp} (total: ${wss.clients.size})`);
+      console.log(`[${ts()}] [WS] Client disconnected from ${clientDesc} (total: ${wss.clients.size})`);
+      if (_logStore) {
+        const entry = _logStore.add({
+          ts: Date.now(), direction: 'sys', category: 'client',
+          payload: JSON.stringify({ event: 'disconnect', ip: remoteIp, client: clientDesc }),
+        });
+        if (_broadcastFn) _broadcastFn({ type: 'logEntry', entry });
+      }
     });
 
     ws.on('error', (err) => {
@@ -452,6 +535,17 @@ async function main() {
   // ---- MQTT message handler ----
   function onMqttMessage(mac, topic, payload) {
     console.log(`[${ts()}] [MQTT] MSG ${topic}`, JSON.stringify(payload).slice(0, 120));
+
+    if (_logStore) {
+      const scout = state.getScouts().find(s => s.mac === mac);
+      const raw   = JSON.stringify(payload);
+      const entry = _logStore.add({
+        ts: Date.now(), direction: 'rx', category: 'mqtt',
+        mac, topic, payload: raw, node: scout ? scout.node : null,
+      });
+      broadcast({ type: 'logEntry', entry });
+    }
+
     const topicEnd = topic.split('/').pop();
 
     if (topicEnd === '$state') {
@@ -481,6 +575,16 @@ async function main() {
   function onMqttStatus(status) {
     mqttOnline = status === 'connected';
     broadcast({ type: 'mqttStatus', status });
+
+    if (_logStore) {
+      const entry = _logStore.add({
+        ts: Date.now(), direction: 'sys', category: 'server',
+        topic: `${config.mqtt.host}:${config.mqtt.port}`,
+        payload: `MQTT broker: ${status}`,
+      });
+      broadcast({ type: 'logEntry', entry });
+    }
+
     if (mqttOnline) {
       scheduledFullStateBroadcast();
     }
@@ -506,9 +610,20 @@ async function main() {
   console.log(`[${ts()}] [SERVER] WebSocket endpoint: ws://${config.http.host}:${config.http.port}/ws`);
   console.log(`[${ts()}] [SERVER] REST API: http://${config.http.host}:${config.http.port}/api/state`);
 
+  logStore.add({
+    ts: Date.now(), direction: 'sys', category: 'server',
+    payload: `Server started — port ${config.http.port}, MQTT ${config.mqtt.host}:${config.mqtt.port}`,
+  });
+
   // ---- Graceful shutdown ----
   function shutdown(signal) {
     console.log(`\n[${ts()}] [SERVER] Received ${signal} — shutting down gracefully`);
+
+    logStore.add({
+      ts: Date.now(), direction: 'sys', category: 'server',
+      payload: `Server shutting down (${signal})`,
+    });
+    logStore.close();
 
     // Persist final state before exit
     persistence.save(config.paths.dataDir, state.getState());

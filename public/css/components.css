@@ -788,3 +788,185 @@ select:disabled {
   flex: 1;
   word-break: break-all;
 }
+
+/* ─── Log view ────────────────────────────────────────────────────────────── */
+
+.log-filter-bar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  background: var(--bg-base);
+  border-bottom: 1px solid var(--border);
+  padding: 10px 12px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+}
+
+.log-filter-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.log-filter-input {
+  flex: 1;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-size: 12px;
+  color: var(--text-primary);
+  min-width: 0;
+}
+
+.log-filter-input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.log-toggle-row {
+  flex-wrap: wrap;
+}
+
+.log-toggle-btn {
+  padding: 5px 10px;
+  border-radius: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.log-toggle-btn.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.log-toggle-btn:active {
+  opacity: 0.8;
+}
+
+/* Entry list */
+.log-entry-list {
+  font-family: var(--font-mono, ui-monospace, monospace);
+}
+
+.log-date-sep {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-muted);
+  padding: 10px 12px 4px;
+  background: var(--bg-base);
+  position: sticky;
+  top: 0;
+}
+
+.log-entry {
+  padding: 7px 12px 6px;
+  border-bottom: 1px solid var(--border);
+  cursor: default;
+}
+
+.log-entry:active {
+  background: var(--bg-raised);
+}
+
+.log-entry-header {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-bottom: 2px;
+}
+
+.log-time {
+  font-size: 11px;
+  color: var(--text-muted);
+  flex-shrink: 0;
+  min-width: 80px;
+}
+
+/* Direction badges */
+.log-badge {
+  font-size: 9px;
+  font-weight: 800;
+  padding: 1px 5px;
+  border-radius: 3px;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.log-badge-rx  { background: var(--status-online, #2ecc71); color: #fff; }
+.log-badge-tx  { background: var(--accent);                  color: #fff; }
+.log-badge-sys { background: var(--text-muted);              color: var(--bg-base); }
+
+/* Category badges */
+.log-badge-cat-mqtt   { background: rgba(14,184,192,0.18); color: var(--accent); }
+.log-badge-cat-server { background: rgba(230,126,34,0.18); color: #e67e22; }
+.log-badge-cat-client { background: rgba(52,152,219,0.18); color: #3498db; }
+
+.log-meta {
+  font-size: 11px;
+  color: var(--text-secondary, var(--text-muted));
+  background: var(--bg-raised);
+  border-radius: 3px;
+  padding: 0 4px;
+}
+
+.log-meta-node {
+  color: var(--accent);
+}
+
+.log-topic {
+  font-size: 11px;
+  color: var(--text-muted);
+  padding-left: 2px;
+  margin-bottom: 2px;
+  word-break: break-all;
+}
+
+.log-payload {
+  font-size: 11px;
+  color: var(--text-primary);
+  word-break: break-all;
+  white-space: pre-wrap;
+  line-height: 1.4;
+}
+
+.log-expand-btn {
+  font-size: 10px;
+  color: var(--accent);
+  background: none;
+  border: none;
+  padding: 0 4px;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+.log-empty {
+  padding: 40px 16px;
+  text-align: center;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-family: var(--font-ui, system-ui, sans-serif);
+}
+
+.log-load-more-btn {
+  display: block;
+  width: calc(100% - 24px);
+  margin: 12px;
+  padding: 11px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--text-muted);
+  text-align: center;
+  font-family: var(--font-ui, system-ui, sans-serif);
+}

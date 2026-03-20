@@ -6,6 +6,7 @@ import { initWS, sendCommand, registerMessageHandler, setAuthToken as wsSetAuthT
 import { initDevicesView, renderDevices, updateScoutCard, setSearchTerm, toggleViewMode } from './views/devices.js';
 import { initSettingsView, renderSettings, updateStoreSection, initTheme } from './views/settings.js';
 import { initInfoView, renderInfo, renderInfoRow } from './views/info.js';
+import { initLogView, refreshLog, handleLogEntry } from './views/log.js';
 import { initLightingSheet, openLightingSheet } from './sheets/lighting.js';
 import { renderSoundSheet } from './sheets/sound.js';
 import { initPresetsSheet, openPresetsSheet } from './sheets/presets.js';
@@ -193,7 +194,7 @@ export function showView(viewName) {
   });
 
   // Update top bar title
-  const titles = { devices: 'Devices', settings: 'Settings', info: 'Info' };
+  const titles = { devices: 'Devices', settings: 'Settings', info: 'Info', log: 'Log' };
   const titleEl = document.getElementById('top-bar-title');
   if (titleEl) titleEl.textContent = titles[viewName] || viewName;
 
@@ -202,8 +203,10 @@ export function showView(viewName) {
   const topBarSel = document.getElementById('top-bar-selection');
   const actionBar = document.getElementById('action-bar');
 
+  if (viewName === 'log') refreshLog();
+
   if (viewName !== 'devices') {
-    // Show clean header on settings/info
+    // Show clean header on settings/info/log
     if (topBarDefault) topBarDefault.hidden = false;
     if (topBarSel) topBarSel.hidden = true;
     if (actionBar) actionBar.hidden = true;
@@ -460,6 +463,10 @@ export function handleWsMessage(msg) {
       renderSettings();
       break;
 
+    case 'logEntry':
+      handleLogEntry(msg.entry);
+      break;
+
     default:
       // Unknown message type — ignore
       break;
@@ -628,6 +635,7 @@ async function init() {
   initDevicesView();
   initSettingsView();
   initInfoView();
+  initLogView();
 
   // Wire navigation and top-bar
   wireTopBar();
