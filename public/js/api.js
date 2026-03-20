@@ -71,5 +71,12 @@ export function flushOffline() {
   });
 }
 
+export function fetchLogEntries(queryString) {
+  const suffix = queryString ? `?${queryString}` : '';
+  return apiFetch(`/api/log${suffix}`, {
+    cache: 'no-store',
+  });
+}
+
 // Initialize auth token from localStorage on module load
 loadAuthToken();

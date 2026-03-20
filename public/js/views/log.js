@@ -3,6 +3,7 @@
  */
 
 import { sendCommand } from '../ws.js';
+import { fetchLogEntries } from '../api.js';
 
 const LOG_PAGE_SIZE = 200;
 
@@ -359,9 +360,7 @@ async function fetchLog(append = false) {
   }
 
   try {
-    const res = await fetch(`/api/log?${qs}`, { cache: 'no-store' });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
+    const data = await fetchLogEntries(qs);
     const fetched = data.entries || [];
 
     if (append) {
