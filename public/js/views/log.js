@@ -246,46 +246,65 @@ function makeEntryEl(entry) {
     el.appendChild(topicEl);
   }
 
-  // Payload line
+  // Payload
   if (entry.payload) {
     const payloadEl = document.createElement('div');
     payloadEl.className = 'log-payload';
 
-    let displayText;
-    if (entry.direction === 'sys') {
-      // sys entries: plain string or JSON — pretty-print JSON, leave strings as-is
-      try {
-        const obj = JSON.parse(entry.payload);
-        if (obj && typeof obj === 'object') {
-          displayText = JSON.stringify(obj, null, 2);
-        } else {
-          displayText = entry.payload;
-        }
-      } catch {
-        displayText = entry.payload;
-      }
-    } else {
-      // MQTT rx/tx — expand short keys and pretty-print
-      displayText = expandPayload(entry.payload);
-    }
+    // Try to parse as JSON
+    let obj = null;
+    try {
+      const parsed = JSON.parse(entry.payload);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) obj = parsed;
+    } catch { /* not JSON */ }
 
-    const TRUNCATE = 300;
-    if (displayText.length > TRUNCATE) {
-      const short = document.createElement('span');
-      short.textContent = displayText.slice(0, TRUNCATE) + '…';
+    if (obj) {
+      // Build expanded display text
+      const displayText = entry.direction === 'sys'
+        ? JSON.stringify(obj, null, 2)
+        : expandPayload(entry.payload);
 
-      const toggle = document.createElement('button');
-      toggle.className = 'log-expand-btn';
-      toggle.textContent = 'more';
-      toggle.addEventListener('click', () => {
-        short.textContent = displayText;
-        toggle.remove();
+      // Build collapsed preview from first key:value
+      const firstKey = Object.keys(obj)[0];
+      const firstVal = obj[firstKey];
+      const previewKey = entry.direction !== 'sys' ? (KEY_NAMES[firstKey] || firstKey) : firstKey;
+      const previewVal = (firstKey === 'act' && typeof firstVal === 'string')
+        ? (ACTION_VALUES[firstVal] || firstVal)
+        : (typeof firstVal === 'string' ? firstVal : JSON.stringify(firstVal));
+      const extraCount = Object.keys(obj).length - 1;
+      const previewStr = `${previewKey}: ${previewVal}` + (extraCount > 0 ? `  +${extraCount}` : '');
+
+      const row = document.createElement('div');
+      row.className = 'log-payload-row';
+
+      const expandBtn = document.createElement('button');
+      expandBtn.className = 'log-expand-btn';
+      expandBtn.textContent = '▶';
+      expandBtn.setAttribute('aria-label', 'Expand payload');
+
+      const preview = document.createElement('span');
+      preview.className = 'log-payload-preview';
+      preview.textContent = previewStr;
+
+      const full = document.createElement('pre');
+      full.className = 'log-payload-full';
+      full.textContent = displayText;
+      full.hidden = true;
+
+      expandBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const opening = full.hidden;
+        full.hidden = !opening;
+        expandBtn.textContent = opening ? '▼' : '▶';
       });
 
-      payloadEl.appendChild(short);
-      payloadEl.appendChild(toggle);
+      row.appendChild(expandBtn);
+      row.appendChild(preview);
+      payloadEl.appendChild(row);
+      payloadEl.appendChild(full);
     } else {
-      payloadEl.textContent = displayText;
+      // Plain string — show as-is
+      payloadEl.textContent = entry.payload;
     }
 
     el.appendChild(payloadEl);
