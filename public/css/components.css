@@ -892,6 +892,14 @@ select:disabled {
   color-scheme: dark;
 }
 
+.log-filter-range-sep {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: 14px;
+  padding: 0 2px;
+  align-self: center;
+}
+
 .log-toggle-row {
   flex-wrap: wrap;
 }

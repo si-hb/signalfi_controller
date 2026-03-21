@@ -591,7 +591,13 @@ function buildLogView() {
   dateToInput.className = 'log-filter-input log-filter-datetime';
   dateToInput.title = 'To date/time';
 
+  const dateRangeSep = document.createElement('span');
+  dateRangeSep.className = 'log-filter-range-sep';
+  dateRangeSep.textContent = '→';
+  dateRangeSep.setAttribute('aria-hidden', 'true');
+
   dateRow.appendChild(dateFromInput);
+  dateRow.appendChild(dateRangeSep);
   dateRow.appendChild(dateToInput);
   filterBar.appendChild(dateRow);
 
