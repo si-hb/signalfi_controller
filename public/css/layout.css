@@ -33,6 +33,7 @@
   border-bottom: 1px solid var(--border);
   flex-shrink: 0;
   z-index: 10;
+  padding-top: env(safe-area-inset-top);
 }
 
 #top-bar-default,
