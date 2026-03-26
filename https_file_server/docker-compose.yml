@@ -1,0 +1,250 @@
+version: "3"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Single compose file for all services on apis.symphonyinteractive.ca
+#
+# OTA endpoints (single hostname, path-based routing):
+#   http://apis.symphonyinteractive.ca/ota/v1/manifest   → signalfi-manifest
+#   http://apis.symphonyinteractive.ca/ota/v1/firmware/  → signalfi-files (nginx)
+#   http://apis.symphonyinteractive.ca/ota/v1/audio/     → signalfi-files (nginx)
+#   http://apis.symphonyinteractive.ca/ota/v1/report     → signalfi-manifest
+#   sftp://apis.symphonyinteractive.ca:2022               → sftpgo (admin uploads)
+#
+# HTTP/MQTT PHASE (current):
+#   - OTA and manifest served over HTTP on apis.symphonyinteractive.ca
+#   - MQTT on plain :1883 / WebSocket :9001
+#   - HTTPS labels are commented but ready — see upgrade notes below
+#
+# TO UPGRADE TO HTTPS (when firmware testing is complete):
+#   1. Uncomment the -https router labels for signalfi-manifest and signalfi-files
+#   2. Add "middlewares=redirect-https" to each -http router label
+#   3. docker compose up -d signalfi-manifest signalfi-files
+#   4. Traefik auto-issues Let's Encrypt cert for apis.symphonyinteractive.ca
+#   5. Update manifests: change url fields from http:// to https://
+#   6. Update device firmware URLs from http:// to https://
+#
+# TO UPGRADE TO MQTTS (when all devices support TLS):
+#   1. Copy TLS cert/key into /root/config/ and add listener 8883 to mosquitto.conf
+#   2. Uncomment the :8883 and :9443 port mappings below
+#   3. docker compose up -d mosquitto
+#   4. Migrate devices to port 8883, then remove :1883 exposure
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+
+  # ── Traefik — reverse proxy + Let's Encrypt ──────────────────────────────
+  traefik:
+    image: traefik:v3
+    command:
+      - "--api.insecure=false"
+      - "--api.dashboard=true"
+      - "--entrypoints.web.address=:80"
+      - "--entrypoints.websecure.address=:443"
+      - "--providers.docker=true"
+      - "--providers.docker.exposedbydefault=false"
+      - "--providers.docker.network=root_default"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
+      - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
+      - "--certificatesresolvers.letsencrypt.acme.email=admin@symphonyinteractive.ca"
+      - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
+      - "--global.checknewversion=false"
+      - "--global.sendanonymoususage=false"
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - /root/acme.json:/acme.json
+    networks:
+      - root_default
+    labels:
+      - "traefik.enable=false"
+    restart: unless-stopped
+
+  # ── Node-RED — weather API / automation ──────────────────────────────────
+  node-red:
+    image: nodered/node-red:latest
+    container_name: node-red
+    restart: unless-stopped
+    environment:
+      - TZ=America/Toronto
+      - OTP_SECRET=d4efad504590a39b884029516949e2a2fbdf2db8aabcc5e3e2e2af06f9130f81
+    expose:
+      - 1880
+      - 3333/udp
+    ports:
+      - "3333:3333/udp"
+    volumes:
+      - ./nodered-data:/data
+    networks:
+      - root_default
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.nodered-https.rule=Host(`weather.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.nodered-https.entrypoints=websecure"
+      - "traefik.http.routers.nodered-https.service=nodered"
+      - "traefik.http.routers.nodered-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.nodered-http.rule=Host(`weather.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.nodered-http.entrypoints=web"
+      - "traefik.http.routers.nodered-http.middlewares=redirect-https"
+      - "traefik.http.services.nodered.loadbalancer.server.port=1880"
+      - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
+
+  # ── Mosquitto — MQTT broker ───────────────────────────────────────────────
+  # HTTP PHASE: plain MQTT :1883 and WebSocket :9001
+  # MQTTS UPGRADE: copy cert to /root/config/, update mosquitto.conf,
+  #                uncomment :8883/:9443 ports, migrate devices, then remove :1883
+  mosquitto:
+    image: eclipse-mosquitto:2
+    user: mosquitto
+    volumes:
+      - type: bind
+        source: ./config/
+        target: /mosquitto/config/
+      - type: bind
+        source: ./log/
+        target: /mosquitto/log/
+      - type: volume
+        source: mqtt-broker-data
+        target: /mosquitto/data/
+    ports:
+      - target: 1883
+        published: 1883
+        protocol: tcp
+        mode: host
+      - target: 9001
+        published: 9001
+        protocol: tcp
+        mode: host
+      # MQTTS upgrade — uncomment when TLS configured in mosquitto.conf:
+      # - target: 8883
+      #   published: 8883
+      #   protocol: tcp
+      #   mode: host
+      # - target: 9443
+      #   published: 9443
+      #   protocol: tcp
+      #   mode: host
+    restart: unless-stopped
+
+  # ── OTA Manifest Service ──────────────────────────────────────────────────
+  # Routes (all under /ota on apis.symphonyinteractive.ca):
+  #   GET  /ota/v1/manifest?modelId=&firmwareVersion=  → device queries for update
+  #   GET  /ota/v1/validate                            → nginx auth_request subrequest
+  #   POST /ota/v1/report                              → device reports successful update
+  #   GET  /ota/v1/health                              → health check
+  #
+  # Token auth: Authorization: Bearer <64-hex> header
+  # Token expiry: token filename format is <64-hex>_exp<unix_seconds> (optional)
+  # MQTT push: publishes to signalfi/ota/<modelId> when models/*.json is updated
+  #
+  # HTTPS UPGRADE: uncomment the -https router labels and add middlewares=redirect-https
+  #                to the -http router label (see header comment above)
+  signalfi-manifest:
+    build:
+      context: /opt/signalfi/compose/manifest-service
+    container_name: signalfi-manifest
+    restart: unless-stopped
+    expose:
+      - 3001
+    volumes:
+      - /opt/signalfi/manifests:/opt/signalfi/manifests:ro
+      - /opt/signalfi/tokens:/opt/signalfi/tokens:ro
+      - /opt/signalfi/reports:/opt/signalfi/reports
+    environment:
+      - PORT=3001
+      - MANIFEST_ROOT=/opt/signalfi/manifests
+      - TOKEN_ROOT=/opt/signalfi/tokens
+      - REPORTS_ROOT=/opt/signalfi/reports
+      - MQTT_BROKER_URL=mqtt://signalfi-svc:OtaService2024!@mosquitto:1883
+    networks:
+      - root_default
+    depends_on:
+      - mosquitto
+    labels:
+      - "traefik.enable=true"
+      # signalfi-manifest handles all /ota/* paths (priority 10)
+      # signalfi-files handles /ota/v1/firmware and /ota/v1/audio (priority 20, wins)
+      - "traefik.http.routers.signalfi-manifest-http.rule=Host(`apis.symphonyinteractive.ca`) && PathPrefix(`/ota`)"
+      - "traefik.http.routers.signalfi-manifest-http.entrypoints=web"
+      - "traefik.http.routers.signalfi-manifest-http.service=signalfi-manifest"
+      - "traefik.http.routers.signalfi-manifest-http.priority=10"
+      - "traefik.http.services.signalfi-manifest.loadbalancer.server.port=3001"
+      # HTTPS upgrade — uncomment these and add middlewares=redirect-https to -http router:
+      # - "traefik.http.routers.signalfi-manifest-https.rule=Host(`apis.symphonyinteractive.ca`) && PathPrefix(`/ota`)"
+      # - "traefik.http.routers.signalfi-manifest-https.entrypoints=websecure"
+      # - "traefik.http.routers.signalfi-manifest-https.tls.certresolver=letsencrypt"
+      # - "traefik.http.routers.signalfi-manifest-https.service=signalfi-manifest"
+      # - "traefik.http.routers.signalfi-manifest-https.priority=10"
+
+  # ── OTA File Server (nginx) ───────────────────────────────────────────────
+  # Routes (high priority — wins over signalfi-manifest for file paths):
+  #   GET /ota/v1/firmware/<file>  → firmware binary download (Bearer token required)
+  #   GET /ota/v1/audio/<file>     → audio file download (Bearer token required)
+  #   GET /ota/health              → unauthenticated health check
+  #
+  # nginx validates token by making an internal auth_request subrequest to
+  # signalfi-manifest /ota/v1/validate, forwarding the Authorization header.
+  # Range requests supported (Accept-Ranges: bytes) for chunked firmware download.
+  #
+  # HTTPS UPGRADE: see header comment above
+  signalfi-files:
+    image: nginx:alpine
+    container_name: signalfi-files
+    restart: unless-stopped
+    expose:
+      - 80
+    volumes:
+      - /root/nginx-ota.conf:/etc/nginx/conf.d/default.conf:ro
+      - /opt/signalfi/files:/opt/signalfi/files:ro
+    networks:
+      - root_default
+    labels:
+      - "traefik.enable=true"
+      # Priority 20 — takes precedence over signalfi-manifest router for file paths
+      - "traefik.http.routers.signalfi-files-http.rule=Host(`apis.symphonyinteractive.ca`) && (PathPrefix(`/ota/v1/firmware`) || PathPrefix(`/ota/v1/audio`) || Path(`/ota/health`))"
+      - "traefik.http.routers.signalfi-files-http.entrypoints=web"
+      - "traefik.http.routers.signalfi-files-http.service=signalfi-files"
+      - "traefik.http.routers.signalfi-files-http.priority=20"
+      - "traefik.http.services.signalfi-files.loadbalancer.server.port=80"
+      # HTTPS upgrade — uncomment these and add middlewares=redirect-https to -http router:
+      # - "traefik.http.routers.signalfi-files-https.rule=Host(`apis.symphonyinteractive.ca`) && (PathPrefix(`/ota/v1/firmware`) || PathPrefix(`/ota/v1/audio`) || Path(`/ota/health`))"
+      # - "traefik.http.routers.signalfi-files-https.entrypoints=websecure"
+      # - "traefik.http.routers.signalfi-files-https.tls.certresolver=letsencrypt"
+      # - "traefik.http.routers.signalfi-files-https.service=signalfi-files"
+      # - "traefik.http.routers.signalfi-files-https.priority=20"
+
+  # ── SFTP Server (sftpgo) ──────────────────────────────────────────────────
+  # Admin uploads for firmware, audio, manifests, tokens
+  # Credentials: symphony / Si9057274427
+  # Virtual dirs: /firmware /audio /manifests /tokens /reports
+  sftpgo:
+    image: drakkan/sftpgo:latest
+    container_name: sftpgo
+    restart: unless-stopped
+    environment:
+      - SFTPGO_LOADDATA_FROM=/etc/sftpgo/init-data.json
+      - SFTPGO_LOADDATA_CLEAN=0
+      - SFTPGO_SFTPD__BINDINGS__0__PORT=2022
+    volumes:
+      - /root/sftpgo-init.json:/etc/sftpgo/init-data.json:ro
+      - /opt/signalfi/files/firmware:/opt/signalfi/files/firmware
+      - /opt/signalfi/files/audio:/opt/signalfi/files/audio
+      - /opt/signalfi/manifests:/opt/signalfi/manifests
+      - /opt/signalfi/tokens:/opt/signalfi/tokens
+      - /opt/signalfi/reports:/opt/signalfi/reports:ro
+      - sftpgo-state:/var/lib/sftpgo
+    ports:
+      - "2022:2022"
+    networks:
+      - root_default
+
+networks:
+  root_default:
+    external: true
+
+volumes:
+  mqtt-broker-data:
+    name: "mqtt-broker-data"
+  sftpgo-state:
+    name: "sftpgo-state"

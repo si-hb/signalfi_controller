@@ -1,0 +1,11 @@
+{
+  "update": true,
+  "delaySeconds": 0,
+  "firmware": {
+    "version": "1.0.0",
+    "url": "http://files.apis.symphonyinteractive.ca/firmware/signalfi-1.0.0.bin",
+    "sha256": "REPLACE_WITH_ACTUAL_SHA256",
+    "size": 0
+  },
+  "audio": []
+}

@@ -1,0 +1,31 @@
+{
+  "users": [
+    {
+      "id": 1,
+      "username": "symphony",
+      "password": "Si9057274427",
+      "home_dir": "/var/lib/sftpgo/home",
+      "uid": 0,
+      "gid": 0,
+      "max_sessions": 0,
+      "quota_size": 0,
+      "quota_files": 0,
+      "permissions": {"/": ["*"]},
+      "status": 1,
+      "expiration_date": 0,
+      "virtual_folders": [
+        {"name": "firmware", "virtual_path": "/firmware", "mapped_path": "/opt/signalfi/files/firmware", "quota_size": -1, "quota_files": -1},
+        {"name": "audio",    "virtual_path": "/audio",    "mapped_path": "/opt/signalfi/files/audio",    "quota_size": -1, "quota_files": -1},
+        {"name": "manifests","virtual_path": "/manifests","mapped_path": "/opt/signalfi/manifests",       "quota_size": -1, "quota_files": -1},
+        {"name": "tokens",   "virtual_path": "/tokens",   "mapped_path": "/opt/signalfi/tokens",          "quota_size": -1, "quota_files": -1}
+      ],
+      "filters": {"protocols": ["SFTP"]}
+    }
+  ],
+  "folders": [
+    {"name": "firmware",  "mapped_path": "/opt/signalfi/files/firmware"},
+    {"name": "audio",     "mapped_path": "/opt/signalfi/files/audio"},
+    {"name": "manifests", "mapped_path": "/opt/signalfi/manifests"},
+    {"name": "tokens",    "mapped_path": "/opt/signalfi/tokens"}
+  ]
+}

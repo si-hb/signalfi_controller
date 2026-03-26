@@ -1,0 +1,13 @@
+{
+  "name": "signalfi-manifest",
+  "version": "2.0.0",
+  "description": "OTA manifest API for Signalfi devices",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "mqtt": "^5.3.4"
+  }
+}

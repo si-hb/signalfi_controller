@@ -1,0 +1,12 @@
+{
+  "name": "signalfi-ota-tools",
+  "version": "1.0.0",
+  "description": "CLI tools for generating and uploading Signalfi OTA manifests",
+  "scripts": {
+    "generate": "node generate-manifest.js"
+  },
+  "dependencies": {
+    "minimist": "^1.2.8",
+    "ssh2-sftp-client": "^10.0.3"
+  }
+}

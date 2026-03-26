@@ -274,7 +274,7 @@ function makeDeviceCard(scout) {
   return card;
 }
 
-function makeAccordionRow(path, count, busyCount, depth) {
+function makeAccordionRow(path, count, busyCount, offlineCount, depth) {
   const segments = path.split('/');
   const label = segments[segments.length - 1];
   const parentPath = segments.slice(0, -1).join('/');
@@ -314,14 +314,27 @@ function makeAccordionRow(path, count, busyCount, depth) {
   segSpan.textContent = label;
   labelEl.appendChild(segSpan);
 
+  // Offline indicator
+  if (offlineCount > 0) {
+    const offlineBadge = document.createElement('span');
+    offlineBadge.className = 'accordion-offline-badge';
+    offlineBadge.textContent = '!';
+    offlineBadge.title = `${offlineCount} offline`;
+    row.appendChild(checkbox);
+    row.appendChild(chevron);
+    row.appendChild(labelEl);
+    row.appendChild(offlineBadge);
+  } else {
+    row.appendChild(checkbox);
+    row.appendChild(chevron);
+    row.appendChild(labelEl);
+  }
+
   // Badge
   const badge = document.createElement('span');
   badge.className = `accordion-badge${busyCount > 0 ? ' has-busy' : ''}`;
   badge.textContent = busyCount > 0 ? `${busyCount}/${count}` : String(count);
 
-  row.appendChild(checkbox);
-  row.appendChild(chevron);
-  row.appendChild(labelEl);
   row.appendChild(badge);
 
   // Checkbox click → select/deselect subtree
@@ -380,6 +393,14 @@ function countBusyUnderNode(treeNode) {
   return busy;
 }
 
+function countOfflineUnderNode(treeNode) {
+  let offline = treeNode.scouts.filter(s => getStatusClass(s.status) === 'offline').length;
+  for (const child of treeNode.children.values()) {
+    offline += countOfflineUnderNode(child);
+  }
+  return offline;
+}
+
 function scoutMatchesSearch(scout, term) {
   if (!term) return true;
   const t = term.toLowerCase();
@@ -398,6 +419,7 @@ function renderTreeNode(treeNode, path, depth, container) {
   for (const [seg, child] of treeNode.children.entries()) {
     const childPath = path ? `${path}/${seg}` : seg;
     const busy = countBusyUnderNode(child);
+    const offline = countOfflineUnderNode(child);
 
     // Check if any scouts in this subtree match search
     const childScouts = getAllScoutsFromNode(child);
@@ -409,7 +431,7 @@ function renderTreeNode(treeNode, path, depth, container) {
 
     anyVisible = true;
 
-    const row = makeAccordionRow(childPath, matchingScouts.length, busy, depth);
+    const row = makeAccordionRow(childPath, matchingScouts.length, busy, offline, depth);
 
     // Expand if search is active and there are matches
     const expanded = term ? true : isExpanded(childPath);

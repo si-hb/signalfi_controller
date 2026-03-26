@@ -1,0 +1,14 @@
+{
+  "modelId": "SF-100",
+  "compatibleFrom": ["1.0.0"],
+  "update": true,
+  "downloadToken": "REPLACE_WITH_GENERATED_TOKEN",
+  "delaySeconds": 0,
+  "firmware": {
+    "version": "1.1.0",
+    "url": "http://files.apis.symphonyinteractive.ca/firmware/SF-100-1.1.0.bin",
+    "sha256": "REPLACE_WITH_ACTUAL_SHA256",
+    "size": 0
+  },
+  "audio": []
+}
