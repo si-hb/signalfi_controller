@@ -23,10 +23,13 @@ The manifest endpoint requires no credentials. File downloads require a valid to
 | Manifest API       | `http://apis.symphonyinteractive.ca/ota/v1/manifest`                          | None |
 | Firmware download  | `http://apis.symphonyinteractive.ca/ota/v1/firmware/<filename>`               | Bearer token |
 | Audio download     | `http://apis.symphonyinteractive.ca/ota/v1/audio/<filename>`                  | Bearer token |
+| Model config       | `http://apis.symphonyinteractive.ca/ota/v1/config/models/<modelId>.json`      | Bearer token |
+| Device config      | `http://apis.symphonyinteractive.ca/ota/v1/config/devices/<mac>.json`         | Bearer token |
 | Update report      | `http://apis.symphonyinteractive.ca/ota/v1/report`                            | None |
 | Manifest health    | `http://apis.symphonyinteractive.ca/ota/v1/health`                            | None |
 | File server health | `http://apis.symphonyinteractive.ca/ota/health`                               | None |
-| MQTT push topic    | `signalfi/ota/<modelId>` on `apis.symphonyinteractive.ca:1883`                | Password |
+| OTA MQTT topic     | `scout/$group/<modelId>/$ota` on `apis.symphonyinteractive.ca:1883`           | Password |
+| Config MQTT topic  | `scout/$group/<modelId>/$config` on `apis.symphonyinteractive.ca:1883`        | Password |
 
 **Token auth:** Use the `downloadToken` from the manifest as a Bearer token:
 ```
@@ -43,7 +46,7 @@ The token is **never** put in the URL query string.
 ```
 Device                        Manifest API                File Server       MQTT Broker
   |                               |                           |                  |
-  | subscribe signalfi/ota/<model>────────────────────────────────────────────► |
+  | subscribe scout/$group/<modelId>/$ota────────────────────────────────────────────► |
   |                               |                           |                  |
   | ── on MQTT msg OR startup ─────────────────────────────────────────────────►|
   |-- GET /ota/v1/manifest        |                           |                  |
@@ -364,7 +367,7 @@ void checkForUpdate() {
 
 ### 5 — MQTT Push Subscription
 
-Devices subscribe to `signalfi/ota/<modelId>` on startup. When the server publishes a new manifest, devices receive an immediate push and trigger a manifest check — no polling required.
+Devices subscribe to `scout/$group/<modelId>/$ota` on startup. When the server publishes a new manifest, devices receive an immediate push and trigger a manifest check — no polling required.
 
 ```cpp
 #include <QNEthernetMqtt.h>  // or use a PubSubClient-style MQTT library
@@ -375,7 +378,7 @@ const int   MQTT_PORT = 1883;
 const char* MQTT_USER = "symphony";
 const char* MQTT_PASS = "Si9057274427";
 
-// Callback invoked when a message arrives on signalfi/ota/<model>
+// Callback invoked when a message arrives on scout/$group/<modelId>/$ota
 void onOtaNotification(const String& payload) {
     Serial.printf("[MQTT] OTA notification received: %s\n", payload.c_str());
     // Trigger an immediate manifest check
@@ -388,9 +391,15 @@ void setupMqtt(MqttClient& mqttClient) {
         Serial.printf("[MQTT] connect failed: %d\n", mqttClient.connectError());
         return;
     }
-    String topic = String("signalfi/ota/") + MODEL_ID;
-    mqttClient.subscribe(topic);
-    Serial.printf("[MQTT] subscribed to %s\n", topic.c_str());
+    // Model-specific OTA (primary — server publishes here on manifest update)
+    String groupTopic = String("scout/$group/") + MODEL_ID + "/$ota";
+    mqttClient.subscribe(groupTopic);
+    // Broadcast OTA (all models — future mass-update support)
+    mqttClient.subscribe("scout/$broadcast/$ota");
+    // Individual device OTA (MAC-targeted — future)
+    String macTopic = String("scout/") + DEVICE_MAC + "/$ota";
+    mqttClient.subscribe(macTopic);
+    Serial.printf("[MQTT] subscribed to group, broadcast, device topics\n");
 }
 
 void loopMqtt(MqttClient& mqttClient) {
@@ -398,7 +407,7 @@ void loopMqtt(MqttClient& mqttClient) {
     if (mqttClient.available()) {
         String topic = mqttClient.messageTopic();
         String payload = mqttClient.readString();
-        if (topic.startsWith("signalfi/ota/")) {
+        if (topic.endsWith("/$ota")) {
             onOtaNotification(payload);
         }
     }
@@ -543,7 +552,7 @@ void onSuccessfulBoot() {
 
 ## MQTT Push vs Polling
 
-**Preferred: MQTT push.** Devices subscribe to `signalfi/ota/<modelId>` and respond to push notifications. No polling timer needed.
+**Preferred: MQTT push.** Devices subscribe to `scout/$group/<modelId>/$ota` and respond to push notifications. No polling timer needed.
 
 - Subscribe on startup → receive retained message if update was published while offline
 - React immediately to push → no delay waiting for a poll window
@@ -566,6 +575,147 @@ void onSuccessfulBoot() {
 | Flash write failure              | Log error, do not reboot                            |
 | Boot counter ≥ threshold         | Rollback or halt                                    |
 | Audio download fails             | Skip that file, continue with others                |
+
+---
+
+## Config Update Agent
+
+Devices receive config pushes via MQTT — same mechanism as OTA but on the `$config` action topic. The server manages two config tiers: a **model config** (shared settings) and a **device config** (per-device overrides). The device merges both: model config first, device overrides on top.
+
+### MQTT subscriptions for config
+
+Add these to your `setupMqtt()` alongside the `$ota` subscriptions:
+```cpp
+// Model config (shared: MQTT credentials, services, OTA server)
+String modelConfigTopic = String("scout/$group/") + MODEL_ID + "/$config";
+mqttClient.subscribe(modelConfigTopic);
+
+// Per-device config (node path, static IP, display name)
+String devConfigTopic = String("scout/") + DEVICE_MAC + "/$config";
+mqttClient.subscribe(devConfigTopic);
+```
+
+Route in your message handler:
+```cpp
+if (topic.endsWith("/$config")) {
+    onConfigNotification(payload);
+} else if (topic.endsWith("/$ota")) {
+    onOtaNotification(payload);
+}
+```
+
+### Config notification payload
+
+```json
+{
+  "type": "model",
+  "modelId": "SF-100",
+  "url": "http://apis.symphonyinteractive.ca/ota/v1/config/models/SF-100.json",
+  "sha256": "abc123...",
+  "token": "<64-hex-bearer>"
+}
+```
+For device configs: `"type": "device"`, `"mac": "aa-bb-cc-dd-ee-ff"`.
+
+### Teensy 4.1 — config fetch and merge
+
+```cpp
+#include <ArduinoJson.h>
+
+// Persistent config stored in EEPROM/LittleFS
+struct DeviceConfig {
+    char nodePath[64];
+    char displayName[32];
+    char staticIp[16];
+    char mqttHost[64];
+    int  mqttPort;
+    char mqttUser[32];
+    char mqttPass[32];
+    bool otaEnabled;
+};
+
+DeviceConfig g_config;
+
+// Called when a $config MQTT notification arrives
+void onConfigNotification(const String& payload) {
+    StaticJsonDocument<512> doc;
+    if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+
+    const char* url   = doc["url"];
+    const char* sha   = doc["sha256"];
+    const char* token = doc["token"];
+    const char* type  = doc["type"];
+
+    if (!url || !token) return;
+
+    Serial.printf("[config] fetching %s config from %s\n", type, url);
+
+    // Fetch config JSON with Bearer token
+    QNEthernetClient client;
+    HttpClient http(client, "apis.symphonyinteractive.ca", 80);
+    http.beginRequest();
+    http.get(url);
+    http.sendHeader("Authorization", String("Bearer ") + token);
+    http.endRequest();
+
+    if (http.responseStatusCode() != 200) {
+        Serial.printf("[config] fetch failed: %d\n", http.responseStatusCode());
+        return;
+    }
+
+    String body = http.responseBody();
+
+    // Validate SHA256
+    byte hash[32];
+    mbedtls_sha256((const unsigned char*)body.c_str(), body.length(), hash, 0);
+    char hexHash[65];
+    for (int i = 0; i < 32; i++) sprintf(hexHash + i*2, "%02x", hash[i]);
+    if (strcmp(hexHash, sha) != 0) {
+        Serial.println("[config] SHA256 mismatch — ignoring");
+        return;
+    }
+
+    // Parse and apply (merge strategy: model config sets base, device overrides on top)
+    StaticJsonDocument<1024> cfg;
+    if (deserializeJson(cfg, body) != DeserializationError::Ok) return;
+
+    // Apply fields that are present (merge, don't overwrite everything)
+    if (cfg.containsKey("nodePath"))    strlcpy(g_config.nodePath,    cfg["nodePath"],    sizeof(g_config.nodePath));
+    if (cfg.containsKey("displayName")) strlcpy(g_config.displayName, cfg["displayName"], sizeof(g_config.displayName));
+    if (cfg.containsKey("mqtt")) {
+        JsonObject mqtt = cfg["mqtt"];
+        if (mqtt.containsKey("host")) strlcpy(g_config.mqttHost, mqtt["host"], sizeof(g_config.mqttHost));
+        if (mqtt.containsKey("port")) g_config.mqttPort = mqtt["port"];
+        if (mqtt.containsKey("username")) strlcpy(g_config.mqttUser, mqtt["username"], sizeof(g_config.mqttUser));
+        if (mqtt.containsKey("password")) strlcpy(g_config.mqttPass, mqtt["password"], sizeof(g_config.mqttPass));
+    }
+    if (cfg.containsKey("network")) {
+        strlcpy(g_config.staticIp, cfg["network"]["staticIp"] | "", sizeof(g_config.staticIp));
+    }
+    if (cfg.containsKey("services")) {
+        g_config.otaEnabled = cfg["services"]["ota"] | true;
+    }
+
+    // Persist to flash
+    saveConfig(g_config);
+    Serial.println("[config] config updated and saved");
+    // Optionally reboot if network settings changed
+}
+```
+
+### Startup: load both config tiers
+
+On boot, subscribe to config topics **before** connecting to MQTT so retained messages replay immediately:
+
+```cpp
+void loadRemoteConfig() {
+    // The broker replays the last retained $config message on subscribe.
+    // Device receives model config first, then device-specific overrides.
+    // No HTTP request at boot — only fetches when notified.
+}
+```
+
+> On first connect, the broker replays the last retained `$config` message, so any config published while the device was offline is applied on next connect — no polling needed.
 
 ---
 

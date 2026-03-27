@@ -80,15 +80,20 @@ services:
       - root_default
     labels:
       - "traefik.enable=true"
+      # HTTPS via weather subdomain (browser / editor access)
       - "traefik.http.routers.nodered-https.rule=Host(`weather.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.nodered-https.entrypoints=websecure"
       - "traefik.http.routers.nodered-https.service=nodered"
       - "traefik.http.routers.nodered-https.tls.certresolver=letsencrypt"
+      # HTTP via weather subdomain — no redirect, supports plain-HTTP clients (IoT devices)
       - "traefik.http.routers.nodered-http.rule=Host(`weather.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.nodered-http.entrypoints=web"
-      - "traefik.http.routers.nodered-http.middlewares=redirect-https"
+      - "traefik.http.routers.nodered-http.service=nodered"
+      # HTTP via apis subdomain — legacy/IoT path-based access
+      - "traefik.http.routers.nodered-apis-http.rule=Host(`apis.symphonyinteractive.ca`) && (PathPrefix(`/weather`) || PathPrefix(`/symphony`) || PathPrefix(`/home/crittercam`) || PathPrefix(`/voipms`))"
+      - "traefik.http.routers.nodered-apis-http.entrypoints=web"
+      - "traefik.http.routers.nodered-apis-http.service=nodered"
       - "traefik.http.services.nodered.loadbalancer.server.port=1880"
-      - "traefik.http.middlewares.redirect-https.redirectscheme.scheme=https"
 
   # ── Mosquitto — MQTT broker ───────────────────────────────────────────────
   # HTTP PHASE: plain MQTT :1883 and WebSocket :9001
@@ -151,12 +156,16 @@ services:
       - /opt/signalfi/manifests:/opt/signalfi/manifests:ro
       - /opt/signalfi/tokens:/opt/signalfi/tokens:ro
       - /opt/signalfi/reports:/opt/signalfi/reports
+      - /opt/signalfi/configs:/opt/signalfi/configs:ro
     environment:
       - PORT=3001
       - MANIFEST_ROOT=/opt/signalfi/manifests
       - TOKEN_ROOT=/opt/signalfi/tokens
       - REPORTS_ROOT=/opt/signalfi/reports
+      - CONFIG_ROOT=/opt/signalfi/configs
+      - CONFIG_BASE_URL=http://apis.symphonyinteractive.ca/ota/v1/config
       - MQTT_BROKER_URL=mqtt://signalfi-svc:OtaService2024!@mosquitto:1883
+      - MQTT_TOPIC_PREFIX=scout
     networks:
       - root_default
     depends_on:
@@ -197,12 +206,13 @@ services:
     volumes:
       - /root/nginx-ota.conf:/etc/nginx/conf.d/default.conf:ro
       - /opt/signalfi/files:/opt/signalfi/files:ro
+      - /opt/signalfi/configs:/opt/signalfi/configs:ro
     networks:
       - root_default
     labels:
       - "traefik.enable=true"
       # Priority 20 — takes precedence over signalfi-manifest router for file paths
-      - "traefik.http.routers.signalfi-files-http.rule=Host(`apis.symphonyinteractive.ca`) && (PathPrefix(`/ota/v1/firmware`) || PathPrefix(`/ota/v1/audio`) || Path(`/ota/health`))"
+      - "traefik.http.routers.signalfi-files-http.rule=Host(`apis.symphonyinteractive.ca`) && (PathPrefix(`/ota/v1/firmware`) || PathPrefix(`/ota/v1/audio`) || PathPrefix(`/ota/v1/config`) || Path(`/ota/health`))"
       - "traefik.http.routers.signalfi-files-http.entrypoints=web"
       - "traefik.http.routers.signalfi-files-http.service=signalfi-files"
       - "traefik.http.routers.signalfi-files-http.priority=20"
@@ -233,9 +243,11 @@ services:
       - /opt/signalfi/manifests:/opt/signalfi/manifests
       - /opt/signalfi/tokens:/opt/signalfi/tokens
       - /opt/signalfi/reports:/opt/signalfi/reports:ro
+      - /opt/signalfi/configs/models:/opt/signalfi/configs/models
+      - /opt/signalfi/configs/devices:/opt/signalfi/configs/devices
       - sftpgo-state:/var/lib/sftpgo
     ports:
-      - "2022:2022"
+      - "2222:2022"
     networks:
       - root_default
 

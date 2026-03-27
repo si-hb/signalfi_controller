@@ -21,7 +21,7 @@ HTTP/HTTPS  ──►  Traefik :80/:443
 
 MQTT        ──►  mosquitto :1883 (plain)  /  :8883 (TLS, future)
                               :9001 (WS)  /  :9443 (WSS, future)
-                   └── signalfi/ota/<modelId>  ← OTA push notifications
+                   └── scout/$group/<modelId>/$ota  ← OTA push notifications
 
 SFTP        ──►  sftpgo :2022
                    /firmware/   →  /opt/signalfi/files/firmware/
@@ -38,9 +38,11 @@ All services are defined in a single `/root/docker-compose.yml` on the server.
 
 | Method | Path | Auth | Description |
 |--------|------|------|-------------|
-| GET | `/ota/v1/manifest?modelId=&firmwareVersion=` | None | Device queries for update |
+| GET | `/ota/v1/manifest?modelId=&firmwareVersion=` | None | Device queries for firmware update |
 | GET | `/ota/v1/firmware/<file>` | Bearer token | Download firmware binary |
 | GET | `/ota/v1/audio/<file>` | Bearer token | Download audio file |
+| GET | `/ota/v1/config/models/<modelId>.json` | Bearer token | Download model config |
+| GET | `/ota/v1/config/devices/<mac>.json` | Bearer token | Download per-device config |
 | POST | `/ota/v1/report` | None | Device reports update result |
 | GET | `/ota/v1/health` | None | Manifest service health |
 | GET | `/ota/health` | None | File server health |
@@ -54,7 +56,7 @@ All services are defined in a single `/root/docker-compose.yml` on the server.
 ### signalfi-manifest (Node.js, :3001)
 - Serves all `/ota/*` paths except firmware/audio files
 - Validates tokens for nginx `auth_request`
-- Watches `manifests/models/*.json` for changes → MQTT push to `signalfi/ota/<modelId>`
+- Watches `manifests/models/*.json` for changes → MQTT push to `scout/$group/<modelId>/$ota`
 - Logs device update reports to `/opt/signalfi/reports/updates.log`
 - Source: `manifest-service/`
 
@@ -71,7 +73,17 @@ All services are defined in a single `/root/docker-compose.yml` on the server.
 
 ### mosquitto (:1883/:9001)
 - MQTT broker for push notifications
-- OTA topic: `signalfi/ota/<modelId>` (retained message, published on manifest update)
+- **Topic convention** — three scopes matching the existing Signalfi device topic structure:
+
+  | Scope | Topic | Usage |
+  |-------|-------|-------|
+  | Model group | `scout/$group/<modelId>/$ota` | Notify all devices of a specific model |
+  | Broadcast | `scout/$broadcast/$ota` | Notify all devices (future: mass update) |
+  | Individual | `scout/<MAC>/$ota` | Notify a single device by MAC (future) |
+
+- Published automatically when `manifests/models/<modelId>.json` is written with `update: true`
+- Retained message — devices that were offline receive the notification on next connect
+- Prefix `scout` is configurable via `MQTT_TOPIC_PREFIX` env var
 - Internal service user: `signalfi-svc` / `OtaService2024!`
 - Device user: `symphony` / `Si9057274427`
 
@@ -83,7 +95,8 @@ Tokens are **64-character hex strings** stored as files in `/opt/signalfi/tokens
 
 **File naming:**
 - `<64-hex>` — eternal token (no expiry)
-- `<64-hex>_exp<unix_seconds>` — token with expiry (created by `generate-manifest.js` default)
+- `<64-hex>_exp<unix_seconds>` — firmware/audio token with expiry (created by `generate-manifest.js`)
+- `<64-hex>_cfg_<id>_exp<unix_seconds>` — config-scoped token with expiry (created by `generate-config.js`)
 
 **How validation works:**
 1. Device sends `Authorization: Bearer <64-hex>` on file requests
@@ -118,9 +131,102 @@ ssh root@apis.symphonyinteractive.ca "rm /opt/signalfi/tokens/<hex>*"
 │   ├── default.json    ← fallback for unknown models
 │   └── models/
 │       └── SF-100.json ← per-model manifest (update: true → triggers MQTT push + OTA)
-├── tokens/             ← zero-byte files: <64-hex> or <64-hex>_exp<timestamp>
+├── configs/
+│   ├── models/
+│   │   └── SF-100.json ← shared model config (MQTT auth, services, OTA server URL)
+│   └── devices/
+│       └── aa-bb-cc-dd-ee-ff.json ← per-device overrides (node path, static IP, name)
+├── tokens/             ← zero-byte files: <64-hex>, <64-hex>_exp<unix>, or <64-hex>_cfg_<id>_exp<unix>
 └── reports/
     └── updates.log     ← JSONL: device OTA success/failure reports
+```
+
+---
+
+## Config Update System
+
+### Two-tier model
+
+Devices carry a `config.json` that is split into two layers:
+
+| Layer | Scope | Managed via |
+|-------|-------|-------------|
+| **Model config** | All devices of same model | SFTP → `/configs/models/<modelId>.json` |
+| **Device config** | Individual device overrides | SFTP → `/configs/devices/<mac>.json` |
+
+Device merge strategy: load model config first, apply device overrides on top. Fields in the device config take precedence.
+
+### Config JSON structure
+
+**Model config** (`configs/models/SF-100.json`):
+```json
+{
+  "modelId": "SF-100",
+  "version": "1.0",
+  "mqtt": {
+    "host": "apis.symphonyinteractive.ca",
+    "port": 1883,
+    "username": "symphony",
+    "password": "Si9057274427",
+    "tls": false,
+    "topicPrefix": "scout"
+  },
+  "services": { "ota": true, "audio": true, "reporting": true },
+  "otaServer": "http://apis.symphonyinteractive.ca"
+}
+```
+
+**Device config** (`configs/devices/aa-bb-cc-dd-ee-ff.json`):
+```json
+{
+  "mac": "aa-bb-cc-dd-ee-ff",
+  "modelId": "SF-100",
+  "nodePath": "/venue/building-a/floor2/conf-room",
+  "displayName": "conf-room",
+  "network": { "staticIp": "192.168.1.50", "gateway": "192.168.1.1", "dns": "8.8.8.8" }
+}
+```
+
+### MQTT notification topics
+
+| Scope | Topic | Trigger |
+|-------|-------|---------|
+| Model group | `scout/$group/<modelId>/$config` | `configs/models/<modelId>.json` written |
+| Individual | `scout/<mac>/$config` | `configs/devices/<mac>.json` written |
+| Broadcast | `scout/$broadcast/$config` | Future: global setting push |
+
+**MQTT payload:**
+```json
+{
+  "type": "model",
+  "modelId": "SF-100",
+  "url": "http://apis.symphonyinteractive.ca/ota/v1/config/models/SF-100.json",
+  "sha256": "abc123...",
+  "token": "<64-hex-bearer>"
+}
+```
+
+### Config token naming (in `/tokens/`)
+- `<64-hex>_cfg_<id>_exp<unix>` — config-scoped token with expiry
+- Validated by the same manifest service `validate` endpoint as firmware tokens
+
+### Publishing a config update
+```bash
+# Upload model config (shared settings for all SF-100 devices):
+node tools/generate-config.js \
+  --model SF-100 \
+  --config ./SF-100-config.json
+
+# Upload per-device config:
+node tools/generate-config.js \
+  --mac aa:bb:cc:dd:ee:ff \
+  --model SF-100 \
+  --node-path /venue/building-a/floor2/conf-room \
+  --display-name conf-room \
+  --static-ip 192.168.1.50
+
+# Dry-run (no upload, shows what would happen):
+node tools/generate-config.js --model SF-100 --dry-run
 ```
 
 ---
@@ -174,7 +280,7 @@ The `tools/generate-manifest.js` script handles the full publish workflow:
 1. Computes SHA256 and byte length of firmware binary
 2. Generates 64-hex token with 30-day expiry (`<hex>_exp<timestamp>`)
 3. Connects via SFTP and uploads: firmware binary, token file, manifest JSON
-4. sftpgo write triggers `fs.watch` in manifest service → MQTT publish to `signalfi/ota/<modelId>`
+4. sftpgo write triggers `fs.watch` in manifest service → MQTT publish to `scout/$group/<modelId>/$ota`
 5. Subscribed devices receive push notification and immediately poll the manifest
 
 **Prerequisites:**

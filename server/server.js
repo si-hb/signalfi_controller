@@ -234,6 +234,12 @@ function handleCommand(config, msg, broadcast) {
     return;
   }
 
+  if (cmd === 'cpuLed' && msg.mac) {
+    const prefix = config.mqtt.topicPrefix;
+    publishToTopics([`${prefix}/${msg.mac}/$action`], { act: 'cpu', cpu: !!msg.cpu });
+    return;
+  }
+
   // ---- refresh — broadcasts get to all devices ----
 
   if (cmd === 'refresh') {

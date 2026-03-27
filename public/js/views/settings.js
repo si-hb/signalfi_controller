@@ -33,6 +33,7 @@ const calState = {
 // Store volume state
 let storeTarget = 'all'; // 'all' | 'selected'
 let nodeTarget = 'all'; // 'all' | 'selected'
+let cpuMuteTarget = 'all'; // 'all' | 'selected'
 
 // Each path segment must start with [a-z0-9]; underscores allowed anywhere except segment-start
 const NODE_REGEX = /^[a-z0-9][a-z0-9\/._\-]*(\/[a-z0-9][a-z0-9\/._\-]*)*$/;
@@ -282,6 +283,61 @@ function buildSettingsView() {
   nodeCard.appendChild(nodeDesc);
   nodeCard.appendChild(nodeRow);
   view.appendChild(nodeCard);
+
+  // ── CPU LED Mute ──────────────────────────────────────────────────────────
+  const cpuHeading = document.createElement('div');
+  cpuHeading.className = 'section-heading';
+  cpuHeading.style.display = 'flex';
+  cpuHeading.style.justifyContent = 'space-between';
+  cpuHeading.style.alignItems = 'center';
+  const cpuHeadingTitle = document.createElement('span');
+  cpuHeadingTitle.textContent = 'CPU LED Mute';
+  const cpuDeviceCount = document.createElement('span');
+  cpuDeviceCount.id = 'cpu-mute-device-count';
+  cpuDeviceCount.style.fontSize = '12px';
+  cpuDeviceCount.style.fontWeight = 'normal';
+  cpuDeviceCount.style.color = 'var(--text-muted)';
+  cpuHeading.appendChild(cpuHeadingTitle);
+  cpuHeading.appendChild(cpuDeviceCount);
+  view.appendChild(cpuHeading);
+
+  const cpuCard = document.createElement('div');
+  cpuCard.className = 'settings-card';
+
+  const cpuTargetGroup = document.createElement('div');
+  cpuTargetGroup.className = 'radio-group';
+  cpuTargetGroup.id = 'cpu-mute-target-group';
+
+  ['All Devices', 'Selected Devices'].forEach((label, i) => {
+    const option = document.createElement('div');
+    option.className = 'radio-option' + (i === 0 ? ' selected' : '');
+    option.dataset.value = i === 0 ? 'all' : 'selected';
+    option.textContent = label;
+    cpuTargetGroup.appendChild(option);
+  });
+
+  const cpuBtns = document.createElement('div');
+  cpuBtns.style.display = 'flex';
+  cpuBtns.style.gap = '8px';
+  cpuBtns.style.marginTop = '8px';
+
+  const cpuMuteBtn = document.createElement('button');
+  cpuMuteBtn.className = 'btn-secondary cmd-btn';
+  cpuMuteBtn.id = 'cpu-mute-btn';
+  cpuMuteBtn.style.flex = '1';
+  cpuMuteBtn.textContent = 'Mute';
+
+  const cpuUnmuteBtn = document.createElement('button');
+  cpuUnmuteBtn.className = 'btn-secondary cmd-btn';
+  cpuUnmuteBtn.id = 'cpu-unmute-btn';
+  cpuUnmuteBtn.style.flex = '1';
+  cpuUnmuteBtn.textContent = 'Unmute';
+
+  cpuBtns.appendChild(cpuMuteBtn);
+  cpuBtns.appendChild(cpuUnmuteBtn);
+  cpuCard.appendChild(cpuTargetGroup);
+  cpuCard.appendChild(cpuBtns);
+  view.appendChild(cpuCard);
 
   // ── File Management ───────────────────────────────────────────────────────
   const fileHeading = document.createElement('div');
@@ -620,6 +676,40 @@ function wireSettingsEvents() {
     showToast(`Node set to "${val}" for ${targetMacs.length} device(s)`);
   });
 
+  // CPU mute target radio
+  document.getElementById('cpu-mute-target-group').addEventListener('click', (e) => {
+    const option = e.target.closest('.radio-option');
+    if (!option) return;
+    cpuMuteTarget = option.dataset.value;
+    document.querySelectorAll('#cpu-mute-target-group .radio-option').forEach(o => {
+      o.classList.toggle('selected', o.dataset.value === cpuMuteTarget);
+    });
+    updateStoreSection();
+  });
+
+  function sendCpuMute(muted) {
+    let targetMacs = [];
+    if (cpuMuteTarget === 'all') {
+      const scouts = (window.appState && window.appState.scouts) || [];
+      targetMacs = scouts.map(s => s.mac).filter(Boolean);
+      if (targetMacs.length === 0) { showToast('No devices available', 'warn'); return; }
+    } else {
+      const dest = getDestination();
+      if (dest.type !== 'selected' || !dest.target || dest.target.length === 0) {
+        showToast('Select devices first', 'warn');
+        return;
+      }
+      targetMacs = dest.target;
+    }
+    targetMacs.forEach(mac => {
+      sendCommand({ cmd: 'cpuLed', mac, cpu: muted });
+    });
+    showToast(`CPU LED ${muted ? 'muted' : 'unmuted'} on ${targetMacs.length} device(s)`);
+  }
+
+  document.getElementById('cpu-mute-btn').addEventListener('click', () => sendCpuMute(true));
+  document.getElementById('cpu-unmute-btn').addEventListener('click', () => sendCpuMute(false));
+
   // Preset list delegation (edit + delete)
   document.getElementById('settings-preset-list').addEventListener('click', async (e) => {
     const deleteBtn = e.target.closest('.preset-delete');
@@ -733,6 +823,18 @@ export function updateStoreSection() {
     } else {
       const n = sel.selectedMacs.size;
       nodeCountEl.textContent = n > 0 ? `${n} selected` : '';
+    }
+  }
+
+  const cpuCountEl = document.getElementById('cpu-mute-device-count');
+  if (cpuCountEl) {
+    const sel = window.selectionState;
+    if (!sel) return;
+    if (sel.broadcastMode) {
+      cpuCountEl.textContent = 'All Devices';
+    } else {
+      const n = sel.selectedMacs.size;
+      cpuCountEl.textContent = n > 0 ? `${n} selected` : '';
     }
   }
 }
