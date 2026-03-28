@@ -1,18 +1,8 @@
-#!/usr/bin/env bash
+/#!/usr/bin/env bash
 set -e
 
 REMOTE_HOST="root@weather.apis.symphonyinteractive.ca"
 REMOTE_PATH="/opt/signalfi_controller"
-
-# Commit message from first arg, or prompt
-MSG="${1:-}"
-if [[ -z "$MSG" ]]; then
-  read -r -p "Commit message: " MSG
-fi
-if [[ -z "$MSG" ]]; then
-  echo "Abort: commit message required." >&2
-  exit 1
-fi
 
 echo "==> Staging all changes..."
 git add -A
@@ -20,6 +10,15 @@ git add -A
 if git diff --cached --quiet; then
   echo "Nothing to commit — pushing and deploying current HEAD."
 else
+  # Commit message from first arg, or prompt
+  MSG="${1:-}"
+  if [[ -z "$MSG" ]]; then
+    read -r -p "Commit message: " MSG
+  fi
+  if [[ -z "$MSG" ]]; then
+    echo "Abort: commit message required." >&2
+    exit 1
+  fi
   echo "==> Committing: $MSG"
   git commit -m "$MSG"
 fi
