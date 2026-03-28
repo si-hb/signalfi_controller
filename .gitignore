@@ -1,5 +1,6 @@
 node_modules/
 data/
+*.wav
 config.json
 .env
 .vscode/settings.json

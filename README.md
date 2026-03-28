@@ -304,6 +304,23 @@ Set `auth.token` to enable Bearer-token authentication on all REST and WebSocket
 
 ---
 
+## File Server & Audio Storage
+
+Audio files, firmware, and device configuration are served by a separate HTTPS file server stack (`https_file_server/`) running alongside the main app. Both stacks share host directories on the production server.
+
+| Content | Host path | Served at | Managed via |
+| --- | --- | --- | --- |
+| Audio files | `/opt/signalfi/files/audio/` | `/ota/v1/audio/<file>` | sftpgo SFTP (virtual path `/audio`) |
+| Firmware | `/opt/signalfi/files/firmware/` | `/ota/v1/firmware/<file>` | sftpgo SFTP (virtual path `/firmware`) |
+| Device configs | `/opt/signalfi/configs/` | `/ota/v1/config/<file>` | sftpgo SFTP |
+| Firmware manifests | `/opt/signalfi/manifests/` | `/ota/v1/manifest?modelId=<id>` | manifest service |
+
+The signalfi-web container mounts `/opt/signalfi/files/audio` at `/app/audio` (read-only) so the audio file list in the UI always reflects whatever is currently on disk. The server watches this directory and broadcasts an updated file list to all connected clients whenever files are added or removed — no page refresh required.
+
+See [`https_file_server/README.md`](https_file_server/README.md) for full infrastructure details including token management, SFTP access, and MQTT OTA notifications.
+
+---
+
 ## Architecture
 
 | Layer | Technology |

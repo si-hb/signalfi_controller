@@ -77,6 +77,6 @@ export function renderSoundSheet() {
     volValue.value = sliderToDb(sliderPos);
   }
   const loopsValue = document.getElementById('sound-loops-value');
-  if (loopsValue) loopsValue.textContent = state.loops;
+  if (loopsValue) loopsValue.textContent = state.loops === 0 ? '∞' : state.loops;
   updateControlsDisabled();
 }

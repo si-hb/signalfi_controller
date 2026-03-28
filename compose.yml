@@ -6,7 +6,7 @@ services:
       - 3000
     volumes:
       - ./data:/app/data
-      - ./audio:/app/audio
+      - /opt/signalfi/files/audio:/app/audio:ro
       - ./firmware:/app/firmware
     env_file: .env
     environment:

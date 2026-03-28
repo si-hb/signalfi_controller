@@ -4,7 +4,7 @@
 
 import { initWS, sendCommand, registerMessageHandler, setAuthToken as wsSetAuthToken } from './ws.js';
 import { initDevicesView, renderDevices, updateScoutCard, setSearchTerm, toggleViewMode } from './views/devices.js';
-import { initSettingsView, renderSettings, updateStoreSection, initTheme } from './views/settings.js';
+import { initSettingsView, renderSettings, updateStoreSection, initTheme, getSyncOffset } from './views/settings.js';
 import { initInfoView, renderInfo, renderInfoRow } from './views/info.js';
 import { initLogView, refreshLog, handleLogEntry, handleLogClearTap } from './views/log.js';
 import { initLightingSheet, openLightingSheet } from './sheets/lighting.js';
@@ -588,6 +588,7 @@ function wireActionBar() {
         audio: sound.selectedFile,
         volume: sound.volume,
         loops: sound.loops,
+        syncOffset: getSyncOffset(),
         ...getDestination(),
       });
     });

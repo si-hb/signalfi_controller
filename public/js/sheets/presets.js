@@ -7,6 +7,7 @@ import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet, showToast } from '../app.js';
 import { getLightingState, setLightingState } from './lighting.js';
 import { getSoundState, setSoundState } from './sound.js';
+import { getSyncOffset } from '../views/settings.js';
 import { gainToDb } from '../utils.js';
 
 const PATTERN_NAMES = ['Off','Solid','Blink','Rotate','Pulse','Flash','Wave Out','Wave In','Audio','Left','Right','Up','Down'];
@@ -385,6 +386,7 @@ function wireEvents() {
         timeout: preset.dur,
         audio: preset.aud || null,
         loops: preset.rpt,
+        syncOffset: getSyncOffset(),
         ...dest,
       });
     } else {

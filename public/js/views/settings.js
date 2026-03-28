@@ -34,6 +34,9 @@ const calState = {
 let storeTarget = 'all'; // 'all' | 'selected'
 let nodeTarget = 'all'; // 'all' | 'selected'
 let cpuMuteTarget = 'all'; // 'all' | 'selected'
+let syncOffset = 0; // ms, 0 = OFF
+
+export function getSyncOffset() { return syncOffset; }
 
 // Each path segment must start with [a-z0-9]; underscores allowed anywhere except segment-start
 const NODE_REGEX = /^[a-z0-9][a-z0-9\/._\-]*(\/[a-z0-9][a-z0-9\/._\-]*)*$/;
@@ -75,6 +78,21 @@ function buildSettingsView() {
   themeRow.appendChild(themeGroup);
   appearanceCard.appendChild(themeRow);
   view.appendChild(appearanceCard);
+
+  // ── Sync Offset ──────────────────────────────────────────────────────────
+  const syncHeading = document.createElement('div');
+  syncHeading.className = 'section-heading';
+  syncHeading.textContent = 'Sync Offset';
+  view.appendChild(syncHeading);
+
+  const syncCard = document.createElement('div');
+  syncCard.className = 'settings-card';
+  const syncRow = makeSliderRow('Offset', 'sync-offset', 0, 1000, syncOffset, '');
+  syncRow.querySelector('#sync-offset').step = '10';
+  const syncValSpan = syncRow.querySelector('#sync-offset-val');
+  syncValSpan.textContent = syncOffset === 0 ? 'OFF' : `${syncOffset} ms`;
+  syncCard.appendChild(syncRow);
+  view.appendChild(syncCard);
 
   // ── Presets ──────────────────────────────────────────────────────────────
   const presetsHeading = document.createElement('div');
@@ -476,6 +494,13 @@ function wireSettingsEvents() {
     document.querySelectorAll('#theme-group .radio-option').forEach(o => {
       o.classList.toggle('selected', o.dataset.value === theme);
     });
+  });
+
+  // Sync offset slider
+  document.getElementById('sync-offset').addEventListener('input', (e) => {
+    syncOffset = parseInt(e.target.value, 10);
+    const valEl = document.getElementById('sync-offset-val');
+    if (valEl) valEl.textContent = syncOffset === 0 ? 'OFF' : `${syncOffset} ms`;
   });
 
   const sendVolThrottled = throttle(() => {

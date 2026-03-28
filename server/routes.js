@@ -26,14 +26,8 @@ function createRouter(config, state, persistence, broadcast, logStore) {
   });
 
   // -------------------------------------------------------------------------
-  // GET /api/audio — list .wav files in audioDir, fall back to known list
+  // GET /api/audio — list .wav files in audioDir
   // -------------------------------------------------------------------------
-  const FALLBACK_AUDIO = [
-    'chime01.wav','chime02.wav','chime03.wav','clock.wav','doorbell.wav',
-    'dtr.wav','farfrom.wav','oc-bil.wav','ocean.wav','oc-eng.wav',
-    'oc-fra.wav','oc-orc.wav','royal.wav','royer.wav','startme.wav','stereo.wav',
-  ];
-
   router.get('/audio', (_req, res) => {
     try {
       let files = [];
@@ -42,12 +36,11 @@ function createRouter(config, state, persistence, broadcast, logStore) {
           .filter(f => f.toLowerCase().endsWith('.wav'))
           .sort();
       }
-      if (files.length === 0) files = FALLBACK_AUDIO;
       res.json({ files });
     } catch (err) {
       const ts = new Date().toISOString();
       console.error(`[${ts}] [ROUTES] Failed to list audio files:`, err.message);
-      res.json({ files: FALLBACK_AUDIO });
+      res.json({ files: [] });
     }
   });
 

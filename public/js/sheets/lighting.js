@@ -6,6 +6,7 @@ import { sendCommand } from '../ws.js';
 import { getDestination, closeSheet, openSheet } from '../app.js';
 import { roundGain, sliderToGain, sliderToDb, dbToSlider, throttle } from '../utils.js';
 import { getSoundState, setSoundState, renderSoundSheet } from './sound.js';
+import { getSyncOffset } from '../views/settings.js';
 
 // Module-level state for current lighting settings
 const state = {
@@ -528,6 +529,7 @@ function wireEvents() {
       audio: sound.selectedFile,
       volume: roundGain(sound.volume),
       loops: sound.loops,
+      syncOffset: getSyncOffset(),
       ...dest,
     });
   });

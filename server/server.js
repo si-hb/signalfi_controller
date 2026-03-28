@@ -281,9 +281,11 @@ function handleCommand(config, msg, broadcast) {
       };
       // Only include vol when explicitly provided — omitting it lets devices use their stored default
       const vol = msg.volume ?? p.vol;
-      if (vol != null) payload.vol = vol;
+      if (vol != null) payload.vol = Math.round(vol * 1000) / 1000;
       const aud = msg.audio ?? p.aud ?? '';
       if (aud) payload.aud = aud;
+      const syncOffset = msg.syncOffset ?? 0;
+      if (syncOffset > 0) payload.syn = Date.now() + syncOffset;
       break;
     }
 
@@ -349,22 +351,15 @@ function handleCommand(config, msg, broadcast) {
 // ---------------------------------------------------------------------------
 // Audio file listing (reused for state snapshots)
 // ---------------------------------------------------------------------------
-const FALLBACK_AUDIO = [
-  'chime01.wav','chime02.wav','chime03.wav','clock.wav','doorbell.wav',
-  'dtr.wav','farfrom.wav','oc-bil.wav','ocean.wav','oc-eng.wav',
-  'oc-fra.wav','oc-orc.wav','royal.wav','royer.wav','startme.wav','stereo.wav',
-];
-
 function listAudioFiles(audioDir) {
   try {
     if (fs.existsSync(audioDir)) {
-      const files = fs.readdirSync(audioDir)
+      return fs.readdirSync(audioDir)
         .filter(f => f.toLowerCase().endsWith('.wav'))
         .sort();
-      if (files.length > 0) return files;
     }
   } catch { /* fall through */ }
-  return FALLBACK_AUDIO;
+  return [];
 }
 
 // ---------------------------------------------------------------------------
@@ -623,6 +618,25 @@ async function main() {
   console.log(`[${ts()}] [SERVER] Listening on http://${config.http.host}:${config.http.port}`);
   console.log(`[${ts()}] [SERVER] WebSocket endpoint: ws://${config.http.host}:${config.http.port}/ws`);
   console.log(`[${ts()}] [SERVER] REST API: http://${config.http.host}:${config.http.port}/api/state`);
+
+  // ---- Watch audio directory for changes and broadcast updated file list ----
+  if (fs.existsSync(config.paths.audioDir)) {
+    let audioWatchHandle = null;
+    fs.watch(config.paths.audioDir, () => {
+      if (audioWatchHandle) clearTimeout(audioWatchHandle);
+      audioWatchHandle = setTimeout(() => {
+        audioWatchHandle = null;
+        console.log(`[${ts()}] [SERVER] Audio directory changed — broadcasting updated file list`);
+        broadcast({
+          type:       'state',
+          ...state.getState(),
+          mqttOnline,
+          audioFiles: listAudioFiles(config.paths.audioDir),
+        });
+      }, 300);
+    });
+    console.log(`[${ts()}] [SERVER] Watching audio dir: ${config.paths.audioDir}`);
+  }
 
   logStore.add({
     ts: Date.now(), direction: 'sys', category: 'server',
