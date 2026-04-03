@@ -20,7 +20,6 @@ const KEY_NAMES = {
   aud:  'audio',
   rpt:  'loops',
   nod:  'node',
-  fle:  'file',
   sig:  'signal',
   frq:  'frequency',
   ver:  'version',
@@ -46,10 +45,8 @@ const ACTION_VALUES = {
   cal:    'calibrate',
   vrt:    'storeVolume',
   nod:    'setNode',
-  fle:    'pullFile',
   get:    'getState',
   rbt:    'reboot',
-  upd:    'firmwareUpdate',
 };
 
 /**

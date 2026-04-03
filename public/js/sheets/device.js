@@ -193,7 +193,6 @@ function renderDeviceSheet(scout) {
 
   const identifyBtn = makeActionBtn('Identify', 'device-identify-btn', 'btn-secondary cmd-btn');
   const rebootBtn = makeActionBtn('Reboot Device', 'device-reboot-btn', 'btn-secondary btn-warn cmd-btn');
-  const otaBtn = makeActionBtn('Firmware Update (OTA)', 'device-ota-btn', 'btn-secondary cmd-btn');
 
   // Reboot confirm area
   const rebootConfirm = document.createElement('div');
@@ -209,26 +208,10 @@ function renderDeviceSheet(scout) {
   rebootConfirm.appendChild(rebootYes);
   rebootConfirm.appendChild(rebootNo);
 
-  // OTA confirm area
-  const otaConfirm = document.createElement('div');
-  otaConfirm.id = 'device-ota-confirm';
-  otaConfirm.className = 'confirm-row';
-  otaConfirm.hidden = true;
-  const otaYes = document.createElement('button');
-  otaYes.className = 'btn-primary btn-warn';
-  otaYes.textContent = 'Yes, Update';
-  const otaNo = document.createElement('button');
-  otaNo.className = 'btn-secondary';
-  otaNo.textContent = 'Cancel';
-  otaConfirm.appendChild(otaYes);
-  otaConfirm.appendChild(otaNo);
-
   actionsSection.appendChild(actionsLabel);
   actionsSection.appendChild(identifyBtn);
   actionsSection.appendChild(rebootBtn);
   actionsSection.appendChild(rebootConfirm);
-  actionsSection.appendChild(otaBtn);
-  actionsSection.appendChild(otaConfirm);
   actionsSection.hidden = scout.status === 'identifying';
   body.appendChild(actionsSection);
 
@@ -251,27 +234,6 @@ function renderDeviceSheet(scout) {
   ackSection.appendChild(ackLabel);
   ackSection.appendChild(ackBtn);
   body.appendChild(ackSection);
-
-  // Pull File section
-  const pullSection = document.createElement('div');
-  pullSection.className = 'sheet-section';
-  const pullLabel = document.createElement('div');
-  pullLabel.className = 'sheet-section-label';
-  pullLabel.textContent = 'Pull File to Device';
-  const pullRow = document.createElement('div');
-  pullRow.className = 'input-row';
-  const pullInput = document.createElement('input');
-  pullInput.type = 'text';
-  pullInput.id = 'device-pull-input';
-  pullInput.placeholder = 'filename.wav';
-  const pullBtn = document.createElement('button');
-  pullBtn.textContent = 'Pull';
-  pullBtn.id = 'device-pull-btn';
-  pullRow.appendChild(pullInput);
-  pullRow.appendChild(pullBtn);
-  pullSection.appendChild(pullLabel);
-  pullSection.appendChild(pullRow);
-  body.appendChild(pullSection);
 
   wireDeviceEvents(scout);
 }
@@ -326,21 +288,6 @@ function wireDeviceEvents(scout) {
     document.getElementById('device-reboot-confirm').hidden = true;
   });
 
-  // OTA firmware update
-  document.getElementById('device-ota-btn').addEventListener('click', () => {
-    const confirm = document.getElementById('device-ota-confirm');
-    confirm.hidden = !confirm.hidden;
-  });
-  document.getElementById('device-ota-confirm').querySelector('.btn-warn').addEventListener('click', () => {
-    sendCommand({ cmd: 'firmwareUpdate', mac: scout.mac });
-    document.getElementById('device-ota-confirm').hidden = true;
-    showToast('Firmware update started…');
-    advanceQueue();
-  });
-  document.getElementById('device-ota-confirm').querySelector('.btn-secondary').addEventListener('click', () => {
-    document.getElementById('device-ota-confirm').hidden = true;
-  });
-
   // Acknowledge
   const ackBtn = document.getElementById('device-ack-btn');
   if (ackBtn) {
@@ -349,18 +296,6 @@ function wireDeviceEvents(scout) {
       // Do not close — let the device status update re-render the sheet naturally
     });
   }
-
-  // Pull file
-  document.getElementById('device-pull-btn').addEventListener('click', () => {
-    const input = document.getElementById('device-pull-input');
-    const filename = input.value.trim();
-    if (!filename) {
-      showToast('Enter a filename', 'warn');
-      return;
-    }
-    sendCommand({ cmd: 'pullFile', mac: scout.mac, file: filename });
-    showToast('Pull file sent');
-  });
 }
 
 export function initDeviceSheet(openSheetFn) {

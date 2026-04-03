@@ -52,9 +52,8 @@ function loadConfig() {
       staticDir:  process.env.HTTP_STATIC_DIR  || fileConfig.http?.staticDir   || './public',
     },
     paths: {
-      dataDir:     process.env.DATA_DIR     || fileConfig.paths?.dataDir     || './data',
-      firmwareDir: process.env.FIRMWARE_DIR || fileConfig.paths?.firmwareDir || './firmware',
-      audioDir:    process.env.AUDIO_DIR    || fileConfig.paths?.audioDir    || './audio',
+      dataDir:  process.env.DATA_DIR  || fileConfig.paths?.dataDir  || './data',
+      audioDir: process.env.AUDIO_DIR || fileConfig.paths?.audioDir || './audio',
     },
     auth: {
       token: process.env.AUTH_TOKEN || fileConfig.auth?.token || '',
@@ -201,11 +200,6 @@ function handleCommand(config, msg, broadcast) {
     return;
   }
 
-  if (cmd === 'firmwareUpdate' && msg.mac) {
-    const prefix = config.mqtt.topicPrefix;
-    publishToTopics([`${prefix}/${msg.mac}/$action`], { act: 'upd' });
-    return;
-  }
 
   if (cmd === 'identify' && msg.mac) {
     const prefix = config.mqtt.topicPrefix;
@@ -228,11 +222,6 @@ function handleCommand(config, msg, broadcast) {
     return;
   }
 
-  if (cmd === 'pullFile' && msg.mac) {
-    const prefix = config.mqtt.topicPrefix;
-    publishToTopics([`${prefix}/${msg.mac}/$action`], { act: 'fle', file: msg.file || '' });
-    return;
-  }
 
   if (cmd === 'cpuLed' && msg.mac) {
     const prefix = config.mqtt.topicPrefix;

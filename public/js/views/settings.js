@@ -5,7 +5,7 @@
 import { sendCommand } from '../ws.js';
 import { getDestination, showToast } from '../app.js';
 import { deletePreset, savePreset } from '../api.js';
-import { sliderToGain, gainToSlider, roundGain, throttle, applyTheme, getTheme, sliderToDb, gainToDb, dbToSlider } from '../utils.js';
+import { sliderToGain, roundGain, throttle, applyTheme, getTheme, sliderToDb, gainToDb, dbToSlider } from '../utils.js';
 import { clearPresetHighlight } from '../sheets/presets.js';
 
 const NOTE_NAMES = ['A', 'A#', 'B', 'C', 'C#', 'D', 'D#', 'E', 'F', 'F#', 'G', 'G#'];
@@ -357,35 +357,6 @@ function buildSettingsView() {
   cpuCard.appendChild(cpuBtns);
   view.appendChild(cpuCard);
 
-  // ── File Management ───────────────────────────────────────────────────────
-  const fileHeading = document.createElement('div');
-  fileHeading.className = 'section-heading';
-  fileHeading.textContent = 'File Management';
-  view.appendChild(fileHeading);
-
-  const fileCard = document.createElement('div');
-  fileCard.className = 'settings-card';
-
-  const fileLabel = document.createElement('div');
-  fileLabel.className = 'sheet-section-label';
-  fileLabel.textContent = 'Pull File to Devices';
-
-  const fileRow = document.createElement('div');
-  fileRow.className = 'input-row';
-  const fileInput = document.createElement('input');
-  fileInput.type = 'text';
-  fileInput.id = 'settings-file-input';
-  fileInput.placeholder = 'filename.wav';
-  const fileBtn = document.createElement('button');
-  fileBtn.textContent = 'Pull';
-  fileBtn.id = 'settings-file-btn';
-  fileRow.appendChild(fileInput);
-  fileRow.appendChild(fileBtn);
-
-  fileCard.appendChild(fileLabel);
-  fileCard.appendChild(fileRow);
-  view.appendChild(fileCard);
-
   // Add bottom padding
   const pad = document.createElement('div');
   pad.style.height = '32px';
@@ -653,18 +624,6 @@ function wireSettingsEvents() {
     const volume = (window.appState && window.appState.defaultVolume) ?? 0.8;
     sendCommand({ cmd: 'storeVolume', volume: roundGain(volume), ...dest });
     showToast('Storing volume…');
-  });
-
-  // Pull file
-  document.getElementById('settings-file-btn').addEventListener('click', () => {
-    const filename = document.getElementById('settings-file-input').value.trim();
-    if (!filename) {
-      showToast('Enter a filename', 'warn');
-      return;
-    }
-    const dest = getDestination();
-    sendCommand({ cmd: 'pullFile', file: filename, ...dest });
-    showToast('Pull file sent');
   });
 
   // Set node

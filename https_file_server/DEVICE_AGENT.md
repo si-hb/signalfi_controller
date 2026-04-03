@@ -20,15 +20,14 @@ The manifest endpoint requires no credentials. File downloads require a valid to
 
 | Purpose            | URL                                                                           | Auth |
 |--------------------|-------------------------------------------------------------------------------|------|
-| Manifest API       | `http://apis.symphonyinteractive.ca/ota/v1/manifest`                          | None |
-| Firmware download  | `http://apis.symphonyinteractive.ca/ota/v1/firmware/<filename>`               | Bearer token |
-| Audio download     | `http://apis.symphonyinteractive.ca/ota/v1/audio/<filename>`                  | Bearer token |
-| Model config       | `http://apis.symphonyinteractive.ca/ota/v1/config/models/<modelId>.json`      | Bearer token |
-| Device config      | `http://apis.symphonyinteractive.ca/ota/v1/config/devices/<mac>.json`         | Bearer token |
-| Update report      | `http://apis.symphonyinteractive.ca/ota/v1/report`                            | None |
-| Manifest health    | `http://apis.symphonyinteractive.ca/ota/v1/health`                            | None |
+| Manifest API       | `http://apis.symphonyinteractive.ca/ota/manifest`                             | None |
+| Firmware download  | `http://apis.symphonyinteractive.ca/ota/firmware/<filename>`                  | Bearer token |
+| Audio download     | `http://apis.symphonyinteractive.ca/ota/audio/<filename>`                     | Bearer token |
+| Model config       | `http://apis.symphonyinteractive.ca/ota/config/models/<modelId>.json`         | Bearer token |
+| Device config      | `http://apis.symphonyinteractive.ca/ota/config/devices/<mac>.json`            | Bearer token |
+| Update report      | `http://apis.symphonyinteractive.ca/ota/report`                               | None |
+| Manifest health    | `http://apis.symphonyinteractive.ca/ota/health`                               | None |
 | File server health | `http://apis.symphonyinteractive.ca/ota/health`                               | None |
-| OTA MQTT topic     | `scout/$group/<modelId>/$ota` on `apis.symphonyinteractive.ca:1883`           | Password |
 | Config MQTT topic  | `scout/$group/<modelId>/$config` on `apis.symphonyinteractive.ca:1883`        | Password |
 
 **Token auth:** Use the `downloadToken` from the manifest as a Bearer token:
@@ -46,10 +45,11 @@ The token is **never** put in the URL query string.
 ```
 Device                        Manifest API                File Server       MQTT Broker
   |                               |                           |                  |
-  | subscribe scout/$group/<modelId>/$ota────────────────────────────────────────────► |
+  | subscribe scout/<mac>/$action (existing) ──────────────────────────────────────► |
+  | subscribe scout/$group/<node>/$action (existing) ──────────────────────────────► |
   |                               |                           |                  |
-  | ── on MQTT msg OR startup ─────────────────────────────────────────────────►|
-  |-- GET /ota/v1/manifest        |                           |                  |
+  | ── on act:frm (mdl matches) OR startup ─────────────────────────────────────►|
+  |-- GET /ota/manifest           |                           |                  |
   |     ?modelId=&firmwareVersion=|                           |                  |
   |                          ---> |                           |                  |
   |<-- 200 JSON manifest ---------|                           |                  |
@@ -58,7 +58,7 @@ Device                        Manifest API                File Server       MQTT
   |      audio[] }                |                           |                  |
   |                               |                           |                  |
   | if update == true:            |                           |                  |
-  |-- GET /ota/v1/firmware/<file> |                           |                  |
+  |-- GET /ota/firmware/<file>    |                           |                  |
   |   Authorization: Bearer <tok>──────────────────────────► |                  |
   |                                                           |─ auth_request ─► |
   |                                                           |    (internal)    |
@@ -66,14 +66,14 @@ Device                        Manifest API                File Server       MQTT
   |                               |                           |                  |
   | Verify SHA256                 |                           |                  |
   | Write to flash                |                           |                  |
-  |-- POST /ota/v1/report ──────► |                           |                  |
+  |-- POST /ota/report ─────────► |                           |                  |
   |   { deviceId, version,        |                           |                  |
   |     status: "applied" }       |                           |                  |
   | Reboot into new firmware      |                           |                  |
   |                               |                           |                  |
   | for each audio in manifest:   |                           |                  |
   |   if local sha256 != manifest |                           |                  |
-  |-- GET /ota/v1/audio/<file>    |                           |                  |
+  |-- GET /ota/audio/<file>       |                           |                  |
   |   Authorization: Bearer <tok>──────────────────────────► |                  |
   |<── 200 binary ──────────────────────────────────────────── |                  |
 ```
@@ -91,14 +91,14 @@ Device                        Manifest API                File Server       MQTT
   "compatibleFrom": [],
   "downloadToken": "63a54ebcc465b17ecd60798efbbda47efc695d30088e002fbf6a26fed5f7b3d1",
   "firmware": {
-    "url": "http://apis.symphonyinteractive.ca/ota/v1/firmware/firmware-1.1.0.bin",
+    "url": "http://apis.symphonyinteractive.ca/ota/firmware/firmware-1.1.0.bin",
     "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
     "size": 524288
   },
   "audio": [
     {
       "id": "audio-pack-1",
-      "url": "http://apis.symphonyinteractive.ca/ota/v1/audio/audio-pack-1.wav",
+      "url": "http://apis.symphonyinteractive.ca/ota/audio/audio-pack-1.wav",
       "sha256": "a3b1d5...",
       "size": 102400
     }
@@ -162,7 +162,7 @@ bool fetchManifest(String& token, String& firmwareUrl, String& firmwareSha256, u
         return false;
     }
 
-    String path = String("/ota/v1/manifest?modelId=") + MODEL_ID + "&firmwareVersion=" + FIRMWARE_VER;
+    String path = String("/ota/manifest?modelId=") + MODEL_ID + "&firmwareVersion=" + FIRMWARE_VER;
     client.print(String("GET ") + path + " HTTP/1.1\r\n"
                  "Host: " + host + "\r\n"
                  "Connection: close\r\n\r\n");
@@ -365,56 +365,72 @@ void checkForUpdate() {
 }
 ```
 
-### 5 — MQTT Push Subscription
+### 5 — MQTT Push: `frm` Action
 
-Devices subscribe to `scout/$group/<modelId>/$ota` on startup. When the server publishes a new manifest, devices receive an immediate push and trigger a manifest check — no polling required.
+OTA is triggered via the existing `$action` topic — no dedicated `$ota` subscriptions needed. The server publishes `act: frm` to a group or device topic. The device inspects the `mdl` field and only acts if the model matches its own `MODEL_ID`.
+
+This reuses subscriptions the device already maintains for normal operation (`scout/<mac>/$action`, `scout/$group/<nodePath>/$action`). No extra topics are needed.
+
+**Payload published by server:**
+
+```json
+{ "act": "frm", "mdl": "SF-100" }
+```
+
+**Device-side handler — add to your existing `$action` dispatch:**
 
 ```cpp
-#include <QNEthernetMqtt.h>  // or use a PubSubClient-style MQTT library
+// Inside your MQTT message handler, after parsing act from JSON:
 
-// MQTT broker credentials
-const char* MQTT_HOST = "apis.symphonyinteractive.ca";
-const int   MQTT_PORT = 1883;
-const char* MQTT_USER = "symphony";
-const char* MQTT_PASS = "Si9057274427";
-
-// Callback invoked when a message arrives on scout/$group/<modelId>/$ota
-void onOtaNotification(const String& payload) {
-    Serial.printf("[MQTT] OTA notification received: %s\n", payload.c_str());
-    // Trigger an immediate manifest check
-    checkForUpdate();
-}
-
-void setupMqtt(MqttClient& mqttClient) {
-    mqttClient.setUsernamePassword(MQTT_USER, MQTT_PASS);
-    if (!mqttClient.connect(MQTT_HOST, MQTT_PORT)) {
-        Serial.printf("[MQTT] connect failed: %d\n", mqttClient.connectError());
+if (act == "frm") {
+    const char* targetModel = doc["mdl"];
+    if (!targetModel || strcmp(targetModel, MODEL_ID) != 0) {
+        Serial.printf("[OTA] frm ignored — model mismatch (target=%s, ours=%s)\n",
+                      targetModel ? targetModel : "null", MODEL_ID);
         return;
     }
-    // Model-specific OTA (primary — server publishes here on manifest update)
-    String groupTopic = String("scout/$group/") + MODEL_ID + "/$ota";
-    mqttClient.subscribe(groupTopic);
-    // Broadcast OTA (all models — future mass-update support)
-    mqttClient.subscribe("scout/$broadcast/$ota");
-    // Individual device OTA (MAC-targeted — future)
-    String macTopic = String("scout/") + DEVICE_MAC + "/$ota";
-    mqttClient.subscribe(macTopic);
-    Serial.printf("[MQTT] subscribed to group, broadcast, device topics\n");
-}
-
-void loopMqtt(MqttClient& mqttClient) {
-    mqttClient.poll();
-    if (mqttClient.available()) {
-        String topic = mqttClient.messageTopic();
-        String payload = mqttClient.readString();
-        if (topic.endsWith("/$ota")) {
-            onOtaNotification(payload);
-        }
-    }
+    Serial.printf("[OTA] frm received — triggering manifest check\n");
+    checkForUpdate();
+    return;
 }
 ```
 
-> On first connect, the broker replays the last retained message immediately. This means if a firmware update was published while the device was offline, it will be notified as soon as it subscribes — no polling needed to catch up.
+**Full action dispatch sketch (showing frm alongside existing actions):**
+
+```cpp
+void onActionMessage(const String& payload) {
+    StaticJsonDocument<512> doc;
+    if (deserializeJson(doc, payload) != DeserializationError::Ok) return;
+
+    const char* act = doc["act"];
+    if (!act) return;
+
+    if      (strcmp(act, "ply") == 0) { handlePlay(doc); }
+    else if (strcmp(act, "stp") == 0) { handleStop(); }
+    else if (strcmp(act, "vol") == 0) { handleVolume(doc); }
+    else if (strcmp(act, "pat") == 0) { handlePattern(doc); }
+    else if (strcmp(act, "col") == 0) { handleColour(doc); }
+    else if (strcmp(act, "brt") == 0) { handleBrightness(doc); }
+    else if (strcmp(act, "rbt") == 0) { handleReboot(); }
+    else if (strcmp(act, "frm") == 0) {
+        const char* mdl = doc["mdl"];
+        if (mdl && strcmp(mdl, MODEL_ID) == 0) {
+            Serial.println("[OTA] frm — starting manifest check");
+            checkForUpdate();
+        } else {
+            Serial.printf("[OTA] frm ignored — model mismatch\n");
+        }
+    }
+    // ... other actions
+}
+```
+
+> The device's normal group subscriptions already cover model-level targeting:
+>
+> - `scout/$group/SF-100/$action` — model-specific group
+> - `scout/<mac>/$action` — per-device
+>
+> The server publishes `frm` to whichever is appropriate. The `mdl` field provides a secondary safety check so a mis-routed message cannot trigger an OTA on the wrong device model.
 
 ### 6 — Device Report (POST after successful update)
 
@@ -431,7 +447,7 @@ void reportUpdate(const String& firmwareVersion, const String& status) {
                   "\"firmwareVersion\":\"" + firmwareVersion + "\","
                   "\"status\":\"" + status + "\"}";
 
-    client.printf("POST /ota/v1/report HTTP/1.1\r\nHost: %s\r\n"
+    client.printf("POST /ota/report HTTP/1.1\r\nHost: %s\r\n"
                   "Content-Type: application/json\r\nContent-Length: %d\r\n"
                   "Connection: close\r\n\r\n%s",
                   host, body.length(), body.c_str());
@@ -552,10 +568,10 @@ void onSuccessfulBoot() {
 
 ## MQTT Push vs Polling
 
-**Preferred: MQTT push.** Devices subscribe to `scout/$group/<modelId>/$ota` and respond to push notifications. No polling timer needed.
+**Preferred: MQTT push.** Devices respond to `act: frm` arriving on their existing `$action` subscriptions. No extra topics needed.
 
-- Subscribe on startup → receive retained message if update was published while offline
-- React immediately to push → no delay waiting for a poll window
+- Server publishes `{ act: "frm", mdl: "<modelId>" }` to the group or device `$action` topic
+- Device checks `mdl` field matches its own model, then calls `checkForUpdate()`
 - Retry connection on disconnect with backoff
 
 **Fallback polling** (optional, for devices where MQTT is unavailable):
@@ -584,7 +600,7 @@ Devices receive config pushes via MQTT — same mechanism as OTA but on the `$co
 
 ### MQTT subscriptions for config
 
-Add these to your `setupMqtt()` alongside the `$ota` subscriptions:
+Add these to your `setupMqtt()` alongside your existing `$action` subscriptions:
 ```cpp
 // Model config (shared: MQTT credentials, services, OTA server)
 String modelConfigTopic = String("scout/$group/") + MODEL_ID + "/$config";
@@ -599,8 +615,8 @@ Route in your message handler:
 ```cpp
 if (topic.endsWith("/$config")) {
     onConfigNotification(payload);
-} else if (topic.endsWith("/$ota")) {
-    onOtaNotification(payload);
+} else if (topic.endsWith("/$action")) {
+    onActionMessage(payload);  // handles frm, ply, stp, etc.
 }
 ```
 
@@ -610,7 +626,7 @@ if (topic.endsWith("/$config")) {
 {
   "type": "model",
   "modelId": "SF-100",
-  "url": "http://apis.symphonyinteractive.ca/ota/v1/config/models/SF-100.json",
+  "url": "http://apis.symphonyinteractive.ca/ota/config/models/SF-100.json",
   "sha256": "abc123...",
   "token": "<64-hex-bearer>"
 }
