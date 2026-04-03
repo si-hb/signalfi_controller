@@ -303,6 +303,11 @@
     flex-direction: column;
   }
 
+  /* Push header content below the iOS status bar */
+  #sheet-lighting .sheet-header {
+    padding-top: calc(16px + env(safe-area-inset-top));
+  }
+
   /* Active tab panel fills remaining space and scrolls internally */
   #sheet-lighting .sheet-tab-panel.active {
     flex: 1;
