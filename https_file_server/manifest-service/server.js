@@ -681,9 +681,9 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
     const topic   = broadcast
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
-    // Token is in the manifest (fetched by device via GET /ota/v1/manifest).
-    // mdl tells the device which manifest to retrieve — always included.
-    const payload = JSON.stringify({ act: 'frm', mdl: modelId });
+    // Token is the authorization credential for the device to access OTA endpoints.
+    // Only devices on the broker receive it; they present it as Bearer on all OTA requests.
+    const payload = JSON.stringify({ act: 'frm', mdl: modelId, token: tokenHex });
 
     mqttPublish(topic, payload, false);
     console.log(`[admin] OTA pushed: ${topic}`);
@@ -803,6 +803,13 @@ app.get('/ota/v1/manifest', (req, res) => {
   const firmwareVersion = req.query.firmwareVersion || null;
 
   if (!modelId) return res.status(400).json({ error: 'modelId query parameter required' });
+
+  // Token auth: device presents token received via MQTT as Bearer header or ?token= query param
+  let token = null;
+  const auth = req.headers['authorization'];
+  if (auth && auth.startsWith('Bearer ')) token = auth.slice(7).trim();
+  if (!token) token = req.query.token || null;
+  if (!validateToken(token)) return res.status(401).json({ valid: false });
 
   const modelPath   = path.join(MANIFEST_ROOT, 'models', `${modelId}.json`);
   const defaultPath = path.join(MANIFEST_ROOT, 'default.json');
