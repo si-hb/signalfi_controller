@@ -111,19 +111,17 @@ function mqttPublish(topic, payload, retain = false) {
   }
 }
 
-function publishOta(modelId, target) {
-  if (target === 'broadcast') {
-    const topic = `${MQTT_PREFIX}/$broadcast/$action`;
-    mqttPublish(topic, JSON.stringify({ act: 'frm' }), false);
-    console.log(`[ota] broadcast push sent`);
-  } else {
-    const topic = `${MQTT_PREFIX}/$group/${modelId}/$action`;
-    mqttPublish(topic, JSON.stringify({ act: 'frm', mdl: modelId }), false);
-    console.log(`[ota] group push sent for ${modelId}`);
-  }
-}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+function generateManifestId() {
+  // 16-byte random UUID (RFC 4122 v4 format)
+  const b = crypto.randomBytes(16);
+  b[6] = (b[6] & 0x0f) | 0x40;
+  b[8] = (b[8] & 0x3f) | 0x80;
+  const h = b.toString('hex');
+  return `${h.slice(0,8)}-${h.slice(8,12)}-${h.slice(12,16)}-${h.slice(16,20)}-${h.slice(20)}`;
+}
 
 function fileSha256(filePath) {
   try { return crypto.createHash('sha256').update(fs.readFileSync(filePath)).digest('hex'); }
@@ -469,6 +467,7 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
     const tokenHex    = crypto.randomBytes(32).toString('hex');
     const tokenExpiry = Math.floor(Date.now() / 1000) + Number(tokenDays) * 86400;
     fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
+    const manifestId  = generateManifestId();
 
     let manifest;
 
@@ -506,6 +505,7 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
       }
 
       manifest = {
+        manifestId,
         type: 'firmware',
         modelId,
         version,
@@ -545,6 +545,7 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
         return res.status(400).json({ error: 'file verification failed', details: errors });
 
       manifest = {
+        manifestId,
         type: 'files',
         modelId,
         update: true,
@@ -562,7 +563,10 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
     console.log(`[admin] manifest uploaded for ${modelId} (${type})`);
 
-    publishOta(modelId, target);
+    const uploadTopic   = target === 'broadcast'
+      ? `${MQTT_PREFIX}/$broadcast/$action`
+      : `${MQTT_PREFIX}/$group/${modelId}/$action`;
+    mqttPublish(uploadTopic, JSON.stringify({ act: 'frm', mdl: modelId, mid: manifestId, token: tokenHex }), false);
 
     res.json(manifest);
 
@@ -721,8 +725,10 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
     const tokenHex    = crypto.randomBytes(32).toString('hex');
     const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
     fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
+    const manifestId  = generateManifestId();
 
     const manifest = {
+      manifestId,
       type:          'firmware',
       modelId:       DEVICE_MODEL,
       version,
@@ -746,7 +752,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
     const topic   = broadcast
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
-    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, token: tokenHex });
+    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, token: tokenHex });
     mqttPublish(topic, payload, false);
 
     console.log(`[admin] firmware push: ${firmwareFile} v${version} → ${topic}`);
@@ -774,6 +780,7 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
     const tokenHex    = crypto.randomBytes(32).toString('hex');
     const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
     fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
+    const manifestId  = generateManifestId();
 
     const errors      = [];
     const fileEntries = files.map(f => {
@@ -788,6 +795,7 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
       return res.status(400).json({ error: 'file verification failed', details: errors });
 
     const manifest = {
+      manifestId,
       type:          'files',
       modelId:       DEVICE_MODEL,
       update:        true,
@@ -803,7 +811,7 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
     const topic   = broadcast
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
-    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, token: tokenHex });
+    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, token: tokenHex });
     mqttPublish(topic, payload, false);
 
     console.log(`[admin] files push: ${files.length} op(s) → ${topic}`);
@@ -842,8 +850,10 @@ app.post('/ota/admin/api/upload', adminAuth, firmwareUpload.single('file'), (req
       const tokenHex    = crypto.randomBytes(32).toString('hex');
       const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
       fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
+      const manifestId  = generateManifestId();
 
       const manifest = {
+        manifestId,
         type: 'firmware',
         modelId: model,
         version: version || '0.0.0',
@@ -864,7 +874,12 @@ app.post('/ota/admin/api/upload', adminAuth, firmwareUpload.single('file'), (req
 
       const manifestPath = path.join(MODELS_DIR, `${model}.json`);
       fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
-      publishOta(model, target);
+
+      const ciTopic   = target === 'broadcast'
+        ? `${MQTT_PREFIX}/$broadcast/$action`
+        : `${MQTT_PREFIX}/$group/${model}/$action`;
+      mqttPublish(ciTopic, JSON.stringify({ act: 'frm', mdl: model, mid: manifestId, token: tokenHex }), false);
+      result.topic = ciTopic;
 
       result.pushed   = true;
       result.topic    = target === 'broadcast'
@@ -918,10 +933,12 @@ app.get('/ota/v1/health', (_req, res) => res.json({ status: 'ok' }));
 app.get('/ota/health',    (_req, res) => res.json({ status: 'ok' }));
 
 app.get('/ota/v1/manifest', (req, res) => {
-  const modelId         = req.query.modelId;
+  const manifestId      = req.query.manifestId || null;
+  const modelId         = req.query.modelId    || null;
   const firmwareVersion = req.query.firmwareVersion || null;
 
-  if (!modelId) return res.status(400).json({ error: 'modelId query parameter required' });
+  if (!manifestId && !modelId)
+    return res.status(400).json({ error: 'manifestId or modelId query parameter required' });
 
   // Token auth: device presents token received via MQTT as Bearer header or ?token= query param
   let token = null;
@@ -930,13 +947,39 @@ app.get('/ota/v1/manifest', (req, res) => {
   if (!token) token = req.query.token || null;
   if (!validateToken(token)) return res.status(401).json({ valid: false });
 
-  const modelPath   = path.join(MANIFEST_ROOT, 'models', `${modelId}.json`);
-  const defaultPath = path.join(MANIFEST_ROOT, 'default.json');
-
   let filePath = null;
-  if (fs.existsSync(modelPath))        { filePath = modelPath;   console.log(`[manifest] ${modelId} -> model manifest`); }
-  else if (fs.existsSync(defaultPath)) { filePath = defaultPath; console.log(`[manifest] ${modelId} -> default manifest`); }
-  else return res.status(404).json({ error: 'no manifest found for this model' });
+  let resolvedModelId = modelId;
+
+  if (manifestId) {
+    // Scan models/ directory for a manifest whose manifestId field matches
+    const modelsDir = path.join(MANIFEST_ROOT, 'models');
+    try {
+      const entries = fs.readdirSync(modelsDir).filter(f => f.endsWith('.json'));
+      for (const entry of entries) {
+        const p = path.join(modelsDir, entry);
+        try {
+          const m = JSON.parse(fs.readFileSync(p, 'utf8'));
+          if (m.manifestId === manifestId) {
+            filePath = p;
+            resolvedModelId = m.modelId || entry.replace('.json', '');
+            console.log(`[manifest] manifestId=${manifestId} -> ${entry}`);
+            break;
+          }
+        } catch (_) { /* skip unreadable files */ }
+      }
+    } catch (err) {
+      console.error(`[manifest] failed to scan models dir: ${err.message}`);
+      return res.status(500).json({ error: 'failed to scan manifests' });
+    }
+    if (!filePath) return res.status(404).json({ error: 'no manifest found for this manifestId' });
+  } else {
+    // Legacy modelId-based lookup
+    const modelPath   = path.join(MANIFEST_ROOT, 'models', `${modelId}.json`);
+    const defaultPath = path.join(MANIFEST_ROOT, 'default.json');
+    if (fs.existsSync(modelPath))        { filePath = modelPath;   console.log(`[manifest] modelId=${modelId} -> model manifest`); }
+    else if (fs.existsSync(defaultPath)) { filePath = defaultPath; console.log(`[manifest] modelId=${modelId} -> default manifest`); }
+    else return res.status(404).json({ error: 'no manifest found for this model' });
+  }
 
   let manifest;
   try { manifest = JSON.parse(fs.readFileSync(filePath, 'utf8')); }
@@ -950,13 +993,13 @@ app.get('/ota/v1/manifest', (req, res) => {
     const compatibleFrom = manifest.compatibleFrom;
     if (Array.isArray(compatibleFrom) && compatibleFrom.length > 0 && !compatibleFrom.includes('*')) {
       if (!firmwareVersion || !compatibleFrom.includes(firmwareVersion)) {
-        return res.json({ modelId, update: false, reason: 'current firmware version not eligible' });
+        return res.json({ modelId: resolvedModelId, update: false, reason: 'current firmware version not eligible' });
       }
     }
   }
 
   const { compatibleFrom: _strip, _draft, ...response } = manifest;
-  response.modelId = modelId;
+  response.modelId = resolvedModelId;
   res.json(response);
 });
 
