@@ -23,6 +23,7 @@ const FILES_PATH_PREFIX = process.env.FILES_PATH_PREFIX || '/ota/v1';
 const ADMIN_TOKEN       = process.env.ADMIN_TOKEN       || '';
 const MQTT_BROKER       = process.env.MQTT_BROKER_URL   || 'mqtt://signalfi-svc:OtaService2024!@mosquitto:1883';
 const MQTT_PREFIX       = process.env.MQTT_TOPIC_PREFIX || 'scout';
+const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SF-100';
 
 const TOKEN_RE          = /^[0-9a-f]{64}$/i;
 const DEVICE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min = online window
@@ -691,6 +692,124 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
 
   } catch (err) {
     console.error(`[admin] push error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin API — auto push-firmware (inline manifest generation) ───────────────
+// POST /ota/admin/api/ota/push-firmware
+// Body: { firmwareFile, nodePath?, broadcast? }
+// Derives version from filename (fw-x.y.z.hex), generates token, writes manifest, publishes MQTT.
+
+app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
+  const { firmwareFile, nodePath, broadcast } = req.body || {};
+
+  if (!firmwareFile || !safeFilename(firmwareFile))
+    return res.status(400).json({ error: 'firmwareFile required' });
+  if (!broadcast && !nodePath)
+    return res.status(400).json({ error: 'nodePath or broadcast:true required' });
+
+  const fwPath = path.join(FIRMWARE_ROOT, firmwareFile);
+  if (!fs.existsSync(fwPath))
+    return res.status(400).json({ error: `firmware file not found: ${firmwareFile}` });
+
+  // Derive version from filename: fw-x.y.z.hex → x.y.z, else use filename stem
+  const versionMatch = firmwareFile.match(/fw-(\d+\.\d+\.\d+)\.hex$/i);
+  const version      = versionMatch ? versionMatch[1] : path.basename(firmwareFile, path.extname(firmwareFile));
+
+  try {
+    const tokenHex    = crypto.randomBytes(32).toString('hex');
+    const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
+    fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
+
+    const manifest = {
+      type:          'firmware',
+      modelId:       DEVICE_MODEL,
+      version,
+      update:        true,
+      reason:        'Firmware update available',
+      compatibleFrom: ['*'],
+      downloadToken: tokenHex,
+      delaySeconds:  0,
+      firmware: {
+        version,
+        url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/firmware/${firmwareFile}`,
+        crc32:  fileCrc32(fwPath),
+        sha256: fileSha256(fwPath),
+        size:   fs.statSync(fwPath).size,
+      },
+    };
+
+    const manifestPath = path.join(MODELS_DIR, `${DEVICE_MODEL}.json`);
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const topic   = broadcast
+      ? `${MQTT_PREFIX}/$broadcast/$action`
+      : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
+    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, token: tokenHex });
+    mqttPublish(topic, payload, false);
+
+    console.log(`[admin] firmware push: ${firmwareFile} v${version} → ${topic}`);
+    res.json({ published: true, topic, version, manifest });
+  } catch (err) {
+    console.error(`[admin] push-firmware error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ── Admin API — auto push-files (inline manifest generation) ──────────────────
+// POST /ota/admin/api/ota/push-files
+// Body: { files: [{op, id}], nodePath?, broadcast? }
+// Generates token, resolves checksums for 'put' ops, writes manifest, publishes MQTT.
+
+app.post('/ota/admin/api/ota/push-files', (req, res) => {
+  const { files = [], nodePath, broadcast } = req.body || {};
+
+  if (!files.length)
+    return res.status(400).json({ error: 'files array required' });
+  if (!broadcast && !nodePath)
+    return res.status(400).json({ error: 'nodePath or broadcast:true required' });
+
+  try {
+    const tokenHex    = crypto.randomBytes(32).toString('hex');
+    const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
+    fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
+
+    const errors      = [];
+    const fileEntries = files.map(f => {
+      if (!safeFilename(f.id)) { errors.push(`invalid id: ${f.id}`); return f; }
+      if (f.op === 'delete') return { op: 'delete', id: f.id };
+      const entry = buildFileEntry(f.id, AUDIO_ROOT, FILES_ROOT, FILES_BASE_URL, FILES_PATH_PREFIX);
+      if (!entry) { errors.push(`file not found on server: ${f.id}`); return f; }
+      return entry;
+    });
+
+    if (errors.length)
+      return res.status(400).json({ error: 'file verification failed', details: errors });
+
+    const manifest = {
+      type:          'files',
+      modelId:       DEVICE_MODEL,
+      update:        true,
+      reason:        'File transfer',
+      downloadToken: tokenHex,
+      delaySeconds:  0,
+      files:         fileEntries,
+    };
+
+    const manifestPath = path.join(MODELS_DIR, `${DEVICE_MODEL}.json`);
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const topic   = broadcast
+      ? `${MQTT_PREFIX}/$broadcast/$action`
+      : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
+    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, token: tokenHex });
+    mqttPublish(topic, payload, false);
+
+    console.log(`[admin] files push: ${files.length} op(s) → ${topic}`);
+    res.json({ published: true, topic, manifest });
+  } catch (err) {
+    console.error(`[admin] push-files error: ${err.message}`);
     res.status(500).json({ error: err.message });
   }
 });

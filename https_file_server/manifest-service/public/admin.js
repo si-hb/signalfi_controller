@@ -117,8 +117,9 @@ function makeDeleteBtn(label, onConfirm) {
 }
 
 // ── Generic file table renderer ───────────────────────────────────────────────
+// makeActionBtns(f) → optional array of HTMLElement prepended before the delete button
 
-function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh) {
+function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh, makeActionBtns) {
   const tbody = document.getElementById(tbodyId);
   if (!files.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="${colCount}">No files uploaded yet</td></tr>`;
@@ -134,7 +135,12 @@ function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh) {
       <td class="file-date">${fmtDate(f.mtime)}</td>
       <td></td>
     `;
-    tr.querySelector('td:last-child').appendChild(
+    const cell = tr.querySelector('td:last-child');
+    cell.style.cssText = 'display:flex;gap:6px;align-items:center;justify-content:flex-end;flex-wrap:wrap';
+    if (makeActionBtns) {
+      for (const btn of makeActionBtns(f)) cell.appendChild(btn);
+    }
+    cell.appendChild(
       makeDeleteBtn(f.name, async () => {
         try {
           await apiFetch(`${endpoint}/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
@@ -147,29 +153,104 @@ function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh) {
   }
 }
 
+// ── Push target dialog (shared) ───────────────────────────────────────────────
+
+function showPushTargetDialog(title, confirmLabel, onConfirm) {
+  const existing = document.getElementById('push-target-overlay');
+  if (existing) existing.remove();
+
+  const overlay = document.createElement('div');
+  overlay.id = 'push-target-overlay';
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:150';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:480px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:14px';
+  box.innerHTML = `
+    <h3 style="font-size:14px;margin:0">${title}</h3>
+    <div class="radio-group">
+      <label class="radio-item"><input type="radio" name="pt-radio" value="group" checked> Group — node path</label>
+      <label class="radio-item"><input type="radio" name="pt-radio" value="broadcast"> Broadcast — all devices</label>
+    </div>
+    <div id="pt-node-wrap">
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Node Path</label>
+      <input type="text" id="pt-node-path" placeholder="e.g. buildingA/1stfloor/cafeteria"
+        style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;outline:none">
+    </div>
+    <div id="pt-topic-preview" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);padding:6px 10px;background:var(--bg-raised);border-radius:4px">
+      Topic: scout/$group/…/$action
+    </div>
+    <p id="pt-broadcast-warn" style="display:none;font-size:13px;color:var(--warn);margin:0">⚠ This will trigger all online devices.</p>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn btn-secondary btn-sm" id="pt-cancel">Cancel</button>
+      <button class="btn btn-primary btn-sm" id="pt-confirm" disabled>${confirmLabel}</button>
+    </div>
+  `;
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+
+  const nodeWrap   = box.querySelector('#pt-node-wrap');
+  const nodeInput  = box.querySelector('#pt-node-path');
+  const topicPrev  = box.querySelector('#pt-topic-preview');
+  const bcWarn     = box.querySelector('#pt-broadcast-warn');
+  const confirmBtn = box.querySelector('#pt-confirm');
+
+  function update() {
+    const isBc = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
+    nodeWrap.style.display = isBc ? 'none' : '';
+    bcWarn.style.display   = isBc ? '' : 'none';
+    const nodePath = nodeInput.value.trim();
+    topicPrev.textContent  = isBc
+      ? 'Topic: scout/$broadcast/$action'
+      : (nodePath ? `Topic: scout/$group/${nodePath}/$action` : 'Topic: scout/$group/…/$action');
+    confirmBtn.disabled = !isBc && !nodePath;
+  }
+
+  box.querySelectorAll('input[name="pt-radio"]').forEach(r => r.addEventListener('change', update));
+  nodeInput.addEventListener('input', update);
+  nodeInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !confirmBtn.disabled) confirmBtn.click(); });
+  update();
+
+  box.querySelector('#pt-cancel').addEventListener('click', () => overlay.remove());
+  confirmBtn.addEventListener('click', () => {
+    const isBc = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
+    overlay.remove();
+    onConfirm({ broadcast: isBc, nodePath: isBc ? undefined : nodeInput.value.trim() });
+  });
+  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
+}
+
 // ── Firmware ──────────────────────────────────────────────────────────────────
+
+function makeFirmwarePushBtn(f) {
+  const btn = document.createElement('button');
+  btn.className = 'btn btn-primary btn-sm';
+  btn.textContent = 'Push to Devices';
+  btn.addEventListener('click', () => {
+    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath }) => {
+      try {
+        const res = await apiFetch('/ota/admin/api/ota/push-firmware', {
+          method: 'POST',
+          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          toast(`Pushed ${f.name} → ${data.topic}`, 'success');
+        } else {
+          const e = await res.json().catch(() => ({}));
+          toast(`Push failed: ${e.error || res.status}`, 'error');
+        }
+      } catch (_) { toast('Push failed', 'error'); }
+    });
+  });
+  return [btn];
+}
 
 async function loadFirmware() {
   try {
     const res = await apiFetch('/ota/admin/api/files/firmware');
     const files = await res.json();
-    renderFileTable('firmware-tbody', files, 5, '/ota/admin/api/files/firmware', loadFirmware);
-    populateFirmwareSelect(files);
+    renderFileTable('firmware-tbody', files, 5, '/ota/admin/api/files/firmware', loadFirmware, makeFirmwarePushBtn);
   } catch (_) {}
-}
-
-function populateFirmwareSelect(files) {
-  const sel = document.getElementById('m-firmware');
-  const current = sel.value;
-  sel.innerHTML = '<option value="">— select uploaded firmware —</option>';
-  for (const f of files) {
-    const opt = document.createElement('option');
-    opt.value = f.name;
-    opt.textContent = f.name;
-    if (f.name === current) opt.selected = true;
-    sel.appendChild(opt);
-  }
-  checkUploadReady();
 }
 
 (function () {
@@ -192,14 +273,61 @@ function populateFirmwareSelect(files) {
   });
 })();
 
+// ── Audio / Files — push helpers ──────────────────────────────────────────────
+
+function makeFilePushBtns(f) {
+  const sendBtn = document.createElement('button');
+  sendBtn.className = 'btn btn-primary btn-sm';
+  sendBtn.textContent = 'Send to Devices';
+  sendBtn.addEventListener('click', () => {
+    showPushTargetDialog(`Send ${f.name} to Devices`, 'Send', async ({ broadcast, nodePath }) => {
+      try {
+        const res = await apiFetch('/ota/admin/api/ota/push-files', {
+          method: 'POST',
+          body: JSON.stringify({ files: [{ op: 'put', id: f.name }], nodePath, broadcast: broadcast || undefined }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          toast(`Sent ${f.name} → ${data.topic}`, 'success');
+        } else {
+          const e = await res.json().catch(() => ({}));
+          toast(`Send failed: ${e.error || res.status}`, 'error');
+        }
+      } catch (_) { toast('Send failed', 'error'); }
+    });
+  });
+
+  const removeBtn = document.createElement('button');
+  removeBtn.className = 'btn btn-warn btn-sm';
+  removeBtn.textContent = 'Remove from Devices';
+  removeBtn.addEventListener('click', () => {
+    showPushTargetDialog(`Remove ${f.name} from Devices`, 'Remove', async ({ broadcast, nodePath }) => {
+      try {
+        const res = await apiFetch('/ota/admin/api/ota/push-files', {
+          method: 'POST',
+          body: JSON.stringify({ files: [{ op: 'delete', id: f.name }], nodePath, broadcast: broadcast || undefined }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          toast(`Remove command sent → ${data.topic}`, 'success');
+        } else {
+          const e = await res.json().catch(() => ({}));
+          toast(`Failed: ${e.error || res.status}`, 'error');
+        }
+      } catch (_) { toast('Remove failed', 'error'); }
+    });
+  });
+
+  return [sendBtn, removeBtn];
+}
+
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
 async function loadAudio() {
   try {
     const res = await apiFetch('/ota/admin/api/files/audio');
     const files = await res.json();
-    renderFileTable('audio-tbody', files, 5, '/ota/admin/api/files/audio', loadAudio);
-    rebuildUploadChecklist();
+    renderFileTable('audio-tbody', files, 5, '/ota/admin/api/files/audio', loadAudio, makeFilePushBtns);
   } catch (_) {}
 }
 
@@ -229,45 +357,7 @@ async function loadFiles() {
   try {
     const res = await apiFetch('/ota/admin/api/files/general');
     const files = await res.json();
-    renderFileTable('files-tbody', files, 5, '/ota/admin/api/files/general', loadFiles);
-    rebuildUploadChecklist();
-  } catch (_) {}
-}
-
-async function rebuildUploadChecklist() {
-  try {
-    const [rAudio, rGen] = await Promise.all([
-      apiFetch('/ota/admin/api/files/audio'),
-      apiFetch('/ota/admin/api/files/general'),
-    ]);
-    const allFiles = [
-      ...(await rAudio.json()).map(f => ({ ...f, bucket: 'audio' })),
-      ...(await rGen.json()).map(f =>   ({ ...f, bucket: 'files' })),
-    ];
-    const list = document.getElementById('m-upload-list');
-    if (!allFiles.length) {
-      list.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--text-muted)">No files uploaded yet</div>';
-      return;
-    }
-    const checked = new Set([...list.querySelectorAll('input:checked')].map(el => el.value));
-    list.innerHTML = '';
-    for (const f of allFiles) {
-      const label = document.createElement('label');
-      label.className = 'audio-check-item';
-      const inp = document.createElement('input');
-      inp.type = 'checkbox'; inp.value = f.name;
-      if (checked.has(f.name)) inp.checked = true;
-      inp.addEventListener('change', checkUploadReady);
-      label.appendChild(inp);
-      label.appendChild(document.createTextNode(' ' + f.name));
-      if (f.bucket === 'audio') {
-        const tag = document.createElement('span');
-        tag.style.cssText = 'margin-left:6px;font-size:10px;color:var(--text-muted)';
-        tag.textContent = 'audio';
-        label.appendChild(tag);
-      }
-      list.appendChild(label);
-    }
+    renderFileTable('files-tbody', files, 5, '/ota/admin/api/files/general', loadFiles, makeFilePushBtns);
   } catch (_) {}
 }
 
@@ -289,429 +379,6 @@ async function rebuildUploadChecklist() {
     inp.value = '';
   });
 })();
-
-// ── Manifest Builder ──────────────────────────────────────────────────────────
-
-// Type switching
-function getManifestType() {
-  return document.querySelector('input[name="m-type"]:checked')?.value || 'firmware';
-}
-
-// Firmware Update: version, firmware select, compat
-// File Transfer:   upload checklist, delete tags
-// Common to both:  model, tokenDays, delay, reason
-function applyTypeVisibility() {
-  const isFirmware = getManifestType() === 'firmware';
-  document.getElementById('m-version-field').style.display  = isFirmware ? '' : 'none';
-  document.getElementById('m-firmware-field').style.display = isFirmware ? '' : 'none';
-  document.getElementById('m-compat-field').style.display   = isFirmware ? '' : 'none';
-  document.getElementById('m-upload-field').style.display   = isFirmware ? 'none' : '';
-  document.getElementById('m-delete-field').style.display   = isFirmware ? 'none' : '';
-  checkUploadReady();
-}
-
-document.querySelectorAll('input[name="m-type"]').forEach(r =>
-  r.addEventListener('change', applyTypeVisibility));
-
-// Upload-ready check
-function checkUploadReady() {
-  const type  = getManifestType();
-  const model = document.getElementById('m-model').value.trim();
-  const ready = type === 'firmware'
-    ? !!(model && document.getElementById('m-version').value.trim() && document.getElementById('m-firmware').value)
-    : !!(model && (document.querySelectorAll('#m-upload-list input:checked').length > 0
-                || document.querySelectorAll('.delete-tag').length > 0));
-  document.getElementById('generate-btn').disabled = !ready;
-  document.getElementById('generate-hint').style.display = ready ? 'none' : '';
-}
-
-// m-model is a select — only 'change'; m-version is text — both input+change
-document.getElementById('m-model').addEventListener('change', checkUploadReady);
-['m-version'].forEach(id => {
-  document.getElementById(id).addEventListener('input',  checkUploadReady);
-  document.getElementById(id).addEventListener('change', checkUploadReady);
-});
-
-// Firmware select: auto-populate version from filename (fw-x.y.z.hex)
-document.getElementById('m-firmware').addEventListener('change', () => {
-  const filename = document.getElementById('m-firmware').value;
-  const m = filename.match(/fw-(\d+\.\d+\.\d+)\.hex$/i);
-  if (m) {
-    document.getElementById('m-version').value = m[1];
-  }
-  checkUploadReady();
-});
-
-// ── Delete tags (File Transfer type) ─────────────────────────────────────────
-
-function addDeleteTag(filename) {
-  filename = filename.trim();
-  if (!filename) return;
-  // Prevent duplicates
-  const existing = [...document.querySelectorAll('.delete-tag')].map(t => t.dataset.name);
-  if (existing.includes(filename)) return;
-
-  const container = document.getElementById('m-delete-tags');
-  const tag = document.createElement('span');
-  tag.className = 'delete-tag';
-  tag.dataset.name = filename;
-  tag.textContent = filename + ' ';
-  const rmBtn = document.createElement('button');
-  rmBtn.textContent = '×';
-  rmBtn.title = 'Remove';
-  rmBtn.addEventListener('click', () => { tag.remove(); checkUploadReady(); });
-  tag.appendChild(rmBtn);
-  container.appendChild(tag);
-  checkUploadReady();
-}
-
-function getDeleteTags() {
-  return [...document.querySelectorAll('.delete-tag')].map(t => t.dataset.name);
-}
-
-function clearDeleteTags() {
-  document.getElementById('m-delete-tags').innerHTML = '';
-}
-
-(function () {
-  const inp = document.getElementById('m-delete-input');
-  document.getElementById('m-delete-add').addEventListener('click', () => {
-    addDeleteTag(inp.value);
-    inp.value = '';
-    inp.focus();
-  });
-  inp.addEventListener('keydown', e => {
-    if (e.key === 'Enter') { e.preventDefault(); addDeleteTag(inp.value); inp.value = ''; }
-  });
-})();
-
-// Save to Server button — saves draft (no token, no MQTT); Push OTA tab handles the actual push
-document.getElementById('generate-btn').addEventListener('click', async () => {
-  const type        = getManifestType();
-  const modelId     = document.getElementById('m-model').value.trim();
-  const tokenDays   = parseInt(document.getElementById('m-token-days').value, 10) || 30;
-  const delay       = parseInt(document.getElementById('m-delay').value, 10) || 0;
-  const reason      = document.getElementById('m-reason').value.trim();
-
-  let body = { type, modelId, tokenDays, reason, delaySeconds: delay };
-
-  if (type === 'firmware') {
-    const version      = document.getElementById('m-version').value.trim();
-    const firmwareFile = document.getElementById('m-firmware').value;
-    const compatRaw    = document.getElementById('m-compat').value.trim();
-    const compatibleFrom = compatRaw === '*'
-      ? ['*']
-      : compatRaw.split(',').map(s => s.trim()).filter(Boolean);
-    Object.assign(body, { version, firmwareFile, compatibleFrom });
-  } else {
-    const uploads = [...document.querySelectorAll('#m-upload-list input:checked')].map(el => ({ op: 'put', id: el.value }));
-    const deletes = getDeleteTags().map(id => ({ op: 'delete', id }));
-    body.files = [...uploads, ...deletes];
-  }
-
-  const btn = document.getElementById('generate-btn');
-  btn.disabled = true; btn.textContent = 'Saving…';
-
-  try {
-    const res = await apiFetch('/ota/admin/api/manifests/save', {
-      method: 'POST',
-      body: JSON.stringify(body),
-    });
-    if (!res.ok) {
-      const err = await res.json();
-      const detail = err.details ? '\n' + err.details.join('\n') : '';
-      toast(`Error: ${err.error}${detail}`, 'error');
-      return;
-    }
-    const manifest = await res.json();
-    document.getElementById('manifest-json').textContent = JSON.stringify(manifest, null, 2);
-    document.getElementById('manifest-result').classList.add('visible');
-    toast(`Manifest saved for ${modelId} — go to Push OTA to deploy`, 'success');
-    loadManifests();
-  } catch (_) {
-    toast('Save failed', 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Save to Server';
-    checkUploadReady();
-  }
-});
-
-document.getElementById('copy-manifest-btn').addEventListener('click', () => {
-  navigator.clipboard.writeText(document.getElementById('manifest-json').textContent)
-    .then(() => toast('Copied to clipboard', 'success'));
-});
-
-// ── Save / Load manifest ──────────────────────────────────────────────────────
-
-function collectFormState() {
-  const type = getManifestType();
-  const base = {
-    type,
-    modelId:    document.getElementById('m-model').value.trim(),
-    tokenDays:  parseInt(document.getElementById('m-token-days').value, 10) || 30,
-    delaySeconds: parseInt(document.getElementById('m-delay').value, 10) || 0,
-    reason:     document.getElementById('m-reason').value.trim(),
-  };
-  if (type === 'firmware') {
-    base.version        = document.getElementById('m-version').value.trim();
-    base.firmwareFile   = document.getElementById('m-firmware').value;
-    base.compatibleFrom = document.getElementById('m-compat').value.trim();
-  } else {
-    const uploads = [...document.querySelectorAll('#m-upload-list input:checked')].map(el => ({ op: 'put',    id: el.value }));
-    const deletes = getDeleteTags().map(id => ({ op: 'delete', id }));
-    base.files = [...uploads, ...deletes];
-  }
-  return base;
-}
-
-function populateFormState(state) {
-  if (!state) return;
-  // Set type radio
-  const typeRadio = document.querySelector(`input[name="m-type"][value="${state.type || 'firmware'}"]`);
-  if (typeRadio) { typeRadio.checked = true; applyTypeVisibility(); }
-
-  document.getElementById('m-model').value      = state.modelId     || '';
-  document.getElementById('m-token-days').value  = state.tokenDays   || 30;
-  document.getElementById('m-delay').value        = state.delaySeconds || 0;
-  document.getElementById('m-reason').value       = state.reason      || '';
-
-  if (state.type === 'firmware' || !state.type) {
-    document.getElementById('m-version').value   = state.version        || '';
-    document.getElementById('m-firmware').value  = state.firmwareFile   || '';
-    document.getElementById('m-compat').value    = state.compatibleFrom || '*';
-  } else if (state.type === 'files' && Array.isArray(state.files)) {
-    // Restore upload checkboxes
-    const putIds = new Set(state.files.filter(f => f.op === 'put').map(f => f.id));
-    for (const inp of document.querySelectorAll('#m-upload-list input')) {
-      inp.checked = putIds.has(inp.value);
-    }
-    // Restore delete tags
-    clearDeleteTags();
-    for (const f of state.files.filter(f => f.op === 'delete')) addDeleteTag(f.id);
-  }
-  checkUploadReady();
-}
-
-document.getElementById('load-draft-btn').addEventListener('click', () => showLoadModal());
-
-async function showLoadModal() {
-  const modal = document.getElementById('load-modal');
-  const body  = document.getElementById('load-modal-body');
-  body.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px">Loading…</div>';
-  modal.classList.remove('hidden');
-
-  let serverManifests = [];
-  try {
-    const res = await apiFetch('/ota/admin/api/manifests');
-    serverManifests = await res.json();
-  } catch (_) {}
-
-  body.innerHTML = '';
-
-  if (serverManifests.length) {
-    for (const m of serverManifests) {
-      const row = document.createElement('div');
-      row.className = 'load-item';
-      const typeLabel = m.type === 'files' ? 'file transfer' : 'firmware';
-      const verLabel  = m.version ? ` v${m.version}` : '';
-      row.innerHTML = `<span>${m.modelId} <span class="muted">${typeLabel}${verLabel}</span></span><div class="load-item-actions"></div>`;
-      const actions = row.querySelector('.load-item-actions');
-      const loadBtn = document.createElement('button');
-      loadBtn.className = 'btn btn-secondary btn-sm';
-      loadBtn.textContent = 'Load';
-      loadBtn.addEventListener('click', async () => {
-        try {
-          const res  = await apiFetch(`/ota/admin/api/manifests/${encodeURIComponent(m.modelId)}`);
-          const data = await res.json();
-          const state = {
-            type:         data.type || 'firmware',
-            modelId:      data.modelId || m.modelId,
-            tokenDays:    30,
-            delaySeconds: data.delaySeconds || 0,
-            reason:       data.reason || '',
-          };
-          if (state.type === 'firmware') {
-            state.version        = data.version || data.firmware?.version || '';
-            state.firmwareFile   = data.firmwareFile
-              || (data.firmware?.url ? decodeURIComponent(data.firmware.url.split('/').pop()) : '');
-            state.compatibleFrom = Array.isArray(data.compatibleFrom)
-              ? data.compatibleFrom.join(',')
-              : (data.compatibleFrom || '*');
-          } else {
-            state.files = (data.files || []).map(f => ({ op: f.op, id: f.id }));
-          }
-          populateFormState(state);
-          closeLoadModal();
-          toast(`Loaded ${m.modelId}`, 'success');
-        } catch (_) { toast('Failed to load manifest', 'error'); }
-      });
-      actions.appendChild(loadBtn);
-      body.appendChild(row);
-    }
-  } else {
-    body.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px">No manifests saved on server yet</div>';
-  }
-}
-
-function closeLoadModal() {
-  document.getElementById('load-modal').classList.add('hidden');
-}
-
-document.getElementById('load-modal-close').addEventListener('click', closeLoadModal);
-document.getElementById('load-modal').addEventListener('click', e => {
-  if (e.target === document.getElementById('load-modal')) closeLoadModal();
-});
-
-// ── Push OTA tab ──────────────────────────────────────────────────────────────
-
-async function loadManifests() {
-  try {
-    const res = await apiFetch('/ota/admin/api/manifests');
-    const manifests = await res.json();
-    renderPushTable(manifests);
-  } catch (_) {}
-}
-
-function renderPushTable(manifests) {
-  const tbody = document.getElementById('push-tbody');
-  if (!manifests.length) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="5">No manifests found</td></tr>';
-    return;
-  }
-  tbody.innerHTML = '';
-  for (const m of manifests) {
-    const tr = document.createElement('tr');
-    const activeBadge = m.update ? badge('yes', 'yes') : badge('no', 'no');
-    const typeBadge   = m.type === 'files'
-      ? badge('files', 'started')
-      : badge('firmware', 'no');
-    tr.innerHTML = `
-      <td class="mono">${m.modelId}</td>
-      <td>${typeBadge}</td>
-      <td class="mono">${m.version || '—'}</td>
-      <td>${activeBadge}</td>
-      <td></td>
-    `;
-    const cell = tr.querySelector('td:last-child');
-    cell.style.cssText = 'display:flex;gap:8px;align-items:center;justify-content:flex-end';
-
-    const viewBtn = document.createElement('button');
-    viewBtn.className = 'btn btn-secondary btn-sm';
-    viewBtn.textContent = 'View';
-    viewBtn.addEventListener('click', async () => {
-      try {
-        const res  = await apiFetch(`/ota/admin/api/manifests/${encodeURIComponent(m.modelId)}`);
-        const data = await res.json();
-        document.getElementById('manifest-json').textContent = JSON.stringify(data, null, 2);
-        document.getElementById('manifest-result').classList.add('visible');
-        showTab('manifest');
-      } catch (_) { toast('Failed to load manifest', 'error'); }
-    });
-
-    const pushBtn = document.createElement('button');
-    pushBtn.className = 'btn btn-warn btn-sm';
-    pushBtn.textContent = 'Push';
-    pushBtn.addEventListener('click', () => showPushConfirm(m.modelId));
-
-    cell.append(viewBtn, pushBtn);
-    tbody.appendChild(tr);
-  }
-}
-
-document.getElementById('refresh-manifests-btn').addEventListener('click', loadManifests);
-
-function showPushConfirm(modelId) {
-  const existing = document.getElementById('push-confirm-overlay');
-  if (existing) existing.remove();
-
-  const overlay = document.createElement('div');
-  overlay.id = 'push-confirm-overlay';
-  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:150';
-
-  const box = document.createElement('div');
-  box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:500px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:16px';
-  box.innerHTML = `
-    <h3 style="font-size:15px;margin:0">Push OTA — ${modelId}</h3>
-    <div class="radio-group">
-      <label class="radio-item">
-        <input type="radio" name="push-target-radio" value="group" checked> Group — specific node path
-      </label>
-      <label class="radio-item">
-        <input type="radio" name="push-target-radio" value="broadcast"> Broadcast — all devices
-      </label>
-    </div>
-    <div id="push-node-wrap">
-      <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px">NODE PATH</label>
-      <input type="text" id="push-node-path" placeholder="e.g. buildingA/1stfloor/cafeteria"
-        style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px">
-    </div>
-    <div id="push-topic-preview" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);padding:6px 10px;background:var(--bg-raised);border-radius:4px">
-      Topic: scout/$group/…/$action
-    </div>
-    <p id="push-broadcast-warn" style="display:none;font-size:13px;color:var(--warn);margin:0">
-      ⚠ This will trigger all online devices to check for updates.
-    </p>
-    <div style="display:flex;gap:10px;justify-content:flex-end">
-      <button class="btn btn-secondary btn-sm" id="push-cancel">Cancel</button>
-      <button class="btn btn-warn btn-sm" id="push-confirm-btn" disabled>Push</button>
-    </div>
-  `;
-
-  overlay.appendChild(box);
-  document.body.appendChild(overlay);
-
-  const nodeWrap   = box.querySelector('#push-node-wrap');
-  const nodeInput  = box.querySelector('#push-node-path');
-  const topicPrev  = box.querySelector('#push-topic-preview');
-  const bcWarn     = box.querySelector('#push-broadcast-warn');
-  const confirmBtn = box.querySelector('#push-confirm-btn');
-
-  function updatePushUI() {
-    const isBroadcast = box.querySelector('input[name="push-target-radio"]:checked')?.value === 'broadcast';
-    nodeWrap.style.display  = isBroadcast ? 'none' : '';
-    bcWarn.style.display    = isBroadcast ? '' : 'none';
-    if (isBroadcast) {
-      topicPrev.textContent  = 'Topic: scout/$broadcast/$action';
-      confirmBtn.disabled    = false;
-    } else {
-      const path = nodeInput.value.trim();
-      topicPrev.textContent  = path
-        ? `Topic: scout/$group/${path}/$action`
-        : 'Topic: scout/$group/…/$action';
-      confirmBtn.disabled    = !path;
-    }
-  }
-
-  box.querySelectorAll('input[name="push-target-radio"]').forEach(r => r.addEventListener('change', updatePushUI));
-  nodeInput.addEventListener('input', updatePushUI);
-  updatePushUI();
-
-  box.querySelector('#push-cancel').addEventListener('click', () => overlay.remove());
-
-  confirmBtn.addEventListener('click', async () => {
-    const isBroadcast = box.querySelector('input[name="push-target-radio"]:checked')?.value === 'broadcast';
-    const nodePath = nodeInput.value.trim();
-    overlay.remove();
-    try {
-      const body = isBroadcast
-        ? { modelId, broadcast: true }
-        : { modelId, nodePath };
-      const res = await apiFetch('/ota/admin/api/ota/push', {
-        method: 'POST',
-        body: JSON.stringify(body),
-      });
-      if (res.ok) {
-        toast(isBroadcast ? `Broadcast sent for ${modelId}` : `Push sent → scout/$group/${nodePath}`, 'success');
-        loadManifests();
-      } else {
-        const err = await res.json().catch(() => ({}));
-        toast(`Push failed: ${err.error || res.status}`, 'error');
-      }
-    } catch (_) { toast('Push failed', 'error'); }
-  });
-
-  overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
-}
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 
@@ -780,7 +447,7 @@ async function updateDeviceCount() {
 
 // ── Tab navigation ────────────────────────────────────────────────────────────
 
-const TAB_IDS = ['firmware', 'audio', 'files', 'manifest', 'push', 'reports'];
+const TAB_IDS = ['firmware', 'audio', 'files', 'reports'];
 
 function showTab(id) {
   TAB_IDS.forEach(t => {
@@ -802,14 +469,12 @@ function loadAll() {
   loadFirmware();
   loadAudio();
   loadFiles();
-  loadManifests();
   loadReports();
 }
 
 async function init() {
   updateDeviceCount();
   setInterval(updateDeviceCount, 30000);
-  applyTypeVisibility();
 
   if (authToken) {
     try {

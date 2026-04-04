@@ -175,6 +175,7 @@ services:
       - FILES_BASE_URL=http://apis.symphonyinteractive.ca
       - FILES_PATH_PREFIX=/ota/v1
       - ADMIN_TOKEN=signalfiadmin2026
+      - DEVICE_MODEL=SF-100
     networks:
       - root_default
     depends_on:
