@@ -323,11 +323,104 @@ function makeFilePushBtns(f) {
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
+let _audioFiles = [];
+
+function _audioSelectedNames() {
+  return [...document.querySelectorAll('.audio-row-check:checked')].map(cb => cb.dataset.name);
+}
+
+function _updateAudioToolbar() {
+  const checks  = [...document.querySelectorAll('.audio-row-check')];
+  const checked = checks.filter(c => c.checked);
+  const selAll  = document.getElementById('audio-select-all');
+  const count   = document.getElementById('audio-sel-count');
+  const sendBtn = document.getElementById('audio-send-btn');
+  const remBtn  = document.getElementById('audio-remove-btn');
+  selAll.checked       = checks.length > 0 && checked.length === checks.length;
+  selAll.indeterminate = checked.length > 0 && checked.length < checks.length;
+  count.textContent    = `${checked.length} selected`;
+  sendBtn.disabled     = checked.length === 0;
+  remBtn.disabled      = checked.length === 0;
+}
+
+function renderAudioTable(files) {
+  _audioFiles = files;
+  const tbody = document.getElementById('audio-tbody');
+  if (!files.length) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No files uploaded yet</td></tr>';
+    _updateAudioToolbar();
+    return;
+  }
+  tbody.innerHTML = '';
+  for (const f of files) {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="col-check"><input type="checkbox" class="audio-row-check" data-name="${f.name}"></td>
+      <td class="file-name">${f.name}</td>
+      <td class="file-size">${fmtSize(f.size)}</td>
+      <td class="file-hash" title="${f.crc32 || ''}">${f.crc32 || '—'}</td>
+      <td class="file-date">${fmtDate(f.mtime)}</td>
+      <td></td>
+    `;
+    tr.querySelector('.audio-row-check').addEventListener('change', _updateAudioToolbar);
+    const cell = tr.querySelector('td:last-child');
+    cell.style.cssText = 'display:flex;gap:6px;align-items:center;justify-content:flex-end';
+    cell.appendChild(
+      makeDeleteBtn(f.name, async () => {
+        try {
+          await apiFetch(`/ota/admin/api/files/audio/${encodeURIComponent(f.name)}`, { method: 'DELETE' });
+          toast(`Deleted ${f.name}`, 'success');
+          loadAudio();
+        } catch (_) { toast('Delete failed', 'error'); }
+      })
+    );
+    tbody.appendChild(tr);
+  }
+  _updateAudioToolbar();
+}
+
+document.getElementById('audio-select-all').addEventListener('change', e => {
+  document.querySelectorAll('.audio-row-check').forEach(cb => { cb.checked = e.target.checked; });
+  _updateAudioToolbar();
+});
+
+function _pushAudioSelected(op) {
+  const names = _audioSelectedNames();
+  if (!names.length) return;
+  const verb = op === 'put' ? 'Send' : 'Remove';
+  showPushTargetDialog(
+    `${verb} ${names.length} file${names.length > 1 ? 's' : ''} ${op === 'put' ? 'to' : 'from'} Devices`,
+    verb,
+    async ({ broadcast, nodePath }) => {
+      try {
+        const res = await apiFetch('/ota/admin/api/ota/push-files', {
+          method: 'POST',
+          body: JSON.stringify({
+            files: names.map(n => ({ op, id: n })),
+            nodePath,
+            broadcast: broadcast || undefined,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          toast(`${verb} command sent (${names.length} file${names.length > 1 ? 's' : ''}) → ${data.topic}`, 'success');
+        } else {
+          const e = await res.json().catch(() => ({}));
+          toast(`${verb} failed: ${e.error || res.status}`, 'error');
+        }
+      } catch (_) { toast(`${verb} failed`, 'error'); }
+    }
+  );
+}
+
+document.getElementById('audio-send-btn').addEventListener('click',   () => _pushAudioSelected('put'));
+document.getElementById('audio-remove-btn').addEventListener('click',  () => _pushAudioSelected('delete'));
+
 async function loadAudio() {
   try {
     const res = await apiFetch('/ota/admin/api/files/audio');
     const files = await res.json();
-    renderFileTable('audio-tbody', files, 5, '/ota/admin/api/files/audio', loadAudio, makeFilePushBtns);
+    renderAudioTable(files);
   } catch (_) {}
 }
 
@@ -336,17 +429,20 @@ async function loadAudio() {
   const inp  = document.getElementById('audio-file-input');
   const prog = document.getElementById('audio-progress');
   const bar  = document.getElementById('audio-progress-bar');
+
+  function uploadWav(file) {
+    if (!file.name.toLowerCase().endsWith('.wav')) { toast(`Skipped ${file.name} — not a .wav`, 'error'); return; }
+    uploadFile(file, '/ota/admin/api/files/audio', bar, prog, () => loadAudio());
+  }
+
   zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => {
     e.preventDefault(); zone.classList.remove('drag-over');
-    const f = e.dataTransfer.files[0];
-    if (f && f.name.toLowerCase().endsWith('.wav'))
-      uploadFile(f, '/ota/admin/api/files/audio', bar, prog, () => loadAudio());
-    else toast('Only .wav files allowed', 'error');
+    [...e.dataTransfer.files].forEach(uploadWav);
   });
   inp.addEventListener('change', () => {
-    if (inp.files[0]) uploadFile(inp.files[0], '/ota/admin/api/files/audio', bar, prog, () => loadAudio());
+    [...inp.files].forEach(uploadWav);
     inp.value = '';
   });
 })();

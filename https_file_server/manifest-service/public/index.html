@@ -77,17 +77,26 @@
     </div>
     <div class="section-body">
       <div class="upload-zone" id="audio-zone">
-        <input type="file" id="audio-file-input" accept=".wav">
+        <input type="file" id="audio-file-input" accept=".wav" multiple>
         <div class="upload-zone-text">
-          <strong>Click or drag</strong> a <code>.wav</code> audio file here
+          <strong>Click or drag</strong> <code>.wav</code> audio files here
         </div>
         <div class="upload-progress" id="audio-progress">
           <div class="upload-progress-bar" id="audio-progress-bar"></div>
         </div>
       </div>
+      <div class="selection-toolbar" id="audio-selection-toolbar">
+        <label class="sel-all-label"><input type="checkbox" id="audio-select-all"> Select all</label>
+        <span class="sel-count" id="audio-sel-count">0 selected</span>
+        <div class="sel-actions">
+          <button class="btn btn-primary btn-sm" id="audio-send-btn" disabled>Send to Devices</button>
+          <button class="btn btn-warn btn-sm"    id="audio-remove-btn" disabled>Remove from Devices</button>
+        </div>
+      </div>
       <table class="file-table" id="audio-table">
         <thead>
           <tr>
+            <th class="col-check"></th>
             <th>Filename</th>
             <th>Size</th>
             <th>CRC32</th>
@@ -96,7 +105,7 @@
           </tr>
         </thead>
         <tbody id="audio-tbody">
-          <tr class="empty-row"><td colspan="5">Loading…</td></tr>
+          <tr class="empty-row"><td colspan="6">Loading…</td></tr>
         </tbody>
       </table>
     </div>
