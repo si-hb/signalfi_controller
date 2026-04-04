@@ -56,6 +56,7 @@ body {
 }
 
 #top-nav a:hover { color: var(--text-primary); }
+#top-nav a.active { color: var(--text-primary); border-bottom-color: var(--accent-bright); }
 
 #auth-indicator {
   font-size: 12px;

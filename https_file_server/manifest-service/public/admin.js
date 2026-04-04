@@ -434,7 +434,7 @@ function renderPushTable(manifests) {
         const data = await res.json();
         document.getElementById('manifest-json').textContent = JSON.stringify(data, null, 2);
         document.getElementById('manifest-result').classList.add('visible');
-        document.getElementById('manifest').scrollIntoView({ behavior: 'smooth' });
+        showTab('manifest');
       } catch (_) { toast('Failed to load manifest', 'error'); }
     });
 
@@ -608,6 +608,31 @@ function renderTokens(tokens) {
     tbody.appendChild(tr);
   }
 }
+
+// ── Tab navigation ────────────────────────────────────────────────────────────
+
+const TAB_IDS = ['firmware', 'audio', 'manifest', 'push', 'reports', 'tokens'];
+
+function showTab(id) {
+  TAB_IDS.forEach(t => {
+    const section = document.getElementById(t);
+    if (section) section.hidden = (t !== id);
+  });
+  document.querySelectorAll('#top-nav a[data-tab]').forEach(a => {
+    a.classList.toggle('active', a.dataset.tab === id);
+  });
+}
+
+// Wire nav links as tab buttons
+document.querySelectorAll('#top-nav a[data-tab]').forEach(a => {
+  a.addEventListener('click', e => {
+    e.preventDefault();
+    showTab(a.dataset.tab);
+  });
+});
+
+// Hide all sections except firmware on initial render
+showTab('firmware');
 
 // ── Initial load ──────────────────────────────────────────────────────────────
 
