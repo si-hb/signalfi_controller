@@ -159,6 +159,7 @@ services:
       - /opt/signalfi/configs:/opt/signalfi/configs:ro
       - /opt/signalfi/files/firmware:/opt/signalfi/files/firmware
       - /opt/signalfi/files/audio:/opt/signalfi/files/audio
+      - /opt/signalfi/files/general:/opt/signalfi/files/general
     environment:
       - PORT=3001
       - MANIFEST_ROOT=/opt/signalfi/manifests
@@ -170,6 +171,7 @@ services:
       - MQTT_TOPIC_PREFIX=scout
       - FIRMWARE_ROOT=/opt/signalfi/files/firmware
       - AUDIO_ROOT=/opt/signalfi/files/audio
+      - FILES_ROOT=/opt/signalfi/files/general
       - FILES_BASE_URL=http://apis.symphonyinteractive.ca
       - FILES_PATH_PREFIX=/ota/v1
       - ADMIN_TOKEN=signalfiadmin2026

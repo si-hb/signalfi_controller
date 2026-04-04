@@ -1,6 +1,6 @@
 # Signalfi OTA & Media Sync — Firmware Implementation Guide
 
-**Audience:** IoT firmware developer or AI coding agent implementing OTA firmware updates and audio file synchronisation for a Signalfi device.  
+**Audience:** IoT firmware developer or AI coding agent implementing OTA firmware updates and file sync for a Signalfi device.  
 **Platform:** Teensy 4.1 (IMXRT1062) with Ethernet (QNEthernet library)
 
 ---
@@ -10,25 +10,34 @@
 The Signalfi update system uses a two-phase HTTP flow:
 
 1. **Manifest fetch** — device asks a public API whether an update is available for its model and current firmware version.
-2. **Authenticated download** — if an update is available, the device uses a `downloadToken` from the manifest to authenticate firmware and audio file downloads.
+2. **Authenticated download** — if an update is available, the device uses a `downloadToken` from the manifest to authenticate file downloads.
 
-The manifest endpoint requires no credentials. File downloads require a valid token passed as a query parameter.
+**Manifest types:**
+
+- `firmware` — flash a new firmware `.hex` image, optionally sync audio files
+- `files` — push (put) or delete arbitrary files on the device
+
+The manifest endpoint requires no credentials. File downloads require a valid Bearer token in the `Authorization` header.
+
+**Firmware format:** Intel HEX (`.hex`). Integrity is verified using **CRC32** (IEEE 802.3). SHA256 is also included for reference.
+
+**Admin interface:** `http://apis.symphonyinteractive.ca/ota/admin/` — browser-based tool for uploading firmware/files, building manifests, and pushing OTA. Also exposes a VS Code / CI upload endpoint.
 
 ---
 
 ## Endpoints
 
-| Purpose            | URL                                                                           | Auth |
-|--------------------|-------------------------------------------------------------------------------|------|
-| Manifest API       | `http://apis.symphonyinteractive.ca/ota/manifest`                             | None |
-| Firmware download  | `http://apis.symphonyinteractive.ca/ota/firmware/<filename>`                  | Bearer token |
-| Audio download     | `http://apis.symphonyinteractive.ca/ota/audio/<filename>`                     | Bearer token |
-| Model config       | `http://apis.symphonyinteractive.ca/ota/config/models/<modelId>.json`         | Bearer token |
-| Device config      | `http://apis.symphonyinteractive.ca/ota/config/devices/<mac>.json`            | Bearer token |
-| Update report      | `http://apis.symphonyinteractive.ca/ota/report`                               | None |
-| Manifest health    | `http://apis.symphonyinteractive.ca/ota/health`                               | None |
-| File server health | `http://apis.symphonyinteractive.ca/ota/health`                               | None |
-| Config MQTT topic  | `scout/$group/<modelId>/$config` on `apis.symphonyinteractive.ca:1883`        | Password |
+| Purpose              | URL                                                                             | Auth         |
+|----------------------|---------------------------------------------------------------------------------|--------------|
+| Manifest API         | `http://apis.symphonyinteractive.ca/ota/manifest`                               | None         |
+| Firmware download    | `http://apis.symphonyinteractive.ca/ota/firmware/<filename>.hex`                | Bearer token |
+| Audio download       | `http://apis.symphonyinteractive.ca/ota/audio/<filename>`                       | Bearer token |
+| General file         | `http://apis.symphonyinteractive.ca/ota/v1/files/<filename>`                    | Bearer token |
+| Model config         | `http://apis.symphonyinteractive.ca/ota/config/models/<modelId>.json`           | Bearer token |
+| Device config        | `http://apis.symphonyinteractive.ca/ota/config/devices/<mac>.json`              | Bearer token |
+| Update report        | `http://apis.symphonyinteractive.ca/ota/report`                                 | None         |
+| Health check         | `http://apis.symphonyinteractive.ca/ota/health`                                 | None         |
+| Config MQTT topic    | `scout/$group/<modelId>/$config` on `apis.symphonyinteractive.ca:1883`          | Password     |
 
 **Token auth:** Use the `downloadToken` from the manifest as a Bearer token:
 ```
@@ -64,7 +73,7 @@ Device                        Manifest API                File Server       MQTT
   |                                                           |    (internal)    |
   |<── 206 binary (range request) ─────────────────────────── |                  |
   |                               |                           |                  |
-  | Verify SHA256                 |                           |                  |
+  | Verify CRC32                  |                           |                  |
   | Write to flash                |                           |                  |
   |-- POST /ota/report ─────────► |                           |                  |
   |   { deviceId, version,        |                           |                  |
@@ -82,23 +91,29 @@ Device                        Manifest API                File Server       MQTT
 
 ## Manifest Response Format
 
+### Firmware manifest (`type: "firmware"`)
+
 ```json
 {
+  "type": "firmware",
   "modelId": "SF-100",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "update": true,
-  "reason": "New firmware available",
-  "compatibleFrom": [],
+  "reason": "Bug fixes",
   "downloadToken": "63a54ebcc465b17ecd60798efbbda47efc695d30088e002fbf6a26fed5f7b3d1",
+  "delaySeconds": 0,
   "firmware": {
-    "url": "http://apis.symphonyinteractive.ca/ota/firmware/firmware-1.1.0.bin",
-    "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+    "version": "1.2.0",
+    "url": "http://apis.symphonyinteractive.ca/ota/v1/firmware/SF-100-1.2.0.hex",
+    "crc32": "a1b2c3d4",
+    "sha256": "e3b0c44298fc1c149afbf4c8996fb924...",
     "size": 524288
   },
   "audio": [
     {
-      "id": "audio-pack-1",
-      "url": "http://apis.symphonyinteractive.ca/ota/audio/audio-pack-1.wav",
+      "id": "chime01.wav",
+      "url": "http://apis.symphonyinteractive.ca/ota/v1/audio/chime01.wav",
+      "crc32": "f1e2d3c4",
       "sha256": "a3b1d5...",
       "size": 102400
     }
@@ -106,12 +121,49 @@ Device                        Manifest API                File Server       MQTT
 }
 ```
 
+### Files manifest (`type: "files"`)
+
+Used to push or delete arbitrary files on the device (audio, config, assets).
+
+```json
+{
+  "type": "files",
+  "modelId": "SF-100",
+  "update": true,
+  "reason": "Updated audio pack",
+  "downloadToken": "...",
+  "delaySeconds": 0,
+  "files": [
+    {
+      "op": "put",
+      "id": "chime02.wav",
+      "url": "http://apis.symphonyinteractive.ca/ota/v1/audio/chime02.wav",
+      "crc32": "b2c3d4e5",
+      "sha256": "...",
+      "size": 98304
+    },
+    {
+      "op": "put",
+      "id": "config.json",
+      "url": "http://apis.symphonyinteractive.ca/ota/v1/files/config.json",
+      "crc32": "12345678",
+      "sha256": "...",
+      "size": 512
+    },
+    { "op": "delete", "id": "old-chime.wav" }
+  ]
+}
+```
+
 **Fields:**
-- `update` — `true` = firmware update available; `false` = no action needed.
-- `compatibleFrom` — if non-empty, the device's current `firmwareVersion` must be in this list to receive the update. Empty array = all versions eligible.
-- `downloadToken` — 64-hex string; pass as `?token=<value>` on all file downloads.
-- `audio` — array of audio files to sync. Empty array = no audio changes.
-- When `update: false`, the response contains no `firmware` or `downloadToken` fields.
+
+- `type` — `"firmware"` or `"files"`. Absent in legacy manifests — treat as `"firmware"`.
+- `update` — `true` = action required; `false` = no-op (draft or up to date).
+- `downloadToken` — 64-hex Bearer token for all file downloads. Valid for the duration specified at manifest generation (default 30 days).
+- `crc32` — 8-hex CRC32 (IEEE 802.3). **Primary integrity check on device** — fast to compute on embedded hardware.
+- `sha256` — included for reference; use CRC32 for runtime verification.
+- `files[].op` — `"put"` = download and store; `"delete"` = remove from device storage.
+- `audio` — firmware manifests only; audio files to sync (same logic as `files` with implicit `op: put`).
 
 ---
 
@@ -152,8 +204,8 @@ using namespace qindesign::network;
 const char* MODEL_ID = "SF-100";
 const char* FIRMWARE_VER = "1.0.0";
 
-// Returns true if an update is available; fills token, firmwareUrl, firmwareSha256
-bool fetchManifest(String& token, String& firmwareUrl, String& firmwareSha256, uint32_t& firmwareSize) {
+// Returns true if an update is available; fills token, firmwareUrl, firmwareCrc32, firmwareSize
+bool fetchManifest(String& token, String& firmwareUrl, String& firmwareCrc32, uint32_t& firmwareSize) {
     EthernetClient client;
     const char* host = "apis.symphonyinteractive.ca";
 
@@ -189,10 +241,10 @@ bool fetchManifest(String& token, String& firmwareUrl, String& firmwareSha256, u
         return false;
     }
 
-    token        = doc["downloadToken"].as<String>();
-    firmwareUrl  = doc["firmware"]["url"].as<String>();
-    firmwareSha256 = doc["firmware"]["sha256"].as<String>();
-    firmwareSize = doc["firmware"]["size"].as<uint32_t>();
+    token          = doc["downloadToken"].as<String>();
+    firmwareUrl    = doc["firmware"]["url"].as<String>();
+    firmwareCrc32  = doc["firmware"]["crc32"].as<String>();  // 8-hex CRC32
+    firmwareSize   = doc["firmware"]["size"].as<uint32_t>();
     return true;
 }
 ```
@@ -202,22 +254,45 @@ bool fetchManifest(String& token, String& firmwareUrl, String& firmwareSha256, u
 The file server supports `Accept-Ranges: bytes`. Use range requests to download in chunks to avoid running out of RAM on large firmware images.
 
 ```cpp
-#include <mbedtls/sha256.h>
+// CRC32 (IEEE 802.3) — inline, no external library needed
+static const uint32_t CRC32_TABLE[256] = {/* generated at startup or use PROGMEM table */};
+
+void crc32_init(uint32_t& crc) { crc = 0xFFFFFFFF; }
+void crc32_update(uint32_t& crc, const uint8_t* buf, size_t len) {
+    // Standard CRC32 using pre-built table
+    for (size_t i = 0; i < len; i++) {
+        crc = (crc >> 8) ^ CRC32_TABLE[(crc ^ buf[i]) & 0xFF];
+    }
+}
+String crc32_finish(uint32_t crc) {
+    crc ^= 0xFFFFFFFF;
+    char hex[9];
+    snprintf(hex, sizeof(hex), "%08lx", (unsigned long)crc);
+    return String(hex);
+}
+
+// Build CRC32 table (call once at startup)
+void buildCrc32Table(uint32_t* table) {
+    for (uint32_t i = 0; i < 256; i++) {
+        uint32_t c = i;
+        for (int j = 0; j < 8; j++) c = (c & 1) ? 0xEDB88320UL ^ (c >> 1) : c >> 1;
+        table[i] = c;
+    }
+}
 
 // Downloads url using Authorization: Bearer <token> header, in CHUNK_SIZE chunks.
 // Writes each chunk via writeChunk callback. Returns true on success.
-// After download, sha256Out is populated with the hex digest.
+// After download, crc32Out is populated with the 8-hex CRC32 digest.
 bool downloadFile(const String& url, const String& token,
                   uint32_t totalSize,
                   std::function<bool(const uint8_t*, size_t, size_t offset)> writeChunk,
-                  String& sha256Out) {
+                  String& crc32Out) {
 
     const size_t CHUNK_SIZE = 8192;  // 8 KB — tune to available RAM
     const char* host = "apis.symphonyinteractive.ca";
 
-    mbedtls_sha256_context sha;
-    mbedtls_sha256_init(&sha);
-    mbedtls_sha256_starts(&sha, 0);  // 0 = SHA256 (not SHA224)
+    uint32_t crc;
+    crc32_init(crc);
 
     uint32_t offset = 0;
     while (offset < totalSize) {
@@ -226,7 +301,6 @@ bool downloadFile(const String& url, const String& token,
         EthernetClient client;
         if (!client.connect(host, 80)) {
             Serial.println("[OTA] file connect failed");
-            mbedtls_sha256_free(&sha);
             return false;
         }
 
@@ -245,16 +319,13 @@ bool downloadFile(const String& url, const String& token,
         int httpStatus = 0;
         while (client.connected()) {
             String line = client.readStringUntil('\n');
-            if (line.startsWith("HTTP/")) {
-                httpStatus = line.substring(9, 12).toInt();
-            }
+            if (line.startsWith("HTTP/")) httpStatus = line.substring(9, 12).toInt();
             if (line == "\r") break;
         }
 
         if (httpStatus != 206 && httpStatus != 200) {
             Serial.printf("[OTA] HTTP %d on range %u-%u\n", httpStatus, offset, end);
             client.stop();
-            mbedtls_sha256_free(&sha);
             return false;
         }
 
@@ -265,12 +336,11 @@ bool downloadFile(const String& url, const String& token,
             int n = client.read(buf, sizeof(buf));
             if (n <= 0) { delay(1); continue; }
 
-            mbedtls_sha256_update(&sha, buf, n);
+            crc32_update(crc, buf, n);
 
             if (!writeChunk(buf, n, offset + chunkOffset)) {
                 Serial.println("[OTA] writeChunk failed — aborting");
                 client.stop();
-                mbedtls_sha256_free(&sha);
                 return false;
             }
             chunkOffset += n;
@@ -281,17 +351,7 @@ bool downloadFile(const String& url, const String& token,
         Serial.printf("[OTA] downloaded %u / %u bytes\n", offset, totalSize);
     }
 
-    // Finalise SHA256
-    uint8_t hash[32];
-    mbedtls_sha256_finish(&sha, hash);
-    mbedtls_sha256_free(&sha);
-
-    sha256Out = "";
-    for (int i = 0; i < 32; i++) {
-        char hex[3];
-        snprintf(hex, sizeof(hex), "%02x", hash[i]);
-        sha256Out += hex;
-    }
+    crc32Out = crc32_finish(crc);
     return true;
 }
 ```
@@ -333,48 +393,62 @@ void applyFirmwareUpdate() {
 
 ```cpp
 void checkForUpdate() {
-    String token, firmwareUrl, firmwareSha256;
+    String token, firmwareUrl, firmwareCrc32;
     uint32_t firmwareSize;
 
-    if (!fetchManifest(token, firmwareUrl, firmwareSha256, firmwareSize)) {
+    if (!fetchManifest(token, firmwareUrl, firmwareCrc32, firmwareSize)) {
         return;  // no update or network error
     }
 
     Serial.println("[OTA] Update available — downloading firmware");
 
-    String computedSha;
+    String computedCrc;
     bool ok = downloadFile(firmwareUrl, token, firmwareSize,
         [](const uint8_t* data, size_t len, size_t offset) {
             return writeChunkToFlash(data, len, offset);
         },
-        computedSha);
+        computedCrc);
 
     if (!ok) {
         Serial.println("[OTA] Download failed");
         return;
     }
 
-    if (!computedSha.equalsIgnoreCase(firmwareSha256)) {
-        Serial.printf("[OTA] SHA256 mismatch!\n  expected: %s\n  got:      %s\n",
-                      firmwareSha256.c_str(), computedSha.c_str());
+    if (!computedCrc.equalsIgnoreCase(firmwareCrc32)) {
+        Serial.printf("[OTA] CRC32 mismatch!\n  expected: %s\n  got:      %s\n",
+                      firmwareCrc32.c_str(), computedCrc.c_str());
         return;
     }
 
-    Serial.println("[OTA] SHA256 verified — applying update");
+    Serial.println("[OTA] CRC32 verified — applying update");
     applyFirmwareUpdate();  // does not return — device reboots
 }
 ```
 
 ### 5 — MQTT Push: `frm` Action
 
-OTA is triggered via the existing `$action` topic — no dedicated `$ota` subscriptions needed. The server publishes `act: frm` to a group or device topic. The device inspects the `mdl` field and only acts if the model matches its own `MODEL_ID`.
+OTA is triggered via the existing `$action` topic — no dedicated `$ota` subscriptions needed. The server publishes `act: frm` to a **group topic** (model-specific) or a **broadcast topic** (all devices). The device inspects the `mdl` field; if absent, the message is from a broadcast and the device acts unconditionally.
 
-This reuses subscriptions the device already maintains for normal operation (`scout/<mac>/$action`, `scout/$group/<nodePath>/$action`). No extra topics are needed.
-
-**Payload published by server:**
+**Group push** (model-specific):
 
 ```json
 { "act": "frm", "mdl": "SF-100" }
+```
+
+Published to: `scout/$group/SF-100/$action`
+
+**Broadcast push** (all devices, operator-initiated):
+
+```json
+{ "act": "frm" }
+```
+
+Published to: `scout/$broadcast/$action`
+
+Subscribe to broadcast in `setupMqtt()`:
+
+```cpp
+mqttClient.subscribe("scout/$broadcast/$action");
 ```
 
 **Device-side handler — add to your existing `$action` dispatch:**
@@ -383,13 +457,14 @@ This reuses subscriptions the device already maintains for normal operation (`sc
 // Inside your MQTT message handler, after parsing act from JSON:
 
 if (act == "frm") {
-    const char* targetModel = doc["mdl"];
-    if (!targetModel || strcmp(targetModel, MODEL_ID) != 0) {
+    const char* targetModel = doc["mdl"] | (const char*)nullptr;
+    // No mdl field = broadcast; mdl field must match our model
+    if (targetModel && strcmp(targetModel, MODEL_ID) != 0) {
         Serial.printf("[OTA] frm ignored — model mismatch (target=%s, ours=%s)\n",
-                      targetModel ? targetModel : "null", MODEL_ID);
+                      targetModel, MODEL_ID);
         return;
     }
-    Serial.printf("[OTA] frm received — triggering manifest check\n");
+    Serial.println("[OTA] frm received — triggering manifest check");
     checkForUpdate();
     return;
 }
@@ -465,56 +540,118 @@ Check each audio file in the manifest against the locally stored SHA256. Downloa
 struct AudioFile {
     String id;
     String url;
-    String sha256;
+    String crc32;   // 8-hex CRC32 for runtime verification
     uint32_t size;
 };
 
-// Load saved SHA256 for an audio file from EEPROM/LittleFS
-String loadAudioSha(const String& id);
-// Save updated SHA256 after successful download
-void saveAudioSha(const String& id, const String& sha256);
+// Load saved CRC32 for a file from EEPROM/LittleFS
+String loadFileCrc(const String& id);
+// Save updated CRC32 after successful download
+void saveFileCrc(const String& id, const String& crc32);
 // Write audio bytes to LittleFS or SDRAM buffer
 bool writeAudioChunk(const uint8_t* data, size_t len, size_t offset);
 
 void syncAudio(const JsonArray& audioList, const String& token) {
     for (JsonObject item : audioList) {
         AudioFile af;
-        af.id     = item["id"].as<String>();
-        af.url    = item["url"].as<String>();
-        af.sha256 = item["sha256"].as<String>();
-        af.size   = item["size"].as<uint32_t>();
+        af.id    = item["id"].as<String>();
+        af.url   = item["url"].as<String>();
+        af.crc32 = item["crc32"].as<String>();
+        af.size  = item["size"].as<uint32_t>();
 
-        String localSha = loadAudioSha(af.id);
-        if (localSha.equalsIgnoreCase(af.sha256)) {
+        String localCrc = loadFileCrc(af.id);
+        if (localCrc.equalsIgnoreCase(af.crc32)) {
             Serial.printf("[Audio] %s up to date\n", af.id.c_str());
             continue;
         }
 
         Serial.printf("[Audio] downloading %s\n", af.id.c_str());
-        String computedSha;
+        String computedCrc;
         bool ok = downloadFile(af.url, token, af.size,
             [](const uint8_t* data, size_t len, size_t offset) {
                 return writeAudioChunk(data, len, offset);
             },
-            computedSha);
+            computedCrc);
 
         if (!ok) {
             Serial.printf("[Audio] %s download failed\n", af.id.c_str());
             continue;
         }
 
-        if (!computedSha.equalsIgnoreCase(af.sha256)) {
-            Serial.printf("[Audio] %s SHA256 mismatch\n", af.id.c_str());
+        if (!computedCrc.equalsIgnoreCase(af.crc32)) {
+            Serial.printf("[Audio] %s CRC32 mismatch\n", af.id.c_str());
             continue;
         }
 
-        saveAudioSha(af.id, af.sha256);
+        saveFileCrc(af.id, af.crc32);
         Serial.printf("[Audio] %s synced\n", af.id.c_str());
     }
 }
 ```
 
-### 6 — Retry / Backoff
+### 6 — Files Manifest Handling
+
+A manifest with `type: "files"` contains a `files` array of `put` and `delete` operations. The device should process these after receiving a `frm` action and fetching the manifest.
+
+```cpp
+// Write/delete a general file on LittleFS
+bool writeFileChunk(const String& id, const uint8_t* data, size_t len, size_t offset);
+void deleteLocalFile(const String& id);
+
+void syncFiles(const JsonArray& fileList, const String& token) {
+    for (JsonObject item : fileList) {
+        const char* op  = item["op"]  | "put";
+        const char* id  = item["id"]  | "";
+
+        if (strcmp(op, "delete") == 0) {
+            deleteLocalFile(id);
+            Serial.printf("[Files] deleted %s\n", id);
+            continue;
+        }
+
+        // op == "put" — download and store
+        String url   = item["url"].as<String>();
+        String crc32 = item["crc32"].as<String>();
+        uint32_t sz  = item["size"].as<uint32_t>();
+
+        String localCrc = loadFileCrc(id);
+        if (localCrc.equalsIgnoreCase(crc32)) {
+            Serial.printf("[Files] %s up to date\n", id);
+            continue;
+        }
+
+        Serial.printf("[Files] downloading %s\n", id);
+        String computedCrc;
+        bool ok = downloadFile(url, token, sz,
+            [&](const uint8_t* data, size_t len, size_t offset) {
+                return writeFileChunk(id, data, len, offset);
+            },
+            computedCrc);
+
+        if (!ok || !computedCrc.equalsIgnoreCase(crc32)) {
+            Serial.printf("[Files] %s %s\n", id, ok ? "CRC32 mismatch" : "download failed");
+            continue;
+        }
+
+        saveFileCrc(id, crc32);
+        Serial.printf("[Files] %s stored\n", id);
+    }
+}
+
+// In checkForUpdate — dispatch on manifest type:
+void processManifest(const JsonDocument& manifest, const String& token) {
+    const char* type = manifest["type"] | "firmware";
+    if (strcmp(type, "files") == 0) {
+        syncFiles(manifest["files"].as<JsonArray>(), token);
+    } else {
+        // firmware type — handled by existing OTA flash flow
+        // audio sync runs after firmware is applied
+        syncAudio(manifest["audio"].as<JsonArray>(), token);
+    }
+}
+```
+
+### 7 — Retry / Backoff
 
 Wrap manifest and download calls with exponential backoff:
 
@@ -534,9 +671,9 @@ bool withRetry(int maxAttempts, std::function<bool()> fn) {
 
 // Usage:
 withRetry(5, []() {
-    String token, url, sha;
+    String token, url, crc;
     uint32_t size;
-    return fetchManifest(token, url, sha, size);
+    return fetchManifest(token, url, crc, size);
 });
 ```
 
@@ -587,7 +724,7 @@ void onSuccessfulBoot() {
 | Manifest server unreachable      | Retry with backoff, continue normal operation       |
 | `update: false`                  | No action — normal operation                        |
 | Download HTTP 403                | Token invalid or revoked — log, abort update        |
-| SHA256 mismatch after download   | Discard download, log error, do not apply           |
+| CRC32 mismatch after download    | Discard download, log error, do not apply           |
 | Flash write failure              | Log error, do not reboot                            |
 | Boot counter ≥ threshold         | Rollback or halt                                    |
 | Audio download fails             | Skip that file, continue with others                |
@@ -732,6 +869,59 @@ void loadRemoteConfig() {
 ```
 
 > On first connect, the broker replays the last retained `$config` message, so any config published while the device was offline is applied on next connect — no polling needed.
+
+---
+
+## VS Code / CI Automated Upload
+
+The manifest service exposes a dedicated upload endpoint that accepts a firmware file and optionally generates a manifest and triggers an OTA push — suitable for a VS Code build task.
+
+**Endpoint:** `POST http://apis.symphonyinteractive.ca/ota/admin/api/upload`
+
+**Headers:** `Authorization: Bearer <ADMIN_TOKEN>`
+
+**Form fields:**
+
+| Field | Required | Description |
+| ----- | -------- | ----------- |
+| `file` | yes | The `.hex` firmware file |
+| `model` | no | Model ID (e.g. `SF-100`) — required if `push=true` |
+| `version` | no | Version string (e.g. `1.2.0`) |
+| `push` | no | `true` to generate manifest and trigger OTA push |
+| `target` | no | `group` (default) or `broadcast` |
+
+**VS Code `.vscode/tasks.json` example:**
+
+```json
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Upload Firmware to OTA Server",
+      "type": "shell",
+      "command": "curl -s -X POST http://apis.symphonyinteractive.ca/ota/admin/api/upload -H 'Authorization: Bearer ${env:OTA_ADMIN_TOKEN}' -F 'file=@${workspaceFolder}/build/firmware.hex' -F 'model=SF-100' -F 'version=1.2.0' -F 'push=true' | python3 -m json.tool",
+      "group": "build",
+      "problemMatcher": []
+    }
+  ]
+}
+```
+
+Set `OTA_ADMIN_TOKEN` in your shell environment or `.env` file (not committed to source control).
+
+**Response:**
+
+```json
+{
+  "name": "firmware.hex",
+  "size": 524288,
+  "crc32": "a1b2c3d4",
+  "sha256": "e3b0c44...",
+  "pushed": true,
+  "topic": "scout/$group/SF-100/$action",
+  "manifest": { ... }
+}
+```
 
 ---
 

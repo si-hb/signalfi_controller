@@ -12,6 +12,7 @@ ENV PORT=3001
 ENV MANIFEST_ROOT=/opt/signalfi/manifests
 ENV FIRMWARE_ROOT=/opt/signalfi/files/firmware
 ENV AUDIO_ROOT=/opt/signalfi/files/audio
+ENV FILES_ROOT=/opt/signalfi/files/general
 
 EXPOSE 3001
 
