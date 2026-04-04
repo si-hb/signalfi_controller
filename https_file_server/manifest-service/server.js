@@ -577,19 +577,111 @@ app.post('/ota/admin/api/manifests/generate', (req, _res, next) => {
   next('route');
 });
 
-// ── Admin API — explicit OTA push (no file write) ─────────────────────────────
+// ── Admin API — save manifest definition (draft, no token, no push) ───────────
+// Alias: /manifests/save and /manifests/draft both do the same thing.
+
+function saveManifestDraft(req, res) {
+  const { modelId } = req.body || {};
+  if (!modelId || !safeFilename(modelId))
+    return res.status(400).json({ error: 'valid modelId required' });
+  const { downloadToken: _t, ...rest } = req.body;
+  const draft = { ...rest, update: false, _draft: true };
+  const fp = path.join(MODELS_DIR, `${modelId}.json`);
+  try {
+    fs.writeFileSync(fp, JSON.stringify(draft, null, 2));
+    console.log(`[admin] manifest saved (draft): ${modelId}`);
+    res.json({ saved: modelId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+}
+
+app.post('/ota/admin/api/manifests/save',  saveManifestDraft);
+app.post('/ota/admin/api/manifests/draft', saveManifestDraft);
+
+// ── Admin API — push OTA (verify files → fresh token → write manifest → MQTT) ─
+// Body: { modelId, nodePath? , broadcast?: true }
+// nodePath targets:  scout/$group/<nodePath>/$action
+// broadcast targets: scout/$broadcast/$action
 
 app.post('/ota/admin/api/ota/push', (req, res) => {
-  const { modelId, target = 'group' } = req.body || {};
-  if (target !== 'broadcast' && !modelId)
-    return res.status(400).json({ error: 'modelId required for group push' });
+  const { modelId, nodePath, broadcast } = req.body || {};
 
-  publishOta(modelId, target);
-  const topic = target === 'broadcast'
-    ? `${MQTT_PREFIX}/$broadcast/$action`
-    : `${MQTT_PREFIX}/$group/${modelId}/$action`;
-  console.log(`[admin] explicit OTA push: ${topic}`);
-  res.json({ published: true, topic });
+  if (!modelId || !safeFilename(modelId))
+    return res.status(400).json({ error: 'modelId required' });
+  if (!broadcast && !nodePath)
+    return res.status(400).json({ error: 'nodePath or broadcast:true required' });
+
+  const manifestPath = path.join(MODELS_DIR, `${modelId}.json`);
+  if (!fs.existsSync(manifestPath))
+    return res.status(404).json({ error: `no manifest saved for ${modelId}` });
+
+  let draft;
+  try { draft = JSON.parse(fs.readFileSync(manifestPath, 'utf8')); }
+  catch (err) { return res.status(500).json({ error: 'failed to read manifest' }); }
+
+  try {
+    // Fresh download token for this push
+    const tokenHex    = crypto.randomBytes(32).toString('hex');
+    const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
+    fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
+
+    const { _draft: _d, ...rest } = draft;
+    const manifest = { ...rest, update: true, downloadToken: tokenHex };
+
+    // Re-verify and refresh checksums so manifest is always current
+    const type = draft.type || 'firmware';
+
+    if (type === 'firmware') {
+      if (manifest.firmware?.url) {
+        const fwFilename = decodeURIComponent(manifest.firmware.url.split('/').pop());
+        if (safeFilename(fwFilename)) {
+          const fwPath = path.join(FIRMWARE_ROOT, fwFilename);
+          if (!fs.existsSync(fwPath))
+            return res.status(400).json({ error: `firmware file not found: ${fwFilename}` });
+          manifest.firmware = {
+            ...manifest.firmware,
+            crc32:  fileCrc32(fwPath),
+            sha256: fileSha256(fwPath),
+            size:   fs.statSync(fwPath).size,
+          };
+        }
+      }
+      if (Array.isArray(manifest.audio)) {
+        manifest.audio = manifest.audio.map(af => {
+          const afPath = path.join(AUDIO_ROOT, af.id);
+          if (!fs.existsSync(afPath)) return af;
+          return { ...af, crc32: fileCrc32(afPath), sha256: fileSha256(afPath), size: fs.statSync(afPath).size };
+        });
+      }
+    } else if (type === 'files') {
+      const errors = [];
+      manifest.files = (manifest.files || []).map(f => {
+        if (f.op === 'delete') return f;
+        const inAudio = path.join(AUDIO_ROOT, f.id);
+        const inFiles = path.join(FILES_ROOT, f.id);
+        const fp = fs.existsSync(inAudio) ? inAudio : fs.existsSync(inFiles) ? inFiles : null;
+        if (!fp) { errors.push(`file not found: ${f.id}`); return f; }
+        return { ...f, crc32: fileCrc32(fp), sha256: fileSha256(fp), size: fs.statSync(fp).size };
+      });
+      if (errors.length) return res.status(400).json({ error: 'file verification failed', details: errors });
+    }
+
+    fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
+
+    const topic   = broadcast
+      ? `${MQTT_PREFIX}/$broadcast/$action`
+      : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
+    const payload = broadcast
+      ? JSON.stringify({ act: 'frm' })
+      : JSON.stringify({ act: 'frm', mdl: modelId });
+
+    mqttPublish(topic, payload, false);
+    console.log(`[admin] OTA pushed: ${topic}`);
+    res.json({ published: true, topic, manifest });
+
+  } catch (err) {
+    console.error(`[admin] push error: ${err.message}`);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── VS Code / CI automated upload endpoint ────────────────────────────────────

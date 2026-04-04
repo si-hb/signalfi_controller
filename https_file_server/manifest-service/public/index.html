@@ -210,29 +210,16 @@
 
       </div>
 
-      <!-- Push target -->
-      <div class="form-field" style="margin-top:16px">
-        <label>Push Target</label>
-        <div class="radio-group" id="m-target-group">
-          <label class="radio-item">
-            <input type="radio" name="m-target" value="group" checked> Group — model devices only
-          </label>
-          <label class="radio-item">
-            <input type="radio" name="m-target" value="broadcast"> Broadcast — all devices
-          </label>
-        </div>
-      </div>
-
       <div class="row" style="margin-top:18px">
         <button class="btn btn-secondary" id="save-draft-btn">Save Draft</button>
         <div class="spacer"></div>
         <span class="muted" id="generate-hint" style="font-size:12px">Fill Model ID and required fields</span>
-        <button class="btn btn-primary" id="generate-btn" disabled>Upload</button>
+        <button class="btn btn-primary" id="generate-btn" disabled>Save to Server</button>
       </div>
 
       <div class="manifest-result" id="manifest-result">
         <div class="row" style="margin-bottom:8px">
-          <span style="font-size:13px;font-weight:600">Manifest Deployed</span>
+          <span style="font-size:13px;font-weight:600">Manifest Saved</span>
           <div class="spacer"></div>
           <button class="btn btn-secondary btn-sm" id="copy-manifest-btn">Copy JSON</button>
         </div>
@@ -245,10 +232,13 @@
   <section class="section" id="push">
     <div class="section-header">
       <span class="section-title">Push OTA</span>
-      <button class="btn btn-danger btn-sm" id="broadcast-push-btn">Broadcast All</button>
       <button class="btn btn-secondary btn-sm" id="refresh-manifests-btn">Refresh</button>
     </div>
     <div class="section-body">
+      <p style="font-size:13px;color:var(--text-muted);margin:0 0 12px">
+        Select a manifest and specify a target node path (e.g. <code>buildingA/1stfloor/cafeteria</code>)
+        or choose <em>Broadcast</em> to reach all devices.
+      </p>
       <table class="push-table" id="push-table">
         <thead>
           <tr>

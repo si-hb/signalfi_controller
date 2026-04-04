@@ -310,13 +310,17 @@ function getManifestType() {
   return document.querySelector('input[name="m-type"]:checked')?.value || 'firmware';
 }
 
+// Fields shown for firmware only: version, firmware select, compat, audio checklist
+// Fields shown for files only: file operations list
+// Token days, delay, reason, model are always shown
 function applyTypeVisibility() {
-  const type = getManifestType();
-  const isFirmware = type === 'firmware';
+  const isFirmware = getManifestType() === 'firmware';
+  // Firmware-only fields
   document.getElementById('m-version-field').style.display  = isFirmware ? '' : 'none';
   document.getElementById('m-firmware-field').style.display = isFirmware ? '' : 'none';
   document.getElementById('m-compat-field').style.display   = isFirmware ? '' : 'none';
   document.getElementById('m-audio-field').style.display    = isFirmware ? '' : 'none';
+  // Files-only fields
   document.getElementById('m-files-field').style.display    = isFirmware ? 'none' : '';
   checkUploadReady();
 }
@@ -405,16 +409,15 @@ function addFileOpRow(defaultFile = '', defaultOp = 'put') {
 
 document.getElementById('m-add-file-op').addEventListener('click', () => addFileOpRow());
 
-// Upload button
+// Save to Server button — saves draft (no token, no MQTT); Push OTA tab handles the actual push
 document.getElementById('generate-btn').addEventListener('click', async () => {
   const type        = getManifestType();
   const modelId     = document.getElementById('m-model').value.trim();
   const tokenDays   = parseInt(document.getElementById('m-token-days').value, 10) || 30;
   const delay       = parseInt(document.getElementById('m-delay').value, 10) || 0;
   const reason      = document.getElementById('m-reason').value.trim();
-  const target      = document.querySelector('input[name="m-target"]:checked')?.value || 'group';
 
-  let body = { type, modelId, tokenDays, reason, delaySeconds: delay, target };
+  let body = { type, modelId, tokenDays, reason, delaySeconds: delay };
 
   if (type === 'firmware') {
     const version      = document.getElementById('m-version').value.trim();
@@ -438,10 +441,10 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
   }
 
   const btn = document.getElementById('generate-btn');
-  btn.disabled = true; btn.textContent = 'Verifying…';
+  btn.disabled = true; btn.textContent = 'Saving…';
 
   try {
-    const res = await apiFetch('/ota/admin/api/manifests/upload', {
+    const res = await apiFetch('/ota/admin/api/manifests/save', {
       method: 'POST',
       body: JSON.stringify(body),
     });
@@ -454,12 +457,12 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
     const manifest = await res.json();
     document.getElementById('manifest-json').textContent = JSON.stringify(manifest, null, 2);
     document.getElementById('manifest-result').classList.add('visible');
-    toast(`Manifest uploaded for ${modelId} → ${target}`, 'success');
+    toast(`Manifest saved for ${modelId} — go to Push OTA to deploy`, 'success');
     loadManifests();
   } catch (_) {
-    toast('Upload failed', 'error');
+    toast('Save failed', 'error');
   } finally {
-    btn.disabled = false; btn.textContent = 'Upload';
+    btn.disabled = false; btn.textContent = 'Save to Server';
     checkUploadReady();
   }
 });
@@ -481,7 +484,6 @@ function collectFormState() {
     tokenDays:  parseInt(document.getElementById('m-token-days').value, 10) || 30,
     delaySeconds: parseInt(document.getElementById('m-delay').value, 10) || 0,
     reason:     document.getElementById('m-reason').value.trim(),
-    target:     document.querySelector('input[name="m-target"]:checked')?.value || 'group',
   };
   if (type === 'firmware') {
     base.version      = document.getElementById('m-version').value.trim();
@@ -511,9 +513,6 @@ function populateFormState(state) {
   document.getElementById('m-token-days').value  = state.tokenDays   || 30;
   document.getElementById('m-delay').value        = state.delaySeconds || 0;
   document.getElementById('m-reason').value       = state.reason      || '';
-
-  const targetRadio = document.querySelector(`input[name="m-target"][value="${state.target || 'group'}"]`);
-  if (targetRadio) targetRadio.checked = true;
 
   if (state.type === 'firmware' || !state.type) {
     document.getElementById('m-version').value   = state.version      || '';
@@ -711,7 +710,7 @@ function renderPushTable(manifests) {
     const pushBtn = document.createElement('button');
     pushBtn.className = 'btn btn-warn btn-sm';
     pushBtn.textContent = 'Push';
-    pushBtn.addEventListener('click', () => showPushConfirm(m.modelId, 'group'));
+    pushBtn.addEventListener('click', () => showPushConfirm(m.modelId));
 
     cell.append(viewBtn, pushBtn);
     tbody.appendChild(tr);
@@ -720,61 +719,93 @@ function renderPushTable(manifests) {
 
 document.getElementById('refresh-manifests-btn').addEventListener('click', loadManifests);
 
-// Broadcast all button
-document.getElementById('broadcast-push-btn').addEventListener('click', () => {
-  showPushConfirm(null, 'broadcast');
-});
-
-function showPushConfirm(modelId, target) {
+function showPushConfirm(modelId) {
   const existing = document.getElementById('push-confirm-overlay');
   if (existing) existing.remove();
-
-  const topic   = target === 'broadcast'
-    ? 'scout/$broadcast/$action'
-    : `scout/$group/${modelId}/$action`;
-  const payload = target === 'broadcast'
-    ? '{"act":"frm"}'
-    : `{"act":"frm","mdl":"${modelId}"}`;
-  const title   = target === 'broadcast'
-    ? 'Broadcast OTA — All Devices'
-    : `Push OTA — ${modelId}`;
-  const warning = target === 'broadcast'
-    ? '<br><strong style="color:var(--warn)">⚠ This will trigger all devices to check for updates.</strong>'
-    : 'All online devices of this model will begin checking for an update.';
 
   const overlay = document.createElement('div');
   overlay.id = 'push-confirm-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:150';
 
   const box = document.createElement('div');
-  box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:460px;display:flex;flex-direction:column;gap:14px';
+  box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:500px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:16px';
   box.innerHTML = `
-    <h3 style="font-size:15px">${title}</h3>
-    <p style="font-size:13px;color:var(--text-muted)">
-      MQTT topic:<br>
-      <code style="font-family:var(--font-mono);color:var(--accent-bright)">${topic}</code><br>
-      Payload: <code style="font-family:var(--font-mono);color:var(--accent-bright)">${payload}</code><br><br>
-      ${warning}
+    <h3 style="font-size:15px;margin:0">Push OTA — ${modelId}</h3>
+    <div class="radio-group">
+      <label class="radio-item">
+        <input type="radio" name="push-target-radio" value="group" checked> Group — specific node path
+      </label>
+      <label class="radio-item">
+        <input type="radio" name="push-target-radio" value="broadcast"> Broadcast — all devices
+      </label>
+    </div>
+    <div id="push-node-wrap">
+      <label style="font-size:12px;color:var(--text-muted);display:block;margin-bottom:6px">NODE PATH</label>
+      <input type="text" id="push-node-path" placeholder="e.g. buildingA/1stfloor/cafeteria"
+        style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px">
+    </div>
+    <div id="push-topic-preview" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);padding:6px 10px;background:var(--bg-raised);border-radius:4px">
+      Topic: scout/$group/…/$action
+    </div>
+    <p id="push-broadcast-warn" style="display:none;font-size:13px;color:var(--warn);margin:0">
+      ⚠ This will trigger all online devices to check for updates.
     </p>
     <div style="display:flex;gap:10px;justify-content:flex-end">
       <button class="btn btn-secondary btn-sm" id="push-cancel">Cancel</button>
-      <button class="btn btn-warn btn-sm" id="push-confirm">Push</button>
+      <button class="btn btn-warn btn-sm" id="push-confirm-btn" disabled>Push</button>
     </div>
   `;
 
   overlay.appendChild(box);
   document.body.appendChild(overlay);
 
-  document.getElementById('push-cancel').addEventListener('click', () => overlay.remove());
-  document.getElementById('push-confirm').addEventListener('click', async () => {
+  const nodeWrap   = box.querySelector('#push-node-wrap');
+  const nodeInput  = box.querySelector('#push-node-path');
+  const topicPrev  = box.querySelector('#push-topic-preview');
+  const bcWarn     = box.querySelector('#push-broadcast-warn');
+  const confirmBtn = box.querySelector('#push-confirm-btn');
+
+  function updatePushUI() {
+    const isBroadcast = box.querySelector('input[name="push-target-radio"]:checked')?.value === 'broadcast';
+    nodeWrap.style.display  = isBroadcast ? 'none' : '';
+    bcWarn.style.display    = isBroadcast ? '' : 'none';
+    if (isBroadcast) {
+      topicPrev.textContent  = 'Topic: scout/$broadcast/$action';
+      confirmBtn.disabled    = false;
+    } else {
+      const path = nodeInput.value.trim();
+      topicPrev.textContent  = path
+        ? `Topic: scout/$group/${path}/$action`
+        : 'Topic: scout/$group/…/$action';
+      confirmBtn.disabled    = !path;
+    }
+  }
+
+  box.querySelectorAll('input[name="push-target-radio"]').forEach(r => r.addEventListener('change', updatePushUI));
+  nodeInput.addEventListener('input', updatePushUI);
+  updatePushUI();
+
+  box.querySelector('#push-cancel').addEventListener('click', () => overlay.remove());
+
+  confirmBtn.addEventListener('click', async () => {
+    const isBroadcast = box.querySelector('input[name="push-target-radio"]:checked')?.value === 'broadcast';
+    const nodePath = nodeInput.value.trim();
     overlay.remove();
     try {
+      const body = isBroadcast
+        ? { modelId, broadcast: true }
+        : { modelId, nodePath };
       const res = await apiFetch('/ota/admin/api/ota/push', {
         method: 'POST',
-        body: JSON.stringify({ modelId, target }),
+        body: JSON.stringify(body),
       });
-      if (res.ok) toast(target === 'broadcast' ? 'Broadcast sent' : `Push sent for ${modelId}`, 'success');
-      else toast('Push failed', 'error');
+      if (res.ok) {
+        toast(isBroadcast ? `Broadcast sent for ${modelId}` : `Push sent → scout/$group/${nodePath}`, 'success');
+        loadManifests();
+      } else {
+        const err = await res.json().catch(() => ({}));
+        toast(`Push failed: ${err.error || res.status}`, 'error');
+      }
     } catch (_) { toast('Push failed', 'error'); }
   });
 
