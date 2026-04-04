@@ -599,50 +599,59 @@ body {
 .radio-item input { accent-color: var(--accent-bright); cursor: pointer; }
 .radio-item:has(input:checked) { color: var(--text-primary); }
 
-/* ── File operations list ── */
-.file-ops-list {
+
+/* ── Delete tag input ── */
+.delete-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 32px;
+  padding: 4px 0;
+}
+
+.delete-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(192,57,43,0.15);
+  border: 1px solid rgba(192,57,43,0.35);
+  border-radius: 4px;
+  padding: 3px 8px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+  color: #e74c3c;
+}
+
+.delete-tag button {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.7;
+}
+.delete-tag button:hover { opacity: 1; }
+
+.delete-tag-row {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.delete-tag-row input {
+  flex: 1;
   background: var(--bg-raised);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 6px;
-  min-height: 52px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.file-ops-empty {
-  padding: 10px;
-  font-size: 13px;
-  color: var(--text-muted);
-  font-style: italic;
-}
-
-.file-op-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.file-op-row select,
-.file-op-row input[type="text"] {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 4px;
-  padding: 5px 8px;
+  padding: 6px 10px;
   color: var(--text-primary);
-  font-size: 12px;
+  font-size: 13px;
   font-family: var(--font-mono);
   outline: none;
-  transition: border-color 0.15s;
 }
-
-.file-op-row select:focus,
-.file-op-row input[type="text"]:focus { border-color: var(--accent-bright); }
-
-.file-op-op-select { width: 80px; flex-shrink: 0; }
-.file-op-select    { flex: 1; }
-.file-op-row input[type="text"] { flex: 1; }
+.delete-tag-row input:focus { border-color: var(--accent-bright); }
 
 /* ── Load manifest modal ── */
 .modal-overlay {

@@ -193,21 +193,22 @@
           <input type="text" id="m-reason" value="Update available">
         </div>
 
-        <!-- Firmware-only: audio checklist -->
-        <div class="form-field full" id="m-audio-field">
-          <label>Audio Files to include</label>
-          <div class="audio-checklist" id="m-audio-list">
-            <div style="padding:10px;font-size:13px;color:var(--text-muted)">Loading audio files…</div>
+        <!-- Files-only: upload checklist -->
+        <div class="form-field full" id="m-upload-field">
+          <label>Files to Upload to Device</label>
+          <div class="audio-checklist" id="m-upload-list">
+            <div style="padding:10px;font-size:13px;color:var(--text-muted)">Loading files…</div>
           </div>
         </div>
 
-        <!-- Files-only: file operations list -->
-        <div class="form-field full" id="m-files-field">
-          <label>File Operations</label>
-          <div class="file-ops-list" id="m-file-ops">
-            <div class="file-ops-empty" id="m-file-ops-empty">No file operations added yet</div>
+        <!-- Files-only: delete tags -->
+        <div class="form-field full" id="m-delete-field">
+          <label>Files to Delete from Device</label>
+          <div class="delete-tags" id="m-delete-tags"></div>
+          <div class="delete-tag-row">
+            <input type="text" id="m-delete-input" placeholder="filename on device (e.g. old-config.json)" autocomplete="off">
+            <button class="btn btn-secondary btn-sm" id="m-delete-add" type="button">+ Add</button>
           </div>
-          <button class="btn btn-secondary btn-sm" id="m-add-file-op" style="margin-top:8px">+ Add File</button>
         </div>
 
       </div>

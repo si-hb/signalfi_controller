@@ -199,28 +199,8 @@ async function loadAudio() {
     const res = await apiFetch('/ota/admin/api/files/audio');
     const files = await res.json();
     renderFileTable('audio-tbody', files, 5, '/ota/admin/api/files/audio', loadAudio);
-    populateAudioChecklist(files);
+    rebuildUploadChecklist();
   } catch (_) {}
-}
-
-function populateAudioChecklist(files) {
-  const list = document.getElementById('m-audio-list');
-  if (!files.length) {
-    list.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--text-muted)">No audio files uploaded</div>';
-    return;
-  }
-  const checked = new Set([...list.querySelectorAll('input:checked')].map(el => el.value));
-  list.innerHTML = '';
-  for (const f of files) {
-    const label = document.createElement('label');
-    label.className = 'audio-check-item';
-    const inp = document.createElement('input');
-    inp.type = 'checkbox'; inp.value = f.name;
-    if (checked.has(f.name)) inp.checked = true;
-    label.appendChild(inp);
-    label.appendChild(document.createTextNode(f.name));
-    list.appendChild(label);
-  }
 }
 
 (function () {
@@ -245,42 +225,49 @@ function populateAudioChecklist(files) {
 
 // ── General Files ─────────────────────────────────────────────────────────────
 
-// Combined list for file-op dropdowns (audio + general)
-let availableFiles = [];
-
 async function loadFiles() {
   try {
     const res = await apiFetch('/ota/admin/api/files/general');
     const files = await res.json();
     renderFileTable('files-tbody', files, 5, '/ota/admin/api/files/general', loadFiles);
-    rebuildAvailableFiles();
+    rebuildUploadChecklist();
   } catch (_) {}
 }
 
-async function rebuildAvailableFiles() {
+async function rebuildUploadChecklist() {
   try {
     const [rAudio, rGen] = await Promise.all([
       apiFetch('/ota/admin/api/files/audio'),
       apiFetch('/ota/admin/api/files/general'),
     ]);
-    const audio = await rAudio.json();
-    const gen   = await rGen.json();
-    availableFiles = [
-      ...audio.map(f => ({ ...f, bucket: 'audio' })),
-      ...gen.map(f =>   ({ ...f, bucket: 'files' })),
+    const allFiles = [
+      ...(await rAudio.json()).map(f => ({ ...f, bucket: 'audio' })),
+      ...(await rGen.json()).map(f =>   ({ ...f, bucket: 'files' })),
     ];
-    // Refresh all file-op selects
-    document.querySelectorAll('.file-op-select').forEach(sel => {
-      const cur = sel.value;
-      sel.innerHTML = '<option value="">— select file —</option>';
-      for (const f of availableFiles) {
-        const opt = document.createElement('option');
-        opt.value = f.name;
-        opt.textContent = f.name;
-        if (f.name === cur) opt.selected = true;
-        sel.appendChild(opt);
+    const list = document.getElementById('m-upload-list');
+    if (!allFiles.length) {
+      list.innerHTML = '<div style="padding:10px;font-size:13px;color:var(--text-muted)">No files uploaded yet</div>';
+      return;
+    }
+    const checked = new Set([...list.querySelectorAll('input:checked')].map(el => el.value));
+    list.innerHTML = '';
+    for (const f of allFiles) {
+      const label = document.createElement('label');
+      label.className = 'audio-check-item';
+      const inp = document.createElement('input');
+      inp.type = 'checkbox'; inp.value = f.name;
+      if (checked.has(f.name)) inp.checked = true;
+      inp.addEventListener('change', checkUploadReady);
+      label.appendChild(inp);
+      label.appendChild(document.createTextNode(' ' + f.name));
+      if (f.bucket === 'audio') {
+        const tag = document.createElement('span');
+        tag.style.cssText = 'margin-left:6px;font-size:10px;color:var(--text-muted)';
+        tag.textContent = 'audio';
+        label.appendChild(tag);
       }
-    });
+      list.appendChild(label);
+    }
   } catch (_) {}
 }
 
@@ -310,18 +297,16 @@ function getManifestType() {
   return document.querySelector('input[name="m-type"]:checked')?.value || 'firmware';
 }
 
-// Fields shown for firmware only: version, firmware select, compat, audio checklist
-// Fields shown for files only: file operations list
-// Token days, delay, reason, model are always shown
+// Firmware Update: version, firmware select, compat
+// File Transfer:   upload checklist, delete tags
+// Common to both:  model, tokenDays, delay, reason
 function applyTypeVisibility() {
   const isFirmware = getManifestType() === 'firmware';
-  // Firmware-only fields
   document.getElementById('m-version-field').style.display  = isFirmware ? '' : 'none';
   document.getElementById('m-firmware-field').style.display = isFirmware ? '' : 'none';
   document.getElementById('m-compat-field').style.display   = isFirmware ? '' : 'none';
-  document.getElementById('m-audio-field').style.display    = isFirmware ? '' : 'none';
-  // Files-only fields
-  document.getElementById('m-files-field').style.display    = isFirmware ? 'none' : '';
+  document.getElementById('m-upload-field').style.display   = isFirmware ? 'none' : '';
+  document.getElementById('m-delete-field').style.display   = isFirmware ? 'none' : '';
   checkUploadReady();
 }
 
@@ -330,11 +315,12 @@ document.querySelectorAll('input[name="m-type"]').forEach(r =>
 
 // Upload-ready check
 function checkUploadReady() {
-  const type     = getManifestType();
-  const model    = document.getElementById('m-model').value.trim();
-  const ready    = type === 'firmware'
+  const type  = getManifestType();
+  const model = document.getElementById('m-model').value.trim();
+  const ready = type === 'firmware'
     ? !!(model && document.getElementById('m-version').value.trim() && document.getElementById('m-firmware').value)
-    : !!(model && document.querySelectorAll('#m-file-ops .file-op-row').length > 0);
+    : !!(model && (document.querySelectorAll('#m-upload-list input:checked').length > 0
+                || document.querySelectorAll('.delete-tag').length > 0));
   document.getElementById('generate-btn').disabled = !ready;
   document.getElementById('generate-hint').style.display = ready ? 'none' : '';
 }
@@ -356,70 +342,48 @@ document.getElementById('m-firmware').addEventListener('change', () => {
   checkUploadReady();
 });
 
-// File operations list (for "files" type manifest)
-function addFileOpRow(defaultFile = '', defaultOp = 'put') {
-  const list  = document.getElementById('m-file-ops');
-  const empty = document.getElementById('m-file-ops-empty');
-  if (empty) empty.style.display = 'none';
+// ── Delete tags (File Transfer type) ─────────────────────────────────────────
 
-  const row = document.createElement('div');
-  row.className = 'file-op-row';
+function addDeleteTag(filename) {
+  filename = filename.trim();
+  if (!filename) return;
+  // Prevent duplicates
+  const existing = [...document.querySelectorAll('.delete-tag')].map(t => t.dataset.name);
+  if (existing.includes(filename)) return;
 
-  const opSel = document.createElement('select');
-  opSel.className = 'file-op-op-select';
-  opSel.innerHTML = '<option value="put">put</option><option value="delete">delete</option>';
-  opSel.value = defaultOp;
-
-  const fileSel = document.createElement('select');
-  fileSel.className = 'file-op-select';
-  fileSel.innerHTML = '<option value="">— select file —</option>';
-  for (const f of availableFiles) {
-    const opt = document.createElement('option');
-    opt.value = f.name; opt.textContent = f.name;
-    if (f.name === defaultFile) opt.selected = true;
-    fileSel.appendChild(opt);
-  }
-
-  // For 'delete' op, allow typing a filename that might not exist on server
-  const manualInp = document.createElement('input');
-  manualInp.type = 'text';
-  manualInp.placeholder = 'filename on device';
-  manualInp.style.display = 'none';
-  if (defaultOp === 'delete' && defaultFile) manualInp.value = defaultFile;
-
-  opSel.addEventListener('change', () => {
-    const isDelete = opSel.value === 'delete';
-    fileSel.style.display   = isDelete ? 'none' : '';
-    manualInp.style.display = isDelete ? '' : 'none';
-    checkUploadReady();
-  });
-
-  // Initialize visibility
-  if (defaultOp === 'delete') {
-    fileSel.style.display   = 'none';
-    manualInp.style.display = '';
-  }
-
-  fileSel.addEventListener('change', checkUploadReady);
-  manualInp.addEventListener('input', checkUploadReady);
-
+  const container = document.getElementById('m-delete-tags');
+  const tag = document.createElement('span');
+  tag.className = 'delete-tag';
+  tag.dataset.name = filename;
+  tag.textContent = filename + ' ';
   const rmBtn = document.createElement('button');
-  rmBtn.className = 'btn btn-danger btn-sm';
-  rmBtn.textContent = '✕';
-  rmBtn.addEventListener('click', () => {
-    row.remove();
-    if (!document.querySelectorAll('#m-file-ops .file-op-row').length) {
-      if (empty) empty.style.display = '';
-    }
-    checkUploadReady();
-  });
-
-  row.append(opSel, fileSel, manualInp, rmBtn);
-  list.appendChild(row);
+  rmBtn.textContent = '×';
+  rmBtn.title = 'Remove';
+  rmBtn.addEventListener('click', () => { tag.remove(); checkUploadReady(); });
+  tag.appendChild(rmBtn);
+  container.appendChild(tag);
   checkUploadReady();
 }
 
-document.getElementById('m-add-file-op').addEventListener('click', () => addFileOpRow());
+function getDeleteTags() {
+  return [...document.querySelectorAll('.delete-tag')].map(t => t.dataset.name);
+}
+
+function clearDeleteTags() {
+  document.getElementById('m-delete-tags').innerHTML = '';
+}
+
+(function () {
+  const inp = document.getElementById('m-delete-input');
+  document.getElementById('m-delete-add').addEventListener('click', () => {
+    addDeleteTag(inp.value);
+    inp.value = '';
+    inp.focus();
+  });
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); addDeleteTag(inp.value); inp.value = ''; }
+  });
+})();
 
 // Save to Server button — saves draft (no token, no MQTT); Push OTA tab handles the actual push
 document.getElementById('generate-btn').addEventListener('click', async () => {
@@ -435,21 +399,14 @@ document.getElementById('generate-btn').addEventListener('click', async () => {
     const version      = document.getElementById('m-version').value.trim();
     const firmwareFile = document.getElementById('m-firmware').value;
     const compatRaw    = document.getElementById('m-compat').value.trim();
-    const audioFiles   = [...document.querySelectorAll('#m-audio-list input:checked')].map(el => el.value);
     const compatibleFrom = compatRaw === '*'
       ? ['*']
       : compatRaw.split(',').map(s => s.trim()).filter(Boolean);
-    Object.assign(body, { version, firmwareFile, audioFiles, compatibleFrom });
+    Object.assign(body, { version, firmwareFile, compatibleFrom });
   } else {
-    const files = [];
-    for (const row of document.querySelectorAll('#m-file-ops .file-op-row')) {
-      const op  = row.querySelector('.file-op-op-select').value;
-      const id  = op === 'delete'
-        ? row.querySelector('input[type="text"]').value.trim()
-        : row.querySelector('.file-op-select').value;
-      if (id) files.push({ op, id });
-    }
-    body.files = files;
+    const uploads = [...document.querySelectorAll('#m-upload-list input:checked')].map(el => ({ op: 'put', id: el.value }));
+    const deletes = getDeleteTags().map(id => ({ op: 'delete', id }));
+    body.files = [...uploads, ...deletes];
   }
 
   const btn = document.getElementById('generate-btn');
@@ -498,19 +455,13 @@ function collectFormState() {
     reason:     document.getElementById('m-reason').value.trim(),
   };
   if (type === 'firmware') {
-    base.version      = document.getElementById('m-version').value.trim();
-    base.firmwareFile = document.getElementById('m-firmware').value;
+    base.version        = document.getElementById('m-version').value.trim();
+    base.firmwareFile   = document.getElementById('m-firmware').value;
     base.compatibleFrom = document.getElementById('m-compat').value.trim();
-    base.audioFiles   = [...document.querySelectorAll('#m-audio-list input:checked')].map(el => el.value);
   } else {
-    base.files = [];
-    for (const row of document.querySelectorAll('#m-file-ops .file-op-row')) {
-      const op = row.querySelector('.file-op-op-select').value;
-      const id = op === 'delete'
-        ? row.querySelector('input[type="text"]').value.trim()
-        : row.querySelector('.file-op-select').value;
-      if (id) base.files.push({ op, id });
-    }
+    const uploads = [...document.querySelectorAll('#m-upload-list input:checked')].map(el => ({ op: 'put',    id: el.value }));
+    const deletes = getDeleteTags().map(id => ({ op: 'delete', id }));
+    base.files = [...uploads, ...deletes];
   }
   return base;
 }
@@ -527,21 +478,18 @@ function populateFormState(state) {
   document.getElementById('m-reason').value       = state.reason      || '';
 
   if (state.type === 'firmware' || !state.type) {
-    document.getElementById('m-version').value   = state.version      || '';
-    document.getElementById('m-firmware').value  = state.firmwareFile || '';
+    document.getElementById('m-version').value   = state.version        || '';
+    document.getElementById('m-firmware').value  = state.firmwareFile   || '';
     document.getElementById('m-compat').value    = state.compatibleFrom || '*';
-    // Audio checkboxes — will be applied on next audio load
-    if (Array.isArray(state.audioFiles)) {
-      for (const inp of document.querySelectorAll('#m-audio-list input')) {
-        inp.checked = state.audioFiles.includes(inp.value);
-      }
-    }
   } else if (state.type === 'files' && Array.isArray(state.files)) {
-    // Clear existing file ops
-    for (const row of [...document.querySelectorAll('#m-file-ops .file-op-row')]) row.remove();
-    const empty = document.getElementById('m-file-ops-empty');
-    if (empty) empty.style.display = state.files.length ? 'none' : '';
-    for (const f of state.files) addFileOpRow(f.id, f.op);
+    // Restore upload checkboxes
+    const putIds = new Set(state.files.filter(f => f.op === 'put').map(f => f.id));
+    for (const inp of document.querySelectorAll('#m-upload-list input')) {
+      inp.checked = putIds.has(inp.value);
+    }
+    // Restore delete tags
+    clearDeleteTags();
+    for (const f of state.files.filter(f => f.op === 'delete')) addDeleteTag(f.id);
   }
   checkUploadReady();
 }
@@ -640,12 +588,11 @@ async function showLoadModal() {
             target:       'group',
           };
           if (state.type === 'firmware') {
-            state.version       = data.version || data.firmware?.version || '';
-            state.firmwareFile  = data.firmware?.url
+            state.version        = data.version || data.firmware?.version || '';
+            state.firmwareFile   = data.firmware?.url
               ? decodeURIComponent(data.firmware.url.split('/').pop())
               : '';
             state.compatibleFrom = (data.compatibleFrom || ['*']).join(',');
-            state.audioFiles    = (data.audio || []).map(a => a.id);
           } else {
             state.files = (data.files || []).map(f => ({ op: f.op, id: f.id }));
           }
