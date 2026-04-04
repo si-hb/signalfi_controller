@@ -1,0 +1,254 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Signalfi Admin</title>
+  <link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<!-- Auth dialog -->
+<div id="auth-dialog" class="hidden">
+  <div class="auth-box">
+    <h2>Admin Access</h2>
+    <p>Enter the admin token to continue.</p>
+    <input type="password" id="auth-input" placeholder="Bearer token…" autocomplete="off">
+    <button class="btn btn-primary" id="auth-submit">Authenticate</button>
+  </div>
+</div>
+
+<!-- Top nav -->
+<nav id="top-nav">
+  <h1>Signalfi Admin</h1>
+  <a href="#firmware">Firmware</a>
+  <a href="#audio">Audio</a>
+  <a href="#manifest">Manifest</a>
+  <a href="#push">Push OTA</a>
+  <a href="#reports">Reports</a>
+  <a href="#tokens">Tokens</a>
+  <div id="auth-indicator">
+    <div id="auth-dot"></div>
+    <span id="auth-label">not authenticated</span>
+  </div>
+</nav>
+
+<!-- Page content -->
+<div id="page">
+
+  <!-- ── Firmware Files ── -->
+  <section class="section" id="firmware">
+    <div class="section-header">
+      <span class="section-title">Firmware Files</span>
+    </div>
+    <div class="section-body">
+      <div class="upload-zone" id="firmware-zone">
+        <input type="file" id="firmware-file-input" accept=".bin">
+        <div class="upload-zone-text">
+          <strong>Click or drag</strong> a <code>.bin</code> firmware file here
+        </div>
+        <div class="upload-progress" id="firmware-progress">
+          <div class="upload-progress-bar" id="firmware-progress-bar"></div>
+        </div>
+      </div>
+      <table class="file-table" id="firmware-table">
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>SHA256</th>
+            <th>Uploaded</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="firmware-tbody">
+          <tr class="empty-row"><td colspan="5">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Audio Files ── -->
+  <section class="section" id="audio">
+    <div class="section-header">
+      <span class="section-title">Audio Files</span>
+    </div>
+    <div class="section-body">
+      <div class="upload-zone" id="audio-zone">
+        <input type="file" id="audio-file-input" accept=".wav">
+        <div class="upload-zone-text">
+          <strong>Click or drag</strong> a <code>.wav</code> audio file here
+        </div>
+        <div class="upload-progress" id="audio-progress">
+          <div class="upload-progress-bar" id="audio-progress-bar"></div>
+        </div>
+      </div>
+      <table class="file-table" id="audio-table">
+        <thead>
+          <tr>
+            <th>Filename</th>
+            <th>Size</th>
+            <th>Uploaded</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="audio-tbody">
+          <tr class="empty-row"><td colspan="4">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Manifest Builder ── -->
+  <section class="section" id="manifest">
+    <div class="section-header">
+      <span class="section-title">Manifest Builder</span>
+    </div>
+    <div class="section-body">
+      <div class="form-grid">
+        <div class="form-field">
+          <label for="m-model">Model ID</label>
+          <input type="text" id="m-model" placeholder="SF-100">
+        </div>
+        <div class="form-field">
+          <label for="m-version">Version</label>
+          <input type="text" id="m-version" placeholder="1.1.0">
+        </div>
+        <div class="form-field">
+          <label for="m-firmware">Firmware File</label>
+          <select id="m-firmware">
+            <option value="">— select uploaded firmware —</option>
+          </select>
+        </div>
+        <div class="form-field">
+          <label for="m-compat">Compatible From (comma-separated, or *)</label>
+          <input type="text" id="m-compat" value="*" placeholder="* or 1.0.0,1.0.1">
+        </div>
+        <div class="form-field">
+          <label for="m-token-days">Token validity (days)</label>
+          <input type="number" id="m-token-days" value="30" min="1" max="365">
+        </div>
+        <div class="form-field">
+          <label for="m-delay">Delay seconds</label>
+          <input type="number" id="m-delay" value="0" min="0">
+        </div>
+        <div class="form-field full">
+          <label for="m-reason">Reason</label>
+          <input type="text" id="m-reason" value="New firmware available">
+        </div>
+        <div class="form-field full">
+          <label>Audio Files to include in manifest</label>
+          <div class="audio-checklist" id="m-audio-list">
+            <div style="padding:10px;font-size:13px;color:var(--text-muted)">Loading audio files…</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:18px">
+        <button class="btn btn-primary" id="generate-btn" disabled>Generate Manifest</button>
+        <span class="muted" id="generate-hint" style="font-size:12px">Fill Model ID, Version, and select a firmware file</span>
+      </div>
+
+      <div class="manifest-result" id="manifest-result">
+        <div class="row" style="margin-bottom:8px">
+          <span style="font-size:13px;font-weight:600">Generated Manifest</span>
+          <div class="spacer"></div>
+          <button class="btn btn-secondary btn-sm" id="copy-manifest-btn">Copy JSON</button>
+        </div>
+        <pre class="manifest-json" id="manifest-json"></pre>
+        <div class="note">Generating a manifest also triggers an automatic OTA push via the file watcher.</div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Push OTA ── -->
+  <section class="section" id="push">
+    <div class="section-header">
+      <span class="section-title">Push OTA</span>
+      <button class="btn btn-secondary btn-sm" id="refresh-manifests-btn">Refresh</button>
+    </div>
+    <div class="section-body">
+      <table class="push-table" id="push-table">
+        <thead>
+          <tr>
+            <th>Model</th>
+            <th>Version</th>
+            <th>Update</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="push-tbody">
+          <tr class="empty-row"><td colspan="4">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ── Reports ── -->
+  <section class="section" id="reports">
+    <div class="section-header">
+      <span class="section-title">Update Reports</span>
+    </div>
+    <div class="section-body">
+      <div class="auto-refresh-row">
+        <input type="checkbox" id="auto-refresh-chk">
+        <label for="auto-refresh-chk">Auto-refresh every 10 s</label>
+      </div>
+      <table class="reports-table" id="reports-table">
+        <thead>
+          <tr>
+            <th>Timestamp</th>
+            <th>Device</th>
+            <th>Model</th>
+            <th>Version</th>
+            <th>Status</th>
+            <th>IP</th>
+          </tr>
+        </thead>
+        <tbody id="reports-tbody">
+          <tr class="empty-row"><td colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+      <div class="pagination">
+        <span class="pagination-info" id="reports-info"></span>
+        <button class="btn btn-secondary btn-sm" id="reports-prev">← Prev</button>
+        <button class="btn btn-secondary btn-sm" id="reports-next">Next →</button>
+        <select id="reports-limit" style="background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:12px">
+          <option value="25">25</option>
+          <option value="50" selected>50</option>
+          <option value="100">100</option>
+        </select>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── Tokens ── -->
+  <section class="section" id="tokens">
+    <div class="section-header">
+      <span class="section-title">Download Tokens</span>
+    </div>
+    <div class="section-body">
+      <table class="token-table" id="token-table">
+        <thead>
+          <tr>
+            <th>Token</th>
+            <th>Type</th>
+            <th>Expires</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="token-tbody">
+          <tr class="empty-row"><td colspan="4">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+</div><!-- /page -->
+
+<!-- Toast container -->
+<div id="toast-container"></div>
+
+<script src="admin.js"></script>
+</body>
+</html>

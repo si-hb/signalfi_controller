@@ -147,16 +147,18 @@ services:
   #                to the -http router label (see header comment above)
   signalfi-manifest:
     build:
-      context: /opt/signalfi/compose/manifest-service
+      context: ./manifest-service
     container_name: signalfi-manifest
     restart: unless-stopped
     expose:
       - 3001
     volumes:
-      - /opt/signalfi/manifests:/opt/signalfi/manifests:ro
-      - /opt/signalfi/tokens:/opt/signalfi/tokens:ro
+      - /opt/signalfi/manifests:/opt/signalfi/manifests
+      - /opt/signalfi/tokens:/opt/signalfi/tokens
       - /opt/signalfi/reports:/opt/signalfi/reports
       - /opt/signalfi/configs:/opt/signalfi/configs:ro
+      - /opt/signalfi/files/firmware:/opt/signalfi/files/firmware
+      - /opt/signalfi/files/audio:/opt/signalfi/files/audio
     environment:
       - PORT=3001
       - MANIFEST_ROOT=/opt/signalfi/manifests
@@ -166,6 +168,11 @@ services:
       - CONFIG_BASE_URL=http://apis.symphonyinteractive.ca/ota/v1/config
       - MQTT_BROKER_URL=mqtt://signalfi-svc:OtaService2024!@mosquitto:1883
       - MQTT_TOPIC_PREFIX=scout
+      - FIRMWARE_ROOT=/opt/signalfi/files/firmware
+      - AUDIO_ROOT=/opt/signalfi/files/audio
+      - FILES_BASE_URL=http://apis.symphonyinteractive.ca
+      - FILES_PATH_PREFIX=/ota/v1
+      - ADMIN_TOKEN=signalfiadmin2026
     networks:
       - root_default
     depends_on:

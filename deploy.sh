@@ -26,7 +26,10 @@ fi
 echo "==> Pushing to origin/master..."
 git push origin master
 
-echo "==> Deploying to remote..."
+echo "==> Deploying control server..."
 ssh "$REMOTE_HOST" "cd $REMOTE_PATH && git pull && docker compose up -d --build"
+
+echo "==> Deploying manifest service..."
+ssh "$REMOTE_HOST" "cd $REMOTE_PATH && docker compose -f https_file_server/docker-compose.yml up -d --build signalfi-manifest"
 
 echo "==> Done."
