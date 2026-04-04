@@ -770,7 +770,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
 // Generates token, resolves checksums for 'put' ops, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-files', (req, res) => {
-  const { files = [], nodePath, broadcast } = req.body || {};
+  const { files = [], nodePath, broadcast, sync = false } = req.body || {};
 
   if (!files.length)
     return res.status(400).json({ error: 'files array required' });
@@ -800,9 +800,10 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
       type:          'files',
       modelId:       DEVICE_MODEL,
       update:        true,
-      reason:        'File transfer',
+      reason:        sync ? 'Audio sync' : 'File transfer',
       downloadToken: tokenHex,
       delaySeconds:  0,
+      sync:          sync ? true : undefined,
       files:         fileEntries,
     };
 

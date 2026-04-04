@@ -416,6 +416,34 @@ function _pushAudioSelected(op) {
 document.getElementById('audio-send-btn').addEventListener('click',   () => _pushAudioSelected('put'));
 document.getElementById('audio-remove-btn').addEventListener('click',  () => _pushAudioSelected('delete'));
 
+document.getElementById('audio-sync-btn').addEventListener('click', () => {
+  if (!_audioFiles.length) { toast('No audio files to sync', 'error'); return; }
+  showPushTargetDialog(
+    `Sync all ${_audioFiles.length} audio file${_audioFiles.length > 1 ? 's' : ''} to Devices`,
+    'Sync',
+    async ({ broadcast, nodePath }) => {
+      try {
+        const res = await apiFetch('/ota/admin/api/ota/push-files', {
+          method: 'POST',
+          body: JSON.stringify({
+            files: _audioFiles.map(f => ({ op: 'put', id: f.name })),
+            sync: true,
+            nodePath,
+            broadcast: broadcast || undefined,
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          toast(`Sync pushed (${_audioFiles.length} files) → ${data.topic}`, 'success');
+        } else {
+          const e = await res.json().catch(() => ({}));
+          toast(`Sync failed: ${e.error || res.status}`, 'error');
+        }
+      } catch (_) { toast('Sync failed', 'error'); }
+    }
+  );
+});
+
 async function loadAudio() {
   try {
     const res = await apiFetch('/ota/admin/api/files/audio');

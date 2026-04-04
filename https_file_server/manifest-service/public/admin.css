@@ -481,6 +481,13 @@ body {
 }
 .btn-warn:hover:not(:disabled) { background: rgba(232,124,42,0.3); }
 
+.btn-accent {
+  background: rgba(9,116,121,0.18);
+  color: var(--accent-bright);
+  border: 1px solid rgba(9,116,121,0.35);
+}
+.btn-accent:hover:not(:disabled) { background: rgba(9,116,121,0.32); }
+
 .btn-sm { padding: 4px 10px; font-size: 12px; }
 
 /* ── Token table ── */
