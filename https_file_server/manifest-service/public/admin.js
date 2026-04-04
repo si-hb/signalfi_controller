@@ -339,7 +339,9 @@ function checkUploadReady() {
   document.getElementById('generate-hint').style.display = ready ? 'none' : '';
 }
 
-['m-model', 'm-version', 'm-firmware'].forEach(id => {
+// m-model is a select — only 'change'; m-version is text — both input+change
+document.getElementById('m-model').addEventListener('change', checkUploadReady);
+['m-version', 'm-firmware'].forEach(id => {
   document.getElementById(id).addEventListener('input',  checkUploadReady);
   document.getElementById(id).addEventListener('change', checkUploadReady);
 });
