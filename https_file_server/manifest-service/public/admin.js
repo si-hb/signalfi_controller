@@ -441,9 +441,7 @@ document.getElementById('copy-manifest-btn').addEventListener('click', () => {
     .then(() => toast('Copied to clipboard', 'success'));
 });
 
-// ── Save / Load drafts ────────────────────────────────────────────────────────
-
-function getDraftKey(name) { return `signalfi-draft-${name}`; }
+// ── Save / Load manifest ──────────────────────────────────────────────────────
 
 function collectFormState() {
   const type = getManifestType();
@@ -494,14 +492,6 @@ function populateFormState(state) {
   checkUploadReady();
 }
 
-document.getElementById('save-draft-btn').addEventListener('click', () => {
-  const state = collectFormState();
-  if (!state.modelId) { toast('Enter a Model ID before saving', 'error'); return; }
-  const key = getDraftKey(`${state.modelId}-${state.type}`);
-  localStorage.setItem(key, JSON.stringify(state));
-  toast('Draft saved', 'success');
-});
-
 document.getElementById('load-draft-btn').addEventListener('click', () => showLoadModal());
 
 async function showLoadModal() {
@@ -510,18 +500,6 @@ async function showLoadModal() {
   body.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px">Loading…</div>';
   modal.classList.remove('hidden');
 
-  // Gather local drafts
-  const drafts = [];
-  for (let i = 0; i < localStorage.length; i++) {
-    const key = localStorage.key(i);
-    if (!key.startsWith('signalfi-draft-')) continue;
-    try {
-      const data = JSON.parse(localStorage.getItem(key));
-      drafts.push({ source: 'local', key, label: key.replace('signalfi-draft-', ''), data });
-    } catch (_) {}
-  }
-
-  // Gather server manifests
   let serverManifests = [];
   try {
     const res = await apiFetch('/ota/admin/api/manifests');
@@ -530,84 +508,48 @@ async function showLoadModal() {
 
   body.innerHTML = '';
 
-  if (drafts.length) {
-    const hdr = document.createElement('div');
-    hdr.className = 'load-section-header';
-    hdr.textContent = 'Saved Drafts';
-    body.appendChild(hdr);
-    for (const d of drafts) {
+  if (serverManifests.length) {
+    for (const m of serverManifests) {
       const row = document.createElement('div');
       row.className = 'load-item';
-      row.innerHTML = `<span>${d.label}</span><div class="load-item-actions"></div>`;
+      const typeLabel = m.type === 'files' ? 'file transfer' : 'firmware';
+      const verLabel  = m.version ? ` v${m.version}` : '';
+      row.innerHTML = `<span>${m.modelId} <span class="muted">${typeLabel}${verLabel}</span></span><div class="load-item-actions"></div>`;
       const actions = row.querySelector('.load-item-actions');
       const loadBtn = document.createElement('button');
       loadBtn.className = 'btn btn-secondary btn-sm';
       loadBtn.textContent = 'Load';
-      loadBtn.addEventListener('click', () => {
-        populateFormState(d.data);
-        closeLoadModal();
-        toast(`Draft "${d.label}" loaded`, 'success');
-      });
-      const delBtn = document.createElement('button');
-      delBtn.className = 'btn btn-danger btn-sm';
-      delBtn.textContent = 'Delete';
-      delBtn.addEventListener('click', () => {
-        localStorage.removeItem(d.key);
-        row.remove();
-        toast('Draft deleted', 'success');
-      });
-      actions.append(loadBtn, delBtn);
-      body.appendChild(row);
-    }
-  }
-
-  if (serverManifests.length) {
-    const hdr = document.createElement('div');
-    hdr.className = 'load-section-header';
-    hdr.textContent = 'Server Manifests';
-    body.appendChild(hdr);
-    for (const m of serverManifests) {
-      const row = document.createElement('div');
-      row.className = 'load-item';
-      row.innerHTML = `<span>${m.modelId} <span class="muted">${m.type || ''} ${m.version || ''}</span></span><div class="load-item-actions"></div>`;
-      const actions = row.querySelector('.load-item-actions');
-      const loadBtn = document.createElement('button');
-      loadBtn.className = 'btn btn-secondary btn-sm';
-      loadBtn.textContent = 'Edit';
       loadBtn.addEventListener('click', async () => {
         try {
           const res  = await apiFetch(`/ota/admin/api/manifests/${encodeURIComponent(m.modelId)}`);
           const data = await res.json();
-          // Map manifest JSON back to form fields
           const state = {
             type:         data.type || 'firmware',
             modelId:      data.modelId || m.modelId,
             tokenDays:    30,
             delaySeconds: data.delaySeconds || 0,
             reason:       data.reason || '',
-            target:       'group',
           };
           if (state.type === 'firmware') {
             state.version        = data.version || data.firmware?.version || '';
-            state.firmwareFile   = data.firmware?.url
-              ? decodeURIComponent(data.firmware.url.split('/').pop())
-              : '';
-            state.compatibleFrom = (data.compatibleFrom || ['*']).join(',');
+            state.firmwareFile   = data.firmwareFile
+              || (data.firmware?.url ? decodeURIComponent(data.firmware.url.split('/').pop()) : '');
+            state.compatibleFrom = Array.isArray(data.compatibleFrom)
+              ? data.compatibleFrom.join(',')
+              : (data.compatibleFrom || '*');
           } else {
             state.files = (data.files || []).map(f => ({ op: f.op, id: f.id }));
           }
           populateFormState(state);
           closeLoadModal();
-          toast(`Manifest for ${m.modelId} loaded for editing`, 'success');
+          toast(`Loaded ${m.modelId}`, 'success');
         } catch (_) { toast('Failed to load manifest', 'error'); }
       });
       actions.appendChild(loadBtn);
       body.appendChild(row);
     }
-  }
-
-  if (!drafts.length && !serverManifests.length) {
-    body.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px">No drafts or manifests found</div>';
+  } else {
+    body.innerHTML = '<div style="padding:16px;color:var(--text-muted);font-size:13px">No manifests saved on server yet</div>';
   }
 }
 

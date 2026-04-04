@@ -638,16 +638,18 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
     const manifest = { ...rest, update: true, downloadToken: tokenHex };
 
     if (type === 'firmware') {
-      // Resolve firmware filename — prefer existing firmware.url, fall back to draft firmwareFile
+      // Resolve firmware filename: prefer the direct draft field (most reliable),
+      // fall back to extracting from firmware.url (legacy manifests written by old code)
       let fwFilename = null;
-      if (manifest.firmware?.url) {
-        fwFilename = decodeURIComponent(manifest.firmware.url.split('/').pop());
-      } else if (firmwareFile) {
+      if (firmwareFile && safeFilename(firmwareFile)) {
         fwFilename = firmwareFile;
+      } else if (manifest.firmware?.url) {
+        const extracted = decodeURIComponent(manifest.firmware.url.split('/').pop());
+        if (safeFilename(extracted)) fwFilename = extracted;
       }
 
-      if (!fwFilename || !safeFilename(fwFilename))
-        return res.status(400).json({ error: 'cannot determine firmware filename from saved manifest' });
+      if (!fwFilename)
+        return res.status(400).json({ error: 'cannot determine firmware filename from saved manifest — re-save from Manifest Builder then push again' });
 
       const fwPath = path.join(FIRMWARE_ROOT, fwFilename);
       if (!fs.existsSync(fwPath))
@@ -679,9 +681,9 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
     const topic   = broadcast
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
-    const payload = broadcast
-      ? JSON.stringify({ act: 'frm', token: tokenHex })
-      : JSON.stringify({ act: 'frm', mdl: modelId, token: tokenHex });
+    // Token is in the manifest (fetched by device via GET /ota/v1/manifest).
+    // mdl tells the device which manifest to retrieve — always included.
+    const payload = JSON.stringify({ act: 'frm', mdl: modelId });
 
     mqttPublish(topic, payload, false);
     console.log(`[admin] OTA pushed: ${topic}`);
