@@ -566,7 +566,7 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
     const uploadTopic   = target === 'broadcast'
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${modelId}/$action`;
-    mqttPublish(uploadTopic, JSON.stringify({ act: 'frm', mdl: modelId, url: `/ota/v1/manifest?manifestId=${manifestId}`, token: tokenHex }), false);
+    mqttPublish(uploadTopic, JSON.stringify({ act: 'frm', mdl: modelId, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex }), false);
 
     res.json(manifest);
 
@@ -689,7 +689,7 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
     // Token is the authorization credential for the device to access OTA endpoints.
     // Only devices on the broker receive it; they present it as Bearer on all OTA requests.
-    const payload = JSON.stringify({ act: 'frm', mdl: modelId, url: `/ota/v1/manifest?manifestId=${manifestId}`, token: tokenHex });
+    const payload = JSON.stringify({ act: 'frm', mdl: modelId, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
 
     mqttPublish(topic, payload, false);
     console.log(`[admin] OTA pushed: ${topic}`);
@@ -753,7 +753,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
     const topic   = broadcast
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
-    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, url: `/ota/v1/manifest?manifestId=${manifestId}`, token: tokenHex });
+    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
     mqttPublish(topic, payload, false);
 
     console.log(`[admin] firmware push: ${firmwareFile} v${version} → ${topic}`);
@@ -812,7 +812,7 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
     const topic   = broadcast
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
-    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, url: `/ota/v1/manifest?manifestId=${manifestId}`, token: tokenHex });
+    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
     mqttPublish(topic, payload, false);
 
     console.log(`[admin] files push: ${files.length} op(s) → ${topic}`);
@@ -879,7 +879,7 @@ app.post('/ota/admin/api/upload', adminAuth, firmwareUpload.single('file'), (req
       const ciTopic   = target === 'broadcast'
         ? `${MQTT_PREFIX}/$broadcast/$action`
         : `${MQTT_PREFIX}/$group/${model}/$action`;
-      mqttPublish(ciTopic, JSON.stringify({ act: 'frm', mdl: model, url: `/ota/v1/manifest?manifestId=${manifestId}`, token: tokenHex }), false);
+      mqttPublish(ciTopic, JSON.stringify({ act: 'frm', mdl: model, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex }), false);
       result.topic = ciTopic;
 
       result.pushed   = true;
