@@ -30,6 +30,6 @@ echo "==> Deploying control server..."
 ssh "$REMOTE_HOST" "cd $REMOTE_PATH && git pull && docker compose up -d --build"
 
 echo "==> Deploying manifest service..."
-ssh "$REMOTE_HOST" "cd $REMOTE_PATH && docker compose -f https_file_server/docker-compose.yml up -d --build signalfi-manifest"
+ssh "$REMOTE_HOST" "cd $REMOTE_PATH && docker compose -f https_file_server/docker-compose.yml up -d --build --no-deps signalfi-manifest"
 
 echo "==> Done."
