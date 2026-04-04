@@ -301,21 +301,12 @@ app.get('/ota/admin/api/files/firmware', (_req, res) => {
 });
 
 app.get('/ota/admin/api/files/audio', (_req, res) => {
-  const files = listDir(AUDIO_ROOT, '.wav').map(f => ({
-    ...f,
-    crc32:  fileCrc32(path.join(AUDIO_ROOT, f.name)),
-    sha256: fileSha256(path.join(AUDIO_ROOT, f.name)),
-  }));
-  res.json(files);
+  // CRC32/SHA256 omitted from listing — computed at push time only (files can be 100MB+)
+  res.json(listDir(AUDIO_ROOT, '.wav'));
 });
 
 app.get('/ota/admin/api/files/general', (_req, res) => {
-  const files = listDir(FILES_ROOT).map(f => ({
-    ...f,
-    crc32:  fileCrc32(path.join(FILES_ROOT, f.name)),
-    sha256: fileSha256(path.join(FILES_ROOT, f.name)),
-  }));
-  res.json(files);
+  res.json(listDir(FILES_ROOT));
 });
 
 // ── Admin API — manifest listing ──────────────────────────────────────────────
