@@ -341,9 +341,19 @@ function checkUploadReady() {
 
 // m-model is a select — only 'change'; m-version is text — both input+change
 document.getElementById('m-model').addEventListener('change', checkUploadReady);
-['m-version', 'm-firmware'].forEach(id => {
+['m-version'].forEach(id => {
   document.getElementById(id).addEventListener('input',  checkUploadReady);
   document.getElementById(id).addEventListener('change', checkUploadReady);
+});
+
+// Firmware select: auto-populate version from filename (fw-x.y.z.hex)
+document.getElementById('m-firmware').addEventListener('change', () => {
+  const filename = document.getElementById('m-firmware').value;
+  const m = filename.match(/fw-(\d+\.\d+\.\d+)\.hex$/i);
+  if (m) {
+    document.getElementById('m-version').value = m[1];
+  }
+  checkUploadReady();
 });
 
 // File operations list (for "files" type manifest)
