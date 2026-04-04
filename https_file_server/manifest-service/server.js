@@ -258,7 +258,7 @@ const firmwareUpload = multer({
     filename:    (_req, file,  cb) => cb(null, file.originalname),
   }),
   fileFilter: (_req, file, cb) => cb(null, file.originalname.toLowerCase().endsWith('.hex')),
-  limits: { fileSize: 16 * 1024 * 1024 },
+  limits: { fileSize: 32 * 1024 * 1024 },
 });
 
 const audioUpload = multer({
@@ -267,7 +267,7 @@ const audioUpload = multer({
     filename:    (_req, file,  cb) => cb(null, file.originalname),
   }),
   fileFilter: (_req, file, cb) => cb(null, file.originalname.toLowerCase().endsWith('.wav')),
-  limits: { fileSize: 20 * 1024 * 1024 },
+  limits: { fileSize: 100 * 1024 * 1024 },
 });
 
 const generalUpload = multer({
