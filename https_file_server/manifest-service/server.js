@@ -624,34 +624,43 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
     const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
     fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
 
-    const { _draft: _d, ...rest } = draft;
+    // Strip draft-only fields before building the published manifest
+    const { _draft: _d, firmwareFile, tokenDays: _td, ...rest } = draft;
+    const type = rest.type || 'firmware';
+
+    // Normalise compatibleFrom: the draft may store it as a raw string ("*")
+    if (rest.compatibleFrom && !Array.isArray(rest.compatibleFrom)) {
+      rest.compatibleFrom = rest.compatibleFrom === '*'
+        ? ['*']
+        : rest.compatibleFrom.split(',').map(s => s.trim()).filter(Boolean);
+    }
+
     const manifest = { ...rest, update: true, downloadToken: tokenHex };
 
-    // Re-verify and refresh checksums so manifest is always current
-    const type = draft.type || 'firmware';
-
     if (type === 'firmware') {
+      // Resolve firmware filename — prefer existing firmware.url, fall back to draft firmwareFile
+      let fwFilename = null;
       if (manifest.firmware?.url) {
-        const fwFilename = decodeURIComponent(manifest.firmware.url.split('/').pop());
-        if (safeFilename(fwFilename)) {
-          const fwPath = path.join(FIRMWARE_ROOT, fwFilename);
-          if (!fs.existsSync(fwPath))
-            return res.status(400).json({ error: `firmware file not found: ${fwFilename}` });
-          manifest.firmware = {
-            ...manifest.firmware,
-            crc32:  fileCrc32(fwPath),
-            sha256: fileSha256(fwPath),
-            size:   fs.statSync(fwPath).size,
-          };
-        }
+        fwFilename = decodeURIComponent(manifest.firmware.url.split('/').pop());
+      } else if (firmwareFile) {
+        fwFilename = firmwareFile;
       }
-      if (Array.isArray(manifest.audio)) {
-        manifest.audio = manifest.audio.map(af => {
-          const afPath = path.join(AUDIO_ROOT, af.id);
-          if (!fs.existsSync(afPath)) return af;
-          return { ...af, crc32: fileCrc32(afPath), sha256: fileSha256(afPath), size: fs.statSync(afPath).size };
-        });
-      }
+
+      if (!fwFilename || !safeFilename(fwFilename))
+        return res.status(400).json({ error: 'cannot determine firmware filename from saved manifest' });
+
+      const fwPath = path.join(FIRMWARE_ROOT, fwFilename);
+      if (!fs.existsSync(fwPath))
+        return res.status(400).json({ error: `firmware file not found: ${fwFilename}` });
+
+      manifest.firmware = {
+        version: manifest.version || '0.0.0',
+        url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/firmware/${fwFilename}`,
+        crc32:  fileCrc32(fwPath),
+        sha256: fileSha256(fwPath),
+        size:   fs.statSync(fwPath).size,
+      };
+
     } else if (type === 'files') {
       const errors = [];
       manifest.files = (manifest.files || []).map(f => {
@@ -671,8 +680,8 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
     const payload = broadcast
-      ? JSON.stringify({ act: 'frm' })
-      : JSON.stringify({ act: 'frm', mdl: modelId });
+      ? JSON.stringify({ act: 'frm', token: tokenHex })
+      : JSON.stringify({ act: 'frm', mdl: modelId, token: tokenHex });
 
     mqttPublish(topic, payload, false);
     console.log(`[admin] OTA pushed: ${topic}`);
