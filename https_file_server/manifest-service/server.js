@@ -726,7 +726,17 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
     const tokenHex    = crypto.randomBytes(32).toString('hex');
     const tokenExpiry = Math.floor(Date.now() / 1000) + 30 * 86400;
     fs.writeFileSync(path.join(TOKEN_ROOT, `${tokenHex}_exp${tokenExpiry}`), '');
-    const manifestId  = generateManifestId();
+
+    // Reuse existing manifestId if the same firmware is being pushed again;
+    // only generate a new one when the firmware file or version changes.
+    const manifestPath = path.join(MODELS_DIR, `${DEVICE_MODEL}.json`);
+    let manifestId;
+    try {
+      const existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+      manifestId = (existing.firmware?.url?.endsWith(firmwareFile) && existing.version === version && existing.manifestId)
+        ? existing.manifestId
+        : generateManifestId();
+    } catch (_) { manifestId = generateManifestId(); }
 
     const manifest = {
       manifestId,
@@ -747,7 +757,6 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
       },
     };
 
-    const manifestPath = path.join(MODELS_DIR, `${DEVICE_MODEL}.json`);
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
     const topic   = broadcast
