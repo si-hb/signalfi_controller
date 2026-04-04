@@ -321,6 +321,59 @@ function makeFilePushBtns(f) {
   return [sendBtn, removeBtn];
 }
 
+// ── Audio preview player ──────────────────────────────────────────────────────
+
+let _previewAudio   = null;   // current HTMLAudioElement
+let _previewBtn     = null;   // button that triggered it
+let _previewBlobUrl = null;   // blob URL to revoke on stop
+
+function _stopPreview() {
+  if (_previewAudio) {
+    _previewAudio.pause();
+    _previewAudio = null;
+  }
+  if (_previewBlobUrl) {
+    URL.revokeObjectURL(_previewBlobUrl);
+    _previewBlobUrl = null;
+  }
+  if (_previewBtn) {
+    _previewBtn.textContent = '▶ Preview';
+    _previewBtn.classList.replace('btn-warn', 'btn-secondary');
+    _previewBtn = null;
+  }
+}
+
+async function _togglePreview(filename, btn) {
+  // If this button is already playing, just stop
+  if (_previewBtn === btn) { _stopPreview(); return; }
+
+  // Stop whatever was playing before
+  _stopPreview();
+
+  btn.textContent = '…';
+  btn.disabled = true;
+
+  try {
+    const res = await fetch(`/ota/v1/audio/${encodeURIComponent(filename)}`, {
+      headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
+    });
+    if (!res.ok) { toast(`Preview failed: ${res.status}`, 'error'); btn.textContent = '▶ Preview'; btn.disabled = false; return; }
+    const blob = await res.blob();
+    _previewBlobUrl = URL.createObjectURL(blob);
+    _previewAudio   = new Audio(_previewBlobUrl);
+    _previewBtn     = btn;
+    btn.textContent = '■ Stop';
+    btn.classList.replace('btn-secondary', 'btn-warn');
+    btn.disabled = false;
+    _previewAudio.addEventListener('ended', _stopPreview);
+    _previewAudio.play();
+  } catch (e) {
+    toast(`Preview error: ${e.message}`, 'error');
+    btn.textContent = '▶ Preview';
+    btn.disabled = false;
+  }
+}
+
 // ── Audio ─────────────────────────────────────────────────────────────────────
 
 let _audioFiles = [];
@@ -345,6 +398,7 @@ function _updateAudioToolbar() {
 
 function renderAudioTable(files) {
   _audioFiles = files;
+  _stopPreview();
   const tbody = document.getElementById('audio-tbody');
   if (!files.length) {
     tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No files uploaded yet</td></tr>';
@@ -365,6 +419,13 @@ function renderAudioTable(files) {
     tr.querySelector('.audio-row-check').addEventListener('change', _updateAudioToolbar);
     const cell = tr.querySelector('td:last-child');
     cell.style.cssText = 'display:flex;gap:6px;align-items:center;justify-content:flex-end';
+
+    const prevBtn = document.createElement('button');
+    prevBtn.className = 'btn btn-secondary btn-sm';
+    prevBtn.textContent = '▶ Preview';
+    prevBtn.addEventListener('click', () => _togglePreview(f.name, prevBtn));
+    cell.appendChild(prevBtn);
+
     cell.appendChild(
       makeDeleteBtn(f.name, async () => {
         try {
