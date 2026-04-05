@@ -242,6 +242,8 @@ function adminAuth(req, res, next) {
   if (!ADMIN_TOKEN || ADMIN_TOKEN.trim() === '') return next();
   const match = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
   if (match && match[1] === ADMIN_TOKEN) return next();
+  // Allow token via ?t= query param for endpoints that can't set headers (e.g. <audio src>)
+  if (req.query.t && req.query.t === ADMIN_TOKEN) return next();
   return res.status(401).json({ error: 'Unauthorized' });
 }
 

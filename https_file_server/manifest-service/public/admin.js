@@ -323,18 +323,14 @@ function makeFilePushBtns(f) {
 
 // ── Audio preview player ──────────────────────────────────────────────────────
 
-let _previewAudio   = null;   // current HTMLAudioElement
-let _previewBtn     = null;   // button that triggered it
-let _previewBlobUrl = null;   // blob URL to revoke on stop
+let _previewAudio = null;   // current HTMLAudioElement
+let _previewBtn   = null;   // button that triggered it
 
 function _stopPreview() {
   if (_previewAudio) {
     _previewAudio.pause();
+    _previewAudio.src = '';
     _previewAudio = null;
-  }
-  if (_previewBlobUrl) {
-    URL.revokeObjectURL(_previewBlobUrl);
-    _previewBlobUrl = null;
   }
   if (_previewBtn) {
     _previewBtn.textContent = '▶ Preview';
@@ -343,35 +339,27 @@ function _stopPreview() {
   }
 }
 
-async function _togglePreview(filename, btn) {
+function _togglePreview(filename, btn) {
   // If this button is already playing, just stop
   if (_previewBtn === btn) { _stopPreview(); return; }
 
   // Stop whatever was playing before
   _stopPreview();
 
-  btn.textContent = '…';
-  btn.disabled = true;
+  // Use a direct src URL with the token as a query param so the browser can
+  // stream via range requests immediately without downloading the whole file first
+  const src = `/ota/admin/api/files/audio/${encodeURIComponent(filename)}${authToken ? `?t=${encodeURIComponent(authToken)}` : ''}`;
+  _previewAudio = new Audio(src);
+  _previewBtn   = btn;
+  btn.textContent = '■ Stop';
+  btn.classList.replace('btn-secondary', 'btn-warn');
 
-  try {
-    const res = await fetch(`/ota/admin/api/files/audio/${encodeURIComponent(filename)}`, {
-      headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
-    });
-    if (!res.ok) { toast(`Preview failed: ${res.status}`, 'error'); btn.textContent = '▶ Preview'; btn.disabled = false; return; }
-    const blob = await res.blob();
-    _previewBlobUrl = URL.createObjectURL(blob);
-    _previewAudio   = new Audio(_previewBlobUrl);
-    _previewBtn     = btn;
-    btn.textContent = '■ Stop';
-    btn.classList.replace('btn-secondary', 'btn-warn');
-    btn.disabled = false;
-    _previewAudio.addEventListener('ended', _stopPreview);
-    _previewAudio.play();
-  } catch (e) {
-    toast(`Preview error: ${e.message}`, 'error');
-    btn.textContent = '▶ Preview';
-    btn.disabled = false;
-  }
+  _previewAudio.addEventListener('ended', _stopPreview);
+  _previewAudio.addEventListener('error', () => {
+    toast(`Preview failed: ${filename}`, 'error');
+    _stopPreview();
+  });
+  _previewAudio.play();
 }
 
 // ── Audio ─────────────────────────────────────────────────────────────────────
