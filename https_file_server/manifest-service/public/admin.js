@@ -354,7 +354,7 @@ async function _togglePreview(filename, btn) {
   btn.disabled = true;
 
   try {
-    const res = await fetch(`/ota/v1/audio/${encodeURIComponent(filename)}`, {
+    const res = await fetch(`/ota/admin/api/files/audio/${encodeURIComponent(filename)}`, {
       headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
     });
     if (!res.ok) { toast(`Preview failed: ${res.status}`, 'error'); btn.textContent = '▶ Preview'; btn.disabled = false; return; }

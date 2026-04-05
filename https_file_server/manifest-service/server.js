@@ -305,6 +305,14 @@ app.get('/ota/admin/api/files/audio', (_req, res) => {
   res.json(listDir(AUDIO_ROOT, '.wav'));
 });
 
+app.get('/ota/admin/api/files/audio/:filename', (req, res) => {
+  const { filename } = req.params;
+  if (!safeFilename(filename)) return res.status(400).json({ error: 'invalid filename' });
+  const fp = path.join(AUDIO_ROOT, filename);
+  if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
+  res.sendFile(fp);
+});
+
 app.get('/ota/admin/api/files/general', (_req, res) => {
   res.json(listDir(FILES_ROOT));
 });
