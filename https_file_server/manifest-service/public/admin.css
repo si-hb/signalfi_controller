@@ -166,6 +166,47 @@ body {
   line-height: 1.5;
 }
 
+/* ── Audio upload status panel ── */
+.upload-status-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+}
+.upload-status-panel:empty { display: none; }
+
+.upload-status-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  line-height: 1.5;
+}
+.upload-status-row.uploading  { border-color: var(--border); color: var(--text-muted); }
+.upload-status-row.converting { border-color: rgba(9,116,121,0.5); color: var(--accent-bright); }
+.upload-status-row.success    { border-color: rgba(39,174,96,0.4); color: #2ecc71; }
+.upload-status-row.error      { border-color: rgba(192,57,43,0.4); color: #e74c3c; }
+
+.upload-status-icon {
+  flex-shrink: 0;
+  width: 14px;
+  text-align: center;
+  font-style: normal;
+}
+.upload-status-row.uploading  .upload-status-icon,
+.upload-status-row.converting .upload-status-icon {
+  display: inline-block;
+  animation: status-spin 1s linear infinite;
+}
+@keyframes status-spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 .upload-progress {
   margin-top: 10px;
   height: 4px;

@@ -522,16 +522,90 @@ async function loadAudio() {
 }
 
 (function () {
-  const zone = document.getElementById('audio-zone');
-  const inp  = document.getElementById('audio-file-input');
-  const prog = document.getElementById('audio-progress');
-  const bar  = document.getElementById('audio-progress-bar');
+  const zone       = document.getElementById('audio-zone');
+  const inp        = document.getElementById('audio-file-input');
+  const prog       = document.getElementById('audio-progress');
+  const bar        = document.getElementById('audio-progress-bar');
+  const statusPanel = document.getElementById('audio-upload-status');
+
+  function addStatusRow(name) {
+    const row = document.createElement('div');
+    row.className = 'upload-status-row uploading';
+    row.innerHTML = `
+      <span class="upload-status-icon">⟳</span>
+      <span class="upload-status-text">Uploading <strong>${name}</strong>…</span>
+    `;
+    statusPanel.appendChild(row);
+    // Keep at most 20 rows
+    while (statusPanel.children.length > 20) statusPanel.removeChild(statusPanel.firstChild);
+    return row;
+  }
+
+  function setRowConverting(row, name) {
+    row.className = 'upload-status-row converting';
+    row.querySelector('.upload-status-icon').textContent = '⟳';
+    row.querySelector('.upload-status-text').innerHTML = `Converting <strong>${name}</strong>…`;
+  }
+
+  function setRowSuccess(row, data) {
+    row.className = 'upload-status-row success';
+    row.querySelector('.upload-status-icon').textContent = '✓';
+    if (data.converted) {
+      row.querySelector('.upload-status-text').innerHTML =
+        `<strong>${data.name}</strong> — converted from <em>${data.originalName}</em>`;
+    } else {
+      row.querySelector('.upload-status-text').innerHTML =
+        `<strong>${data.name}</strong> — already correct format`;
+    }
+  }
+
+  function setRowError(row, name, msg) {
+    row.className = 'upload-status-row error';
+    row.querySelector('.upload-status-icon').textContent = '✗';
+    row.querySelector('.upload-status-text').innerHTML =
+      `<strong>${name}</strong> — ${msg}`;
+  }
 
   function uploadAudio(file) {
-    uploadFile(file, '/ota/admin/api/files/audio', bar, prog, (data) => {
-      if (data.converted) toast(`Converted from ${data.originalName} → ${data.name}`, 'info');
-      loadAudio();
-    });
+    const row = addStatusRow(file.name);
+    const formData = new FormData();
+    formData.append('file', file);
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', '/ota/admin/api/files/audio');
+    if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+
+    prog.style.display = 'block';
+    bar.style.width = '0%';
+
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+    };
+    // File bytes sent — server is now converting
+    xhr.upload.onload = () => {
+      bar.style.width = '100%';
+      setRowConverting(row, file.name);
+    };
+    xhr.onload = () => {
+      prog.style.display = 'none';
+      bar.style.width = '0%';
+      if (xhr.status === 200 || xhr.status === 201) {
+        const data = JSON.parse(xhr.responseText);
+        setRowSuccess(row, data);
+        loadAudio();
+      } else if (xhr.status === 401) {
+        setAuthState(false); showAuthDialog();
+        setRowError(row, file.name, 'Not authorized');
+      } else {
+        let msg = `Server error ${xhr.status}`;
+        try { msg = JSON.parse(xhr.responseText).error || msg; } catch (_) {}
+        setRowError(row, file.name, msg);
+      }
+    };
+    xhr.onerror = () => {
+      prog.style.display = 'none';
+      setRowError(row, file.name, 'Network error');
+    };
+    xhr.send(formData);
   }
 
   zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
