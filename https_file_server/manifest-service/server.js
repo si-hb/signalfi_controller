@@ -1208,43 +1208,23 @@ function streamFile(req, res, filePath, category) {
   res.setHeader('Accept-Ranges',  'bytes');
   res.flushHeaders();
 
-  // If the device already published $ota/progress before opening this HTTP connection
-  // (firmware does MQTT publish then immediately opens TCP), let MQTT be the authoritative
-  // source for SSE events.  HTTP is only a fallback for devices without MQTT progress support.
+  // MQTT progress events (scout/<MAC>/$ota/progress) are the authoritative source for
+  // all activity rows in the admin panel.  HTTP never emits device-connect or
+  // device-progress — devices behind NAT share an IP so ipToDevice can't reliably
+  // correlate HTTP sessions to device IDs anyway.
+  // The devId / useMqtt lookup is kept only for abort detection in _finish below.
   const devId   = ipToDevice.get(ip);
-  const useMqtt = !!(devId && mqttDownloads.has(devId) && mqttDownloads.get(devId).file === filename);
+  const useMqtt = !!(devId && mqttDownloads.has(devId));
 
   const dl = { sessionId, ip, file: filename, category, total, sent: 0, startedAt, lastReportAt: startedAt };
   activeDownloads.set(sessionId, dl);
 
-  if (!useMqtt) {
-    // HTTP fallback — emit connect and progress via HTTP byte-tracking
-    sseEmit('device-connect', { sessionId, ip, file: filename, category, total, startedAt });
-  }
-
   const stream = fs.createReadStream(filePath, { highWaterMark: 65536 });
-  let lastReported = 0;
 
-  const _reportProgress = () => {
-    if (useMqtt) return; // MQTT provides accurate device-side progress; suppress HTTP estimate
-    const now = Date.now();
-    if (dl.sent - lastReported >= 65536 || now - dl.lastReportAt >= 400) {
-      lastReported    = dl.sent;
-      dl.lastReportAt = now;
-      const elapsedSec = (now - startedAt) / 1000 || 0.001;
-      const kbps       = Math.round(dl.sent / elapsedSec / 1024);
-      sseEmit('device-progress', {
-        sessionId, ip, file: filename, category,
-        sent: dl.sent, total, pct: Math.round(dl.sent / total * 100), kbps,
-      });
-    }
-  };
-
-  // Manual backpressure pump — keeps the kernel TCP send buffer from filling
-  // the entire file, preserving accurate HTTP-fallback progress when MQTT isn't used.
+  // Backpressure pump — gate writes on drain so the kernel TCP send buffer doesn't
+  // absorb the whole file at disk speed (which would defeat MQTT progress accuracy).
   stream.on('data', chunk => {
     dl.sent += chunk.length;
-    _reportProgress();
     const ok = res.write(chunk);
     if (!ok) {
       stream.pause();
