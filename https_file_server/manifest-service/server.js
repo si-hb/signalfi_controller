@@ -29,8 +29,11 @@ const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SF-100';
 const TOKEN_RE          = /^[0-9a-f]{64}$/i;
 const DEVICE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min = online window
 
-const sseClients     = new Set();
-const activeDownloads = new Map(); // sessionId → download info
+const sseClients      = new Set();
+const activeDownloads = new Map(); // sessionId → download info (HTTP-based fallback)
+const mqttDownloads   = new Map(); // deviceId  → download info (MQTT-based, authoritative)
+const deviceIp        = new Map(); // deviceId  → last known IP string
+const ipToDevice      = new Map(); // IP string → deviceId
 
 console.log(`[manifest] starting v3`);
 console.log(`[manifest] manifest root:  ${MANIFEST_ROOT}`);
@@ -121,12 +124,41 @@ function connectMqtt() {
     });
   });
 
-  mqttClient.on('message', (topic) => {
+  mqttClient.on('message', (topic, message) => {
     // Topic format: scout/<deviceId>/... or scout/$group/... or scout/$broadcast/...
-    // Only track real device IDs (not $ pseudo-segments)
+    // Only process real device IDs (not $ pseudo-segments like $group, $broadcast).
     const parts = topic.split('/');
-    if (parts.length >= 2 && parts[0] === MQTT_PREFIX && parts[1] && !parts[1].startsWith('$')) {
-      deviceLastSeen.set(parts[1], Date.now());
+    if (parts.length < 2 || parts[0] !== MQTT_PREFIX || !parts[1] || parts[1].startsWith('$')) return;
+
+    const deviceId = parts[1];
+    deviceLastSeen.set(deviceId, Date.now());
+
+    // scout/<deviceId>/$ota/progress — firmware-reported download progress
+    if (parts.length === 4 && parts[2] === '$ota' && parts[3] === 'progress') {
+      try { _handleMqttOtaProgress(deviceId, JSON.parse(message.toString())); } catch (_) {}
+      return;
+    }
+
+    // scout/<deviceId> — regular device status (2-segment topic only)
+    if (parts.length === 2) {
+      try {
+        const payload = JSON.parse(message.toString());
+        // Keep IP ↔ deviceId mapping current so streamFile can correlate HTTP sessions
+        if (payload.ip) {
+          deviceIp.set(deviceId, payload.ip);
+          ipToDevice.set(payload.ip, deviceId);
+        }
+        // Device went idle → the last tracked download for this device is complete
+        if (payload.status === 'idle' && mqttDownloads.has(deviceId)) {
+          const dl = mqttDownloads.get(deviceId);
+          mqttDownloads.delete(deviceId);
+          sseEmit('device-done', {
+            sessionId: deviceId, ip: dl.ip, file: dl.file,
+            category: dl.category, total: dl.total,
+            durationMs: Date.now() - dl.startedAt,
+          });
+        }
+      } catch (_) {}
     }
   });
 
@@ -135,6 +167,55 @@ function connectMqtt() {
 }
 
 connectMqtt();
+
+// Handle scout/<deviceId>/$ota/progress — authoritative per-device download progress.
+// Firmware publishes received=0 before opening the HTTP connection, then every 64 KB.
+// When a new filename is seen for a device the previous file row is closed automatically
+// so multi-file syncs produce clean per-file rows in the admin panel.
+function _handleMqttOtaProgress(deviceId, data) {
+  const { file, received, total } = data;
+  if (!file || total === undefined || received === undefined) return;
+
+  const now      = Date.now();
+  const ip       = deviceIp.get(deviceId) || deviceId;
+  const category = file.endsWith('.wav')                             ? 'audio'
+                 : (file.endsWith('.hex') || file.endsWith('.bin')) ? 'firmware'
+                 : file.endsWith('.json')                            ? 'config'
+                 : 'general';
+
+  // If the device started a different file, close the previous row first
+  if (mqttDownloads.has(deviceId) && mqttDownloads.get(deviceId).file !== file) {
+    const prev = mqttDownloads.get(deviceId);
+    mqttDownloads.delete(deviceId);
+    sseEmit('device-done', {
+      sessionId: deviceId, ip: prev.ip, file: prev.file,
+      category: prev.category, total: prev.total,
+      durationMs: now - prev.startedAt,
+    });
+  }
+
+  // Create row on first message for this file
+  if (!mqttDownloads.has(deviceId)) {
+    const dl = { sessionId: deviceId, ip, file, category, total, sent: 0, startedAt: now, lastReportAt: now, kbps: 0 };
+    mqttDownloads.set(deviceId, dl);
+    sseEmit('device-connect', { sessionId: deviceId, ip, file, category, total, startedAt: now });
+    if (received === 0) return; // start notification only — no progress bar update yet
+  }
+
+  const dl        = mqttDownloads.get(deviceId);
+  dl.sent         = received;
+  dl.ip           = ip;
+  dl.lastReportAt = now;
+  const elapsedSec = (now - dl.startedAt) / 1000 || 0.001;
+  dl.kbps = Math.round(received / elapsedSec / 1024);
+
+  sseEmit('device-progress', {
+    sessionId: deviceId, ip, file, category,
+    sent: received, total,
+    pct:  Math.round(received / total * 100),
+    kbps: dl.kbps,
+  });
+}
 
 function mqttPublish(topic, payload, retain = false) {
   if (mqttClient && mqttClient.connected) {
@@ -1127,14 +1208,25 @@ function streamFile(req, res, filePath, category) {
   res.setHeader('Accept-Ranges',  'bytes');
   res.flushHeaders();
 
+  // If the device already published $ota/progress before opening this HTTP connection
+  // (firmware does MQTT publish then immediately opens TCP), let MQTT be the authoritative
+  // source for SSE events.  HTTP is only a fallback for devices without MQTT progress support.
+  const devId   = ipToDevice.get(ip);
+  const useMqtt = !!(devId && mqttDownloads.has(devId) && mqttDownloads.get(devId).file === filename);
+
   const dl = { sessionId, ip, file: filename, category, total, sent: 0, startedAt, lastReportAt: startedAt };
   activeDownloads.set(sessionId, dl);
-  sseEmit('device-connect', { sessionId, ip, file: filename, category, total, startedAt });
+
+  if (!useMqtt) {
+    // HTTP fallback — emit connect and progress via HTTP byte-tracking
+    sseEmit('device-connect', { sessionId, ip, file: filename, category, total, startedAt });
+  }
 
   const stream = fs.createReadStream(filePath, { highWaterMark: 65536 });
   let lastReported = 0;
 
   const _reportProgress = () => {
+    if (useMqtt) return; // MQTT provides accurate device-side progress; suppress HTTP estimate
     const now = Date.now();
     if (dl.sent - lastReported >= 65536 || now - dl.lastReportAt >= 400) {
       lastReported    = dl.sent;
@@ -1148,9 +1240,8 @@ function streamFile(req, res, filePath, category) {
     }
   };
 
-  // Manual backpressure pump: only advance dl.sent when the write buffer
-  // accepts data, so progress tracks actual network delivery speed, not disk
-  // read speed (which is what stream.pipe() would measure).
+  // Manual backpressure pump — keeps the kernel TCP send buffer from filling
+  // the entire file, preserving accurate HTTP-fallback progress when MQTT isn't used.
   stream.on('data', chunk => {
     dl.sent += chunk.length;
     _reportProgress();
@@ -1165,17 +1256,28 @@ function streamFile(req, res, filePath, category) {
     if (!activeDownloads.has(sessionId)) return;
     activeDownloads.delete(sessionId);
     const durationMs = Date.now() - startedAt;
-    if (aborted) {
-      sseEmit('device-aborted', { sessionId, ip, file: filename, category, sent: dl.sent, total, durationMs });
+    if (useMqtt) {
+      // MQTT idle status handles device-done normally (device sends idle after sync).
+      // Only emit aborted here if TCP drops before MQTT idle arrives (e.g. mid-transfer crash).
+      if (aborted && devId && mqttDownloads.has(devId)) {
+        mqttDownloads.delete(devId);
+        sseEmit('device-aborted', { sessionId: devId, ip, file: filename, category, sent: dl.sent, total, durationMs });
+      }
     } else {
-      sseEmit('device-done',    { sessionId, ip, file: filename, category, total, durationMs });
+      if (aborted) {
+        sseEmit('device-aborted', { sessionId, ip, file: filename, category, sent: dl.sent, total, durationMs });
+      } else {
+        sseEmit('device-done', { sessionId, ip, file: filename, category, total, durationMs });
+      }
     }
   };
 
   stream.on('end',   ()    => { res.end(); _finish(false); });
   stream.on('error', (err) => {
     activeDownloads.delete(sessionId);
-    sseEmit('device-error', { sessionId, ip, file: filename, category, error: err.message });
+    const errSessionId = useMqtt ? devId : sessionId;
+    if (useMqtt && devId) mqttDownloads.delete(devId);
+    sseEmit('device-error', { sessionId: errSessionId, ip, file: filename, category, error: err.message });
     if (!res.headersSent) res.status(500).end();
     else res.end();
   });
@@ -1212,8 +1314,16 @@ app.get('/ota/v1/files/:filename', (req, res) => {
 });
 
 // Current active downloads — used by admin panel to seed state on page load.
+// MQTT-tracked entries (accurate device-side progress) take priority over HTTP fallbacks.
 app.get('/ota/admin/api/active-downloads', adminAuth, (_req, res) => {
-  res.json([...activeDownloads.values()]);
+  // Deduplicate: if both MQTT and HTTP are tracking the same file for the same device,
+  // return only the MQTT entry (it has accurate progress).
+  const mqttDeviceIds = new Set([...mqttDownloads.values()].map(d => d.sessionId));
+  const httpOnly = [...activeDownloads.values()].filter(d => {
+    const dId = ipToDevice.get(d.ip);
+    return !dId || !mqttDeviceIds.has(dId);
+  });
+  res.json([...mqttDownloads.values(), ...httpOnly]);
 });
 
 // ── Device API routes ─────────────────────────────────────────────────────────
