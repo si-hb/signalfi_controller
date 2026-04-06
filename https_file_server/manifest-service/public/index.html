@@ -79,14 +79,15 @@
     </div>
     <div class="section-body">
       <div class="upload-zone" id="audio-zone">
-        <input type="file" id="audio-file-input" accept=".wav" multiple>
+        <input type="file" id="audio-file-input" accept=".wav,.mp3,.mp4,.m4a,.aac,.ogg,.flac,.aiff,.aif" multiple>
         <div class="upload-zone-text">
-          <strong>Click or drag</strong> <code>.wav</code> audio files here
+          <strong>Click or drag</strong> audio files here
         </div>
         <div class="upload-progress" id="audio-progress">
           <div class="upload-progress-bar" id="audio-progress-bar"></div>
         </div>
       </div>
+      <p class="format-note">Required format: <strong>WAV · 44.1 kHz · 16-bit signed PCM · little-endian.</strong> Other formats (MP3, AAC, FLAC, etc.) will be auto-converted by the server. Files that cannot be converted will be rejected.</p>
       <div class="selection-toolbar" id="audio-selection-toolbar">
         <label class="sel-all-label"><input type="checkbox" id="audio-select-all"> Select all</label>
         <span class="sel-count" id="audio-sel-count">0 selected</span>

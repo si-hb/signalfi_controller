@@ -1,11 +1,12 @@
 'use strict';
 
-const express = require('express');
-const fs      = require('fs');
-const path    = require('path');
-const crypto  = require('crypto');
-const mqtt    = require('mqtt');
-const multer  = require('multer');
+const express    = require('express');
+const fs         = require('fs');
+const path       = require('path');
+const crypto     = require('crypto');
+const mqtt       = require('mqtt');
+const multer     = require('multer');
+const { execFile } = require('child_process');
 
 const app = express();
 app.use(express.json());
@@ -62,8 +63,40 @@ function bufCrc32(buf) {
 
 // ── Ensure writable directories ───────────────────────────────────────────────
 
-for (const dir of [FIRMWARE_ROOT, AUDIO_ROOT, FILES_ROOT, path.join(MANIFEST_ROOT, 'models'), TOKEN_ROOT, REPORTS_ROOT]) {
+const AUDIO_TMP = '/tmp/signalfi-audio-uploads';
+
+for (const dir of [FIRMWARE_ROOT, AUDIO_ROOT, FILES_ROOT, path.join(MANIFEST_ROOT, 'models'), TOKEN_ROOT, REPORTS_ROOT, AUDIO_TMP]) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) {}
+}
+
+// ── WAV format validation ─────────────────────────────────────────────────────
+// Returns true if file is PCM WAV, 44100 Hz, 16-bit (little-endian implied by PCM).
+// Scans the first 512 bytes to locate the fmt chunk without reading the whole file.
+
+function checkWavFormat(filePath) {
+  try {
+    const fd  = fs.openSync(filePath, 'r');
+    const buf = Buffer.alloc(512);
+    const n   = fs.readSync(fd, buf, 0, 512, 0);
+    fs.closeSync(fd);
+    if (n < 44)                                      return false;
+    if (buf.toString('ascii', 0, 4)  !== 'RIFF')     return false;
+    if (buf.toString('ascii', 8, 12) !== 'WAVE')     return false;
+    let off = 12;
+    while (off + 8 <= n) {
+      const id   = buf.toString('ascii', off, off + 4);
+      const size = buf.readUInt32LE(off + 4);
+      if (id === 'fmt ') {
+        if (size < 16) return false;
+        const fmt = buf.readUInt16LE(off + 8);   // 1 = PCM
+        const sr  = buf.readUInt32LE(off + 12);  // sample rate
+        const bps = buf.readUInt16LE(off + 22);  // bits per sample
+        return fmt === 1 && sr === 44100 && bps === 16;
+      }
+      off += 8 + size + (size & 1); // chunks are word-aligned
+    }
+    return false;
+  } catch (_) { return false; }
 }
 
 // ── MQTT client + device presence tracking ────────────────────────────────────
@@ -265,12 +298,15 @@ const firmwareUpload = multer({
   limits: { fileSize: 32 * 1024 * 1024 },
 });
 
+// Accepts any audio file for conversion — stored to temp dir, processed in handler
 const audioUpload = multer({
   storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, AUDIO_ROOT),
-    filename:    (_req, file,  cb) => cb(null, file.originalname),
+    destination: (_req, _file, cb) => cb(null, AUDIO_TMP),
+    filename:    (_req, file,  cb) => {
+      const ext = path.extname(file.originalname).toLowerCase() || '.bin';
+      cb(null, `upload-${Date.now()}-${Math.random().toString(36).slice(2)}${ext}`);
+    },
   }),
-  fileFilter: (_req, file, cb) => cb(null, file.originalname.toLowerCase().endsWith('.wav')),
   limits: { fileSize: 100 * 1024 * 1024 },
 });
 
@@ -380,13 +416,73 @@ app.post('/ota/admin/api/files/firmware', firmwareUpload.single('file'), (req, r
   res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256 });
 });
 
-app.post('/ota/admin/api/files/audio', audioUpload.single('file'), (req, res) => {
-  if (!req.file) return res.status(400).json({ error: 'no .wav file received' });
-  const crc32  = fileCrc32(req.file.path);
-  const sha256 = fileSha256(req.file.path);
-  console.log(`[admin] audio uploaded: ${req.file.originalname} (${req.file.size} B)`);
-  sseEmit('audio-updated', { name: req.file.originalname });
-  res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256 });
+app.post('/ota/admin/api/files/audio', audioUpload.single('file'), async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'no audio file received' });
+
+  const tmpPath  = req.file.path;
+  const origName = req.file.originalname;
+  const baseName = path.basename(origName, path.extname(origName));
+  const outName  = baseName + '.wav';
+  const outPath  = path.join(AUDIO_ROOT, outName);
+
+  const isWav    = /\.wav$/i.test(origName);
+  const alreadyOk = isWav && checkWavFormat(tmpPath);
+
+  const cleanup = () => { try { if (fs.existsSync(tmpPath)) fs.unlinkSync(tmpPath); } catch (_) {} };
+
+  if (alreadyOk) {
+    try {
+      if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+      fs.renameSync(tmpPath, outPath);
+    } catch (err) {
+      cleanup();
+      return res.status(500).json({ error: `Failed to store file: ${err.message}` });
+    }
+    const crc32  = fileCrc32(outPath);
+    const sha256 = fileSha256(outPath);
+    const size   = fs.statSync(outPath).size;
+    console.log(`[admin] audio uploaded: ${outName} (${size} B, crc32: ${crc32})`);
+    sseEmit('audio-updated', { name: outName });
+    return res.json({ name: outName, size, crc32, sha256, converted: false });
+  }
+
+  // Needs conversion via ffmpeg
+  const reason = !isWav
+    ? `not a WAV (${path.extname(origName) || 'unknown format'})`
+    : 'wrong WAV format (needs 44100 Hz / 16-bit PCM LE)';
+  console.log(`[admin] audio converting "${origName}": ${reason}`);
+
+  if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
+
+  try {
+    await new Promise((resolve, reject) => {
+      execFile('ffmpeg',
+        ['-y', '-i', tmpPath, '-acodec', 'pcm_s16le', '-ar', '44100', outPath],
+        { timeout: 120000 },
+        (err, _stdout, stderr) => {
+          if (err) reject(new Error((stderr || err.message).slice(0, 400)));
+          else     resolve();
+        }
+      );
+    });
+  } catch (convErr) {
+    cleanup();
+    console.error(`[admin] conversion failed: "${origName}" — ${convErr.message}`);
+    return res.status(422).json({ error: `Conversion failed for "${origName}": ${convErr.message}` });
+  }
+
+  cleanup();
+
+  if (!fs.existsSync(outPath)) {
+    return res.status(422).json({ error: `Conversion produced no output for "${origName}"` });
+  }
+
+  const crc32  = fileCrc32(outPath);
+  const sha256 = fileSha256(outPath);
+  const size   = fs.statSync(outPath).size;
+  console.log(`[admin] audio converted: "${origName}" → ${outName} (${size} B)`);
+  sseEmit('audio-updated', { name: outName });
+  return res.json({ name: outName, size, crc32, sha256, converted: true, originalName: origName });
 });
 
 app.post('/ota/admin/api/files/general', generalUpload.single('file'), (req, res) => {
@@ -452,12 +548,11 @@ app.post('/ota/admin/api/manifests/draft', (req, res) => {
 
 function buildFileEntry(id, audioRoot, filesRoot, baseUrl, pathPrefix) {
   if (!safeFilename(id)) return null;
-  let filePath = path.join(audioRoot, id);
-  let url      = `${baseUrl}${pathPrefix}/audio/${id}`;
-  if (!fs.existsSync(filePath)) {
-    filePath = path.join(filesRoot, id);
-    url      = `${baseUrl}${pathPrefix}/files/${id}`;
-  }
+  const isAudio = /\.wav$/i.test(id);
+  const filePath = isAudio ? path.join(audioRoot, id) : path.join(filesRoot, id);
+  const url      = isAudio
+    ? `${baseUrl}${pathPrefix}/audio/${id}`
+    : `${baseUrl}${pathPrefix}/files/${id}`;
   if (!fs.existsSync(filePath)) return null;
   return {
     op:     'put',

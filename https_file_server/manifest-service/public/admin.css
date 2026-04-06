@@ -159,6 +159,13 @@ body {
 
 .upload-zone-text strong { color: var(--accent-bright); }
 
+.format-note {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 8px;
+  line-height: 1.5;
+}
+
 .upload-progress {
   margin-top: 10px;
   height: 4px;
@@ -596,6 +603,7 @@ body {
 
 .toast-success { border-color: rgba(39,174,96,0.4);  color: #2ecc71; }
 .toast-error   { border-color: rgba(192,57,43,0.4);  color: #e74c3c; }
+.toast-info    { border-color: rgba(9,116,121,0.5);  color: var(--accent-bright); }
 
 @keyframes toast-in {
   from { opacity: 0; transform: translateY(8px); }

@@ -527,19 +527,21 @@ async function loadAudio() {
   const prog = document.getElementById('audio-progress');
   const bar  = document.getElementById('audio-progress-bar');
 
-  function uploadWav(file) {
-    if (!file.name.toLowerCase().endsWith('.wav')) { toast(`Skipped ${file.name} — not a .wav`, 'error'); return; }
-    uploadFile(file, '/ota/admin/api/files/audio', bar, prog, () => loadAudio());
+  function uploadAudio(file) {
+    uploadFile(file, '/ota/admin/api/files/audio', bar, prog, (data) => {
+      if (data.converted) toast(`Converted from ${data.originalName} → ${data.name}`, 'info');
+      loadAudio();
+    });
   }
 
   zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => {
     e.preventDefault(); zone.classList.remove('drag-over');
-    [...e.dataTransfer.files].forEach(uploadWav);
+    [...e.dataTransfer.files].forEach(uploadAudio);
   });
   inp.addEventListener('change', () => {
-    [...inp.files].forEach(uploadWav);
+    [...inp.files].forEach(uploadAudio);
     inp.value = '';
   });
 })();
