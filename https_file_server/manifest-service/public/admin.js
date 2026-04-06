@@ -243,9 +243,10 @@ function makeFirmwarePushBtn(f) {
   btn.addEventListener('click', () => {
     showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, backup }) => {
       try {
+        const ledProgress = document.getElementById('firmware-led-progress')?.checked ?? true;
         const res = await apiFetch('/ota/admin/api/ota/push-firmware', {
           method: 'POST',
-          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, backup: backup || undefined }),
+          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, backup: backup || undefined, progress: ledProgress || undefined }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -456,6 +457,7 @@ function _pushAudioSelected(op) {
     `${verb} ${names.length} file${names.length > 1 ? 's' : ''} ${op === 'put' ? 'to' : 'from'} Devices`,
     verb,
     async ({ broadcast, nodePath }) => {
+      const ledProgress = document.getElementById('audio-led-progress')?.checked ?? true;
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
           method: 'POST',
@@ -463,6 +465,7 @@ function _pushAudioSelected(op) {
             files: names.map(n => ({ op, id: n })),
             nodePath,
             broadcast: broadcast || undefined,
+            progress: ledProgress || undefined,
           }),
         });
         if (res.ok) {
@@ -486,6 +489,7 @@ document.getElementById('audio-sync-btn').addEventListener('click', () => {
     `Sync all ${_audioFiles.length} audio file${_audioFiles.length > 1 ? 's' : ''} to Devices`,
     'Sync',
     async ({ broadcast, nodePath }) => {
+      const ledProgress = document.getElementById('audio-led-progress')?.checked ?? true;
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
           method: 'POST',
@@ -494,6 +498,7 @@ document.getElementById('audio-sync-btn').addEventListener('click', () => {
             sync: true,
             nodePath,
             broadcast: broadcast || undefined,
+            progress: ledProgress || undefined,
           }),
         });
         if (res.ok) {
@@ -681,3 +686,19 @@ async function init() {
 }
 
 init();
+
+// ── SSE — live file-update notifications ──────────────────────────────────────
+
+(function connectSSE() {
+  const url = '/ota/admin/api/events' + (authToken ? `?t=${encodeURIComponent(authToken)}` : '');
+  const es  = new EventSource(url);
+  es.onmessage = (e) => {
+    try {
+      const d = JSON.parse(e.data);
+      if (d.type === 'firmware-updated') loadFirmware();
+      else if (d.type === 'audio-updated')   loadAudio();
+      else if (d.type === 'general-updated') loadFiles();
+    } catch (_) {}
+  };
+  es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+})();

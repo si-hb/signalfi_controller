@@ -28,6 +28,8 @@ const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SF-100';
 const TOKEN_RE          = /^[0-9a-f]{64}$/i;
 const DEVICE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min = online window
 
+const sseClients = new Set();
+
 console.log(`[manifest] starting v3`);
 console.log(`[manifest] manifest root:  ${MANIFEST_ROOT}`);
 console.log(`[manifest] firmware root:  ${FIRMWARE_ROOT}`);
@@ -349,6 +351,24 @@ app.get('/ota/admin/api/manifests/:modelId', (req, res) => {
   catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Admin API — SSE event stream ──────────────────────────────────────────────
+
+app.get('/ota/admin/api/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type':  'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection':    'keep-alive',
+  });
+  res.write(':\n\n'); // initial comment to open the stream
+  sseClients.add(res);
+  req.on('close', () => sseClients.delete(res));
+});
+
+function sseEmit(type, payload) {
+  const data = JSON.stringify({ type, ...payload });
+  for (const res of sseClients) res.write(`data: ${data}\n\n`);
+}
+
 // ── Admin API — file uploads ──────────────────────────────────────────────────
 
 app.post('/ota/admin/api/files/firmware', firmwareUpload.single('file'), (req, res) => {
@@ -356,6 +376,7 @@ app.post('/ota/admin/api/files/firmware', firmwareUpload.single('file'), (req, r
   const crc32  = fileCrc32(req.file.path);
   const sha256 = fileSha256(req.file.path);
   console.log(`[admin] firmware uploaded: ${req.file.originalname} (${req.file.size} B, crc32: ${crc32})`);
+  sseEmit('firmware-updated', { name: req.file.originalname, size: req.file.size, crc32 });
   res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256 });
 });
 
@@ -364,6 +385,7 @@ app.post('/ota/admin/api/files/audio', audioUpload.single('file'), (req, res) =>
   const crc32  = fileCrc32(req.file.path);
   const sha256 = fileSha256(req.file.path);
   console.log(`[admin] audio uploaded: ${req.file.originalname} (${req.file.size} B)`);
+  sseEmit('audio-updated', { name: req.file.originalname });
   res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256 });
 });
 
@@ -372,6 +394,7 @@ app.post('/ota/admin/api/files/general', generalUpload.single('file'), (req, res
   const crc32  = fileCrc32(req.file.path);
   const sha256 = fileSha256(req.file.path);
   console.log(`[admin] general file uploaded: ${req.file.originalname} (${req.file.size} B)`);
+  sseEmit('general-updated', { name: req.file.originalname });
   res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256 });
 });
 
@@ -708,7 +731,7 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
 // Derives version from filename (fw-x.y.z.hex), generates token, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
-  const { firmwareFile, nodePath, broadcast, backup } = req.body || {};
+  const { firmwareFile, nodePath, broadcast, backup, progress } = req.body || {};
 
   if (!firmwareFile || !safeFilename(firmwareFile))
     return res.status(400).json({ error: 'firmwareFile required' });
@@ -754,6 +777,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
       downloadToken: tokenHex,
       delaySeconds:  0,
       backup:        backupMode,
+      progress:      progress ? true : undefined,
       firmware: {
         version,
         url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/firmware/${firmwareFile}`,
@@ -785,7 +809,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
 // Generates token, resolves checksums for 'put' ops, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-files', (req, res) => {
-  const { files = [], nodePath, broadcast, sync = false } = req.body || {};
+  const { files = [], nodePath, broadcast, sync = false, progress } = req.body || {};
 
   if (!files.length)
     return res.status(400).json({ error: 'files array required' });
@@ -819,6 +843,7 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
       downloadToken: tokenHex,
       delaySeconds:  0,
       sync:          sync ? true : undefined,
+      progress:      progress ? true : undefined,
       files:         fileEntries,
     };
 
