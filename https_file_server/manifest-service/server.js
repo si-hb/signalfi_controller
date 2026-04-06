@@ -29,7 +29,8 @@ const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SF-100';
 const TOKEN_RE          = /^[0-9a-f]{64}$/i;
 const DEVICE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min = online window
 
-const sseClients = new Set();
+const sseClients     = new Set();
+const activeDownloads = new Map(); // sessionId → download info
 
 console.log(`[manifest] starting v3`);
 console.log(`[manifest] manifest root:  ${MANIFEST_ROOT}`);
@@ -249,9 +250,15 @@ function watchConfigs() {
 watchConfigs();
 
 // ── Token validation ──────────────────────────────────────────────────────────
+// Results are cached in memory for TOKEN_CACHE_TTL ms to avoid synchronous
+// filesystem reads on every file request from every device simultaneously.
+// Under load (hundreds of devices each requesting multiple files), without
+// caching every auth_request hits readdirSync and serialises on the event loop.
 
-function validateToken(token) {
-  if (!token || !TOKEN_RE.test(token)) return false;
+const TOKEN_CACHE_TTL = 30 * 1000; // 30 s — safe: tokens are 30-day expiry
+const _tokenCache     = new Map();  // token → { valid: bool, expiresAt: ms }
+
+function _validateTokenFromDisk(token) {
   if (fs.existsSync(path.join(TOKEN_ROOT, token))) return true;
   try {
     for (const file of fs.readdirSync(TOKEN_ROOT)) {
@@ -270,6 +277,17 @@ function validateToken(token) {
   } catch (_) {}
   return false;
 }
+
+function validateToken(token) {
+  if (!token || !TOKEN_RE.test(token)) return false;
+  const now    = Date.now();
+  const cached = _tokenCache.get(token);
+  if (cached && now < cached.expiresAt) return cached.valid;
+  const valid = _validateTokenFromDisk(token);
+  _tokenCache.set(token, { valid, expiresAt: now + TOKEN_CACHE_TTL });
+  return valid;
+}
+
 
 // ── Admin auth middleware ─────────────────────────────────────────────────────
 
@@ -1050,18 +1068,108 @@ app.get('/ota/admin/api/reports', (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ── General files serving (token-authenticated) ───────────────────────────────
+// ── Device file streaming with live progress tracking ─────────────────────────
+// Node.js streams firmware/audio/config/general files directly so we can
+// emit per-device progress events to the admin SSE channel.  nginx proxies
+// all /ota/v1/ file requests here (proxy_buffering off) instead of serving
+// them via alias, so we see every byte in-flight.
+
+function _bearerToken(req) {
+  const auth = req.headers['authorization'] || '';
+  return auth.startsWith('Bearer ') ? auth.slice(7).trim() : null;
+}
+
+function streamFile(req, res, filePath, category) {
+  if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
+
+  const stat      = fs.statSync(filePath);
+  const total     = stat.size;
+  const ip        = req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown';
+  const filename  = path.basename(filePath);
+  const sessionId = crypto.randomBytes(8).toString('hex');
+  const startedAt = Date.now();
+  const contentType = category === 'config' ? 'application/json' : 'application/octet-stream';
+
+  res.setHeader('Content-Type',   contentType);
+  res.setHeader('Content-Length', total);
+  res.setHeader('Accept-Ranges',  'bytes');
+  res.flushHeaders();
+
+  const dl = { sessionId, ip, file: filename, category, total, sent: 0, startedAt, lastReportAt: startedAt };
+  activeDownloads.set(sessionId, dl);
+  sseEmit('device-connect', { sessionId, ip, file: filename, category, total, startedAt });
+
+  const stream = fs.createReadStream(filePath);
+  let lastReported = 0;
+
+  stream.on('data', chunk => {
+    dl.sent += chunk.length;
+    const now = Date.now();
+    if (dl.sent - lastReported >= 65536 || now - dl.lastReportAt >= 400) {
+      lastReported      = dl.sent;
+      dl.lastReportAt   = now;
+      const elapsedSec  = (now - startedAt) / 1000 || 0.001;
+      const kbps        = Math.round(dl.sent / elapsedSec / 1024);
+      sseEmit('device-progress', {
+        sessionId, ip, file: filename, category,
+        sent: dl.sent, total, pct: Math.round(dl.sent / total * 100), kbps,
+      });
+    }
+  });
+
+  const _finish = (aborted) => {
+    if (!activeDownloads.has(sessionId)) return;
+    activeDownloads.delete(sessionId);
+    const durationMs = Date.now() - startedAt;
+    if (aborted) {
+      sseEmit('device-aborted', { sessionId, ip, file: filename, category, sent: dl.sent, total, durationMs });
+    } else {
+      sseEmit('device-done',    { sessionId, ip, file: filename, category, total, durationMs });
+    }
+  };
+
+  stream.on('end',   ()    => _finish(false));
+  stream.on('error', (err) => {
+    activeDownloads.delete(sessionId);
+    sseEmit('device-error', { sessionId, ip, file: filename, category, error: err.message });
+  });
+  req.on('close', () => { stream.destroy(); _finish(true); });
+
+  stream.pipe(res);
+}
+
+// Firmware, audio, config, general files — all served via streamFile so the
+// admin panel can see live per-device download progress.
+
+app.get('/ota/v1/firmware/:filename', (req, res) => {
+  if (!validateToken(_bearerToken(req))) return res.status(401).end();
+  const safe = path.basename(req.params.filename);
+  streamFile(req, res, path.join(FIRMWARE_ROOT, safe), 'firmware');
+});
+
+app.get('/ota/v1/audio/:filename', (req, res) => {
+  if (!validateToken(_bearerToken(req))) return res.status(401).end();
+  const safe = path.basename(req.params.filename);
+  streamFile(req, res, path.join(AUDIO_ROOT, safe), 'audio');
+});
+
+// Config allows sub-paths: /ota/v1/config/models/foo.json, /ota/v1/config/devices/bar.json
+app.get('/ota/v1/config/*', (req, res) => {
+  if (!validateToken(_bearerToken(req))) return res.status(401).end();
+  const segments = (req.params[0] || '').split('/').map(s => path.basename(s)).filter(Boolean);
+  if (!segments.length) return res.status(400).end();
+  streamFile(req, res, path.join(CONFIG_ROOT, ...segments), 'config');
+});
 
 app.get('/ota/v1/files/:filename', (req, res) => {
-  let token = null;
-  const auth = req.headers['authorization'];
-  if (auth && auth.startsWith('Bearer ')) token = auth.slice(7).trim();
-  if (!validateToken(token)) return res.status(401).json({ valid: false });
-  const { filename } = req.params;
-  if (!safeFilename(filename)) return res.status(400).send('Invalid filename');
-  const fp = path.join(FILES_ROOT, filename);
-  if (!fs.existsSync(fp)) return res.status(404).send('Not found');
-  res.sendFile(fp);
+  if (!validateToken(_bearerToken(req))) return res.status(401).end();
+  if (!safeFilename(req.params.filename)) return res.status(400).send('Invalid filename');
+  streamFile(req, res, path.join(FILES_ROOT, req.params.filename), 'general');
+});
+
+// Current active downloads — used by admin panel to seed state on page load.
+app.get('/ota/admin/api/active-downloads', adminAuth, (_req, res) => {
+  res.json([...activeDownloads.values()]);
 });
 
 // ── Device API routes ─────────────────────────────────────────────────────────
@@ -1153,11 +1261,7 @@ app.get('/ota/v1/validate', (req, res) => {
       try { token = new URL(originalUri, 'http://x').searchParams.get('token'); } catch (_) {}
     }
   }
-  if (!validateToken(token)) {
-    console.log('[validate] rejected');
-    return res.status(401).json({ valid: false });
-  }
-  console.log('[validate] accepted');
+  if (!validateToken(token)) return res.status(401).json({ valid: false });
   res.json({ valid: true });
 });
 

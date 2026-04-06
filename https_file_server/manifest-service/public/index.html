@@ -38,6 +38,33 @@
 <!-- Page content -->
 <div id="page">
 
+  <!-- ── Live Activity ── -->
+  <section class="section" id="live-activity">
+    <div class="section-header">
+      <span class="section-title">Live Activity</span>
+      <span id="activity-count" class="activity-count">0 active</span>
+    </div>
+    <div class="section-body">
+      <table class="activity-table" id="activity-table">
+        <thead>
+          <tr>
+            <th>Device IP</th>
+            <th>File</th>
+            <th>Category</th>
+            <th>Progress</th>
+            <th>Speed</th>
+            <th>Status</th>
+          </tr>
+        </thead>
+        <tbody id="activity-tbody">
+          <tr id="activity-empty-row">
+            <td colspan="6" class="activity-empty">No active transfers</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
   <!-- ── Firmware Files ── -->
   <section class="section" id="firmware">
     <div class="section-header">

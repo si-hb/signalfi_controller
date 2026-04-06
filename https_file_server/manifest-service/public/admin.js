@@ -763,6 +763,113 @@ async function init() {
 
 init();
 
+// ── Live activity table ────────────────────────────────────────────────────────
+
+const activityRows = new Map(); // sessionId → <tr>
+
+function _categoryBadge(cat) {
+  return `<span class="activity-cat activity-cat--${cat}">${cat}</span>`;
+}
+
+function _fmtBytes(n) {
+  if (n < 1024)       return `${n} B`;
+  if (n < 1024*1024)  return `${(n/1024).toFixed(1)} KB`;
+  return `${(n/1024/1024).toFixed(2)} MB`;
+}
+
+function _updateCount() {
+  const n = activityRows.size;
+  document.getElementById('activity-count').textContent = `${n} active`;
+  const empty = document.getElementById('activity-empty-row');
+  if (empty) empty.style.display = n === 0 ? '' : 'none';
+}
+
+function onDeviceConnect(d) {
+  const tbody = document.getElementById('activity-tbody');
+  const tr = document.createElement('tr');
+  tr.id = `dl-${d.sessionId}`;
+  tr.innerHTML = `
+    <td class="activity-ip">${d.ip}</td>
+    <td class="activity-file" title="${d.file}">${d.file}</td>
+    <td>${_categoryBadge(d.category)}</td>
+    <td class="activity-progress-cell">
+      <div class="activity-bar-wrap">
+        <div class="activity-bar" id="bar-${d.sessionId}" style="width:0%"></div>
+      </div>
+      <span class="activity-pct" id="pct-${d.sessionId}">0%</span>
+      <span class="activity-size" id="sz-${d.sessionId}">0 / ${_fmtBytes(d.total)}</span>
+    </td>
+    <td class="activity-speed" id="spd-${d.sessionId}">—</td>
+    <td><span class="activity-status activity-status--active">●&nbsp;active</span></td>
+  `;
+  activityRows.set(d.sessionId, tr);
+  tbody.appendChild(tr);
+  _updateCount();
+}
+
+function onDeviceProgress(d) {
+  const tr = activityRows.get(d.sessionId);
+  if (!tr) return;
+  const bar  = document.getElementById(`bar-${d.sessionId}`);
+  const pct  = document.getElementById(`pct-${d.sessionId}`);
+  const sz   = document.getElementById(`sz-${d.sessionId}`);
+  const spd  = document.getElementById(`spd-${d.sessionId}`);
+  if (bar)  bar.style.width  = `${d.pct}%`;
+  if (pct)  pct.textContent  = `${d.pct}%`;
+  if (sz)   sz.textContent   = `${_fmtBytes(d.sent)} / ${_fmtBytes(d.total)}`;
+  if (spd)  spd.textContent  = `${d.kbps} KB/s`;
+}
+
+function onDeviceDone(d, aborted) {
+  const tr = activityRows.get(d.sessionId);
+  if (!tr) return;
+  const bar = document.getElementById(`bar-${d.sessionId}`);
+  if (bar && !aborted) bar.style.width = '100%';
+  const statusCell = tr.querySelector('.activity-status');
+  const durationS  = (d.durationMs / 1000).toFixed(1);
+  if (aborted) {
+    statusCell.className   = 'activity-status activity-status--aborted';
+    statusCell.textContent = `✕ aborted (${durationS}s)`;
+  } else {
+    statusCell.className   = 'activity-status activity-status--done';
+    statusCell.textContent = `✓ done (${durationS}s)`;
+  }
+  setTimeout(() => {
+    tr.remove();
+    activityRows.delete(d.sessionId);
+    _updateCount();
+  }, aborted ? 5000 : 8000);
+}
+
+function onDeviceError(d) {
+  const tr = activityRows.get(d.sessionId);
+  if (!tr) return;
+  const statusCell = tr.querySelector('.activity-status');
+  statusCell.className   = 'activity-status activity-status--error';
+  statusCell.textContent = `✕ error`;
+  tr.title = d.error || '';
+  setTimeout(() => { tr.remove(); activityRows.delete(d.sessionId); _updateCount(); }, 8000);
+}
+
+// Seed table with any in-progress downloads that started before the page loaded
+(function seedActiveDownloads() {
+  const url = '/ota/admin/api/active-downloads' + (authToken ? `?t=${encodeURIComponent(authToken)}` : '');
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url);
+  if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+  xhr.onload = () => {
+    if (xhr.status !== 200) return;
+    try {
+      const list = JSON.parse(xhr.responseText);
+      for (const dl of list) {
+        onDeviceConnect(dl);
+        onDeviceProgress({ ...dl, pct: Math.round(dl.sent / dl.total * 100), kbps: 0 });
+      }
+    } catch (_) {}
+  };
+  xhr.send();
+})();
+
 // ── SSE — live file-update notifications ──────────────────────────────────────
 
 (function connectSSE() {
@@ -771,9 +878,14 @@ init();
   es.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
-      if (d.type === 'firmware-updated') loadFirmware();
-      else if (d.type === 'audio-updated')   loadAudio();
-      else if (d.type === 'general-updated') loadFiles();
+      if      (d.type === 'firmware-updated')  loadFirmware();
+      else if (d.type === 'audio-updated')     loadAudio();
+      else if (d.type === 'general-updated')   loadFiles();
+      else if (d.type === 'device-connect')    onDeviceConnect(d);
+      else if (d.type === 'device-progress')   onDeviceProgress(d);
+      else if (d.type === 'device-done')       onDeviceDone(d, false);
+      else if (d.type === 'device-aborted')    onDeviceDone(d, true);
+      else if (d.type === 'device-error')      onDeviceError(d);
     } catch (_) {}
   };
   es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };

@@ -820,3 +820,97 @@ body {
 
 /* ── Push table (5 cols now) ── */
 .push-table tr:hover td { background: var(--bg-raised); }
+
+/* ── Live Activity ── */
+.activity-count {
+  font-size: 12px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.activity-table th {
+  text-align: left;
+  padding: 7px 12px;
+  color: var(--text-muted);
+  font-weight: 500;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  border-bottom: 1px solid var(--border);
+}
+
+.activity-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  vertical-align: middle;
+}
+
+.activity-table tr:last-child td { border-bottom: none; }
+.activity-table tr:hover td { background: var(--bg-raised); }
+
+.activity-empty {
+  text-align: center;
+  color: var(--text-muted);
+  padding: 24px !important;
+  font-style: italic;
+}
+
+.activity-ip   { font-family: monospace; font-size: 12px; white-space: nowrap; }
+.activity-file { max-width: 180px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-speed { font-variant-numeric: tabular-nums; white-space: nowrap; color: var(--text-muted); font-size: 12px; }
+
+.activity-cat {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 3px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.activity-cat--firmware { background: #1a2a3a; color: #5ba3d9; }
+.activity-cat--audio    { background: #1a2e1a; color: #5dc45d; }
+.activity-cat--config   { background: #2e2a14; color: #c4a85d; }
+.activity-cat--general  { background: #2a1a2e; color: #a05dc4; }
+
+.activity-progress-cell { min-width: 200px; }
+
+.activity-bar-wrap {
+  height: 6px;
+  background: var(--bg-raised);
+  border-radius: 3px;
+  overflow: hidden;
+  margin-bottom: 4px;
+}
+
+.activity-bar {
+  height: 100%;
+  background: var(--accent-bright);
+  border-radius: 3px;
+  transition: width 0.3s linear;
+}
+
+.activity-pct {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  margin-right: 6px;
+}
+
+.activity-size {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.activity-status { font-size: 12px; white-space: nowrap; }
+.activity-status--active  { color: var(--accent-bright); }
+.activity-status--done    { color: #5dc45d; }
+.activity-status--aborted { color: var(--text-muted); }
+.activity-status--error   { color: var(--danger); }
