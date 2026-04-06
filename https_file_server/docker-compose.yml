@@ -182,8 +182,9 @@ services:
       - mosquitto
     labels:
       - "traefik.enable=true"
-      # signalfi-manifest handles all /ota/* paths (priority 10)
-      # signalfi-files handles /ota/v1/firmware and /ota/v1/audio (priority 20, wins)
+      # signalfi-manifest handles all /ota/* paths including file downloads.
+      # Node.js streams files directly so the admin panel can track per-device progress.
+      # signalfi-files (nginx) is kept in the stack but removed from Traefik routing.
       - "traefik.http.routers.signalfi-manifest-http.rule=Host(`apis.symphonyinteractive.ca`) && PathPrefix(`/ota`)"
       - "traefik.http.routers.signalfi-manifest-http.entrypoints=web"
       - "traefik.http.routers.signalfi-manifest-http.service=signalfi-manifest"
@@ -197,16 +198,11 @@ services:
       # - "traefik.http.routers.signalfi-manifest-https.priority=10"
 
   # ── OTA File Server (nginx) ───────────────────────────────────────────────
-  # Routes (high priority — wins over signalfi-manifest for file paths):
-  #   GET /ota/v1/firmware/<file>  → firmware binary download (Bearer token required)
-  #   GET /ota/v1/audio/<file>     → audio file download (Bearer token required)
-  #   GET /ota/health              → unauthenticated health check
-  #
-  # nginx validates token by making an internal auth_request subrequest to
-  # signalfi-manifest /ota/v1/validate, forwarding the Authorization header.
-  # Range requests supported (Accept-Ranges: bytes) for chunked firmware download.
-  #
-  # HTTPS UPGRADE: see header comment above
+  # Kept in the stack but removed from Traefik routing.
+  # File serving (firmware, audio, config) is now handled by signalfi-manifest
+  # (Node.js) so the admin panel can track per-device download progress via SSE.
+  # Re-enable Traefik labels here (and lower signalfi-manifest priority) to
+  # revert to direct nginx serving if Node.js overhead becomes a concern.
   signalfi-files:
     image: nginx:alpine
     container_name: signalfi-files
@@ -220,19 +216,7 @@ services:
     networks:
       - root_default
     labels:
-      - "traefik.enable=true"
-      # Priority 20 — takes precedence over signalfi-manifest router for file paths
-      - "traefik.http.routers.signalfi-files-http.rule=Host(`apis.symphonyinteractive.ca`) && (PathPrefix(`/ota/v1/firmware`) || PathPrefix(`/ota/v1/audio`) || PathPrefix(`/ota/v1/config`) || Path(`/ota/health`))"
-      - "traefik.http.routers.signalfi-files-http.entrypoints=web"
-      - "traefik.http.routers.signalfi-files-http.service=signalfi-files"
-      - "traefik.http.routers.signalfi-files-http.priority=20"
-      - "traefik.http.services.signalfi-files.loadbalancer.server.port=80"
-      # HTTPS upgrade — uncomment these and add middlewares=redirect-https to -http router:
-      # - "traefik.http.routers.signalfi-files-https.rule=Host(`apis.symphonyinteractive.ca`) && (PathPrefix(`/ota/v1/firmware`) || PathPrefix(`/ota/v1/audio`) || Path(`/ota/health`))"
-      # - "traefik.http.routers.signalfi-files-https.entrypoints=websecure"
-      # - "traefik.http.routers.signalfi-files-https.tls.certresolver=letsencrypt"
-      # - "traefik.http.routers.signalfi-files-https.service=signalfi-files"
-      # - "traefik.http.routers.signalfi-files-https.priority=20"
+      - "traefik.enable=false"
 
   # ── SFTP Server (sftpgo) ──────────────────────────────────────────────────
   # Admin uploads for firmware, audio, manifests, tokens

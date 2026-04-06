@@ -1114,7 +1114,9 @@ function streamFile(req, res, filePath, category) {
 
   const stat      = fs.statSync(filePath);
   const total     = stat.size;
-  const ip        = req.headers['x-real-ip'] || req.socket.remoteAddress || 'unknown';
+  const ip        = req.headers['x-real-ip']
+                  || (req.headers['x-forwarded-for'] || '').split(',')[0].trim()
+                  || req.socket.remoteAddress || 'unknown';
   const filename  = path.basename(filePath);
   const sessionId = crypto.randomBytes(8).toString('hex');
   const startedAt = Date.now();
