@@ -139,11 +139,12 @@ function connectMqtt() {
       return;
     }
 
-    // scout/<deviceId> — regular device status (2-segment topic only)
-    if (parts.length === 2) {
+    // scout/<deviceId>/$state — regular device status published by MQTTsendStatus()
+    // (mqtt_publish_topic = scout/<MAC>/$state, i.e. 3 segments ending in $state)
+    if (parts.length === 3 && parts[2] === '$state') {
       try {
         const payload = JSON.parse(message.toString());
-        // Keep IP ↔ deviceId mapping current so streamFile can correlate HTTP sessions
+        // Keep IP ↔ deviceId mapping current so abort detection in streamFile works
         if (payload.ip) {
           deviceIp.set(deviceId, payload.ip);
           ipToDevice.set(payload.ip, deviceId);
@@ -215,6 +216,23 @@ function _handleMqttOtaProgress(deviceId, data) {
     pct:  Math.round(received / total * 100),
     kbps: dl.kbps,
   });
+
+  // Safety net: if the device reaches 100% but idle never arrives (e.g. the idle
+  // message is lost or arrives on a topic segment we don't match), auto-close the
+  // row after 5 s so the panel doesn't stay stuck at "100% active".
+  if (received >= total) {
+    setTimeout(() => {
+      if (mqttDownloads.has(deviceId) && mqttDownloads.get(deviceId).file === file) {
+        const finished = mqttDownloads.get(deviceId);
+        mqttDownloads.delete(deviceId);
+        sseEmit('device-done', {
+          sessionId: deviceId, ip: finished.ip, file: finished.file,
+          category: finished.category, total: finished.total,
+          durationMs: Date.now() - finished.startedAt,
+        });
+      }
+    }, 5000);
+  }
 }
 
 function mqttPublish(topic, payload, retain = false) {
