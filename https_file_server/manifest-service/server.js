@@ -708,7 +708,7 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
 // Derives version from filename (fw-x.y.z.hex), generates token, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
-  const { firmwareFile, nodePath, broadcast } = req.body || {};
+  const { firmwareFile, nodePath, broadcast, backup } = req.body || {};
 
   if (!firmwareFile || !safeFilename(firmwareFile))
     return res.status(400).json({ error: 'firmwareFile required' });
@@ -739,6 +739,10 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
         : generateManifestId();
     } catch (_) { manifestId = generateManifestId(); }
 
+    // Validate backup value — only accepted values are 'file', 'program', or absent
+    const VALID_BACKUP = ['file', 'program'];
+    const backupMode = backup && VALID_BACKUP.includes(backup) ? backup : undefined;
+
     const manifest = {
       manifestId,
       type:          'firmware',
@@ -749,6 +753,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
       compatibleFrom: ['*'],
       downloadToken: tokenHex,
       delaySeconds:  0,
+      backup:        backupMode,
       firmware: {
         version,
         url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/firmware/${firmwareFile}`,

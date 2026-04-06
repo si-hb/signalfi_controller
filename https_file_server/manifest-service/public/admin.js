@@ -155,13 +155,26 @@ function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh, makeActi
 
 // ── Push target dialog (shared) ───────────────────────────────────────────────
 
-function showPushTargetDialog(title, confirmLabel, onConfirm) {
+// showBackup: if true, renders a "Firmware Backup" selector in the dialog.
+// onConfirm receives { broadcast, nodePath, backup } where backup is
+// 'file' | 'program' | undefined.
+function showPushTargetDialog(title, confirmLabel, onConfirm, showBackup = false) {
   const existing = document.getElementById('push-target-overlay');
   if (existing) existing.remove();
 
   const overlay = document.createElement('div');
   overlay.id = 'push-target-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:150';
+
+  const backupHtml = showBackup ? `
+    <div>
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Firmware Backup</label>
+      <select id="pt-backup" style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-size:13px;outline:none">
+        <option value="">None — keep existing backup</option>
+        <option value="program">program — snapshot running firmware before flashing</option>
+        <option value="file">file — use incoming firmware as backup before flashing</option>
+      </select>
+    </div>` : '';
 
   const box = document.createElement('div');
   box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:480px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:14px';
@@ -176,6 +189,7 @@ function showPushTargetDialog(title, confirmLabel, onConfirm) {
       <input type="text" id="pt-node-path" placeholder="e.g. buildingA/1stfloor/cafeteria"
         style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;outline:none">
     </div>
+    ${backupHtml}
     <div id="pt-topic-preview" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);padding:6px 10px;background:var(--bg-raised);border-radius:4px">
       Topic: scout/$group/…/$action
     </div>
@@ -212,9 +226,10 @@ function showPushTargetDialog(title, confirmLabel, onConfirm) {
 
   box.querySelector('#pt-cancel').addEventListener('click', () => overlay.remove());
   confirmBtn.addEventListener('click', () => {
-    const isBc = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
+    const isBc   = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
+    const backup = box.querySelector('#pt-backup')?.value || undefined;
     overlay.remove();
-    onConfirm({ broadcast: isBc, nodePath: isBc ? undefined : nodeInput.value.trim() });
+    onConfirm({ broadcast: isBc, nodePath: isBc ? undefined : nodeInput.value.trim(), backup });
   });
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
@@ -226,11 +241,11 @@ function makeFirmwarePushBtn(f) {
   btn.className = 'btn btn-primary btn-sm';
   btn.textContent = 'Push to Devices';
   btn.addEventListener('click', () => {
-    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath }) => {
+    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, backup }) => {
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-firmware', {
           method: 'POST',
-          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined }),
+          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, backup: backup || undefined }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -240,7 +255,7 @@ function makeFirmwarePushBtn(f) {
           toast(`Push failed: ${e.error || res.status}`, 'error');
         }
       } catch (_) { toast('Push failed', 'error'); }
-    });
+    }, true);
   });
   return [btn];
 }
