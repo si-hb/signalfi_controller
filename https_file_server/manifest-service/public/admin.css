@@ -914,3 +914,25 @@ body {
 .activity-status--done    { color: #5dc45d; }
 .activity-status--aborted { color: var(--text-muted); }
 .activity-status--error   { color: var(--danger); }
+
+/* ── Audio rename inline edit ── */
+.rename-input {
+  width: 90px;
+  padding: 2px 6px;
+  font-size: 13px;
+  font-family: monospace;
+  background: var(--bg-raised);
+  border: 1px solid var(--accent);
+  border-radius: 3px;
+  color: var(--text-primary);
+  outline: none;
+}
+.rename-input:focus { border-color: var(--accent-bright); }
+
+.rename-hint {
+  font-size: 11px;
+  margin-left: 4px;
+  font-family: monospace;
+}
+.rename-hint--ok   { color: var(--accent-bright); }
+.rename-hint--warn { color: var(--text-muted); }

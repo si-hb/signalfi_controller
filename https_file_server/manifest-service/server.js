@@ -358,6 +358,18 @@ app.get('/ota/admin/api/files/firmware', (_req, res) => {
   res.json(files);
 });
 
+// ── Audio filename sanitization ───────────────────────────────────────────────
+// FAT32 8.3 limit: base max 8 chars.  Spaces → underscore, strip unsafe chars,
+// truncate, append .wav.  Applied on upload and rename.
+
+function sanitizeAudioName(raw) {
+  const base = path.basename(raw, path.extname(raw))
+    .replace(/\s+/g, '_')
+    .replace(/[^A-Za-z0-9_\-]/g, '')
+    .slice(0, 8);
+  return (base || 'audio') + '.wav';
+}
+
 app.get('/ota/admin/api/files/audio', (_req, res) => {
   // CRC32/SHA256 omitted from listing — computed at push time only (files can be 100MB+)
   res.json(listDir(AUDIO_ROOT, '.wav'));
@@ -439,8 +451,7 @@ app.post('/ota/admin/api/files/audio', audioUpload.single('file'), async (req, r
 
   const tmpPath  = req.file.path;
   const origName = req.file.originalname;
-  const baseName = path.basename(origName, path.extname(origName));
-  const outName  = baseName + '.wav';
+  const outName  = sanitizeAudioName(origName);
   const outPath  = path.join(AUDIO_ROOT, outName);
 
   const isWav    = /\.wav$/i.test(origName);
@@ -531,6 +542,25 @@ function makeDeleteRoute(root) {
 app.delete('/ota/admin/api/files/firmware/:filename', makeDeleteRoute(FIRMWARE_ROOT));
 app.delete('/ota/admin/api/files/audio/:filename',    makeDeleteRoute(AUDIO_ROOT));
 app.delete('/ota/admin/api/files/general/:filename',  makeDeleteRoute(FILES_ROOT));
+
+app.patch('/ota/admin/api/files/audio/:filename', adminAuth, (req, res) => {
+  const oldName = req.params.filename;
+  if (!safeFilename(oldName)) return res.status(400).json({ error: 'invalid filename' });
+  const rawNew = (req.body.newName || '').trim();
+  if (!rawNew) return res.status(400).json({ error: 'newName required' });
+  const newName = sanitizeAudioName(rawNew);
+  const oldPath = path.join(AUDIO_ROOT, oldName);
+  const newPath = path.join(AUDIO_ROOT, newName);
+  if (!fs.existsSync(oldPath)) return res.status(404).json({ error: 'file not found' });
+  if (oldName === newName) return res.json({ name: newName });
+  if (fs.existsSync(newPath)) return res.status(409).json({ error: `"${newName}" already exists` });
+  try {
+    fs.renameSync(oldPath, newPath);
+    console.log(`[admin] audio renamed: "${oldName}" → "${newName}"`);
+    sseEmit('audio-updated', { name: newName, renamed: true, oldName });
+    res.json({ name: newName });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
 
 app.delete('/ota/admin/api/manifests/:modelId', (req, res) => {
   const { modelId } = req.params;

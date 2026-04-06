@@ -400,6 +400,83 @@ function _updateAudioToolbar() {
   remBtn.disabled      = checked.length === 0;
 }
 
+// ── Audio filename sanitization (mirrors server logic) ────────────────────────
+
+function sanitizeAudioBase(raw) {
+  return raw.replace(/\s+/g, '_').replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 8);
+}
+
+function _startRename(filename, tr) {
+  const base     = filename.replace(/\.wav$/i, '');
+  const nameCell = tr.querySelector('.file-name');
+  const actCell  = tr.querySelector('td:last-child');
+
+  nameCell.dataset.orig = nameCell.textContent;
+  nameCell.textContent  = '';
+
+  const inp = document.createElement('input');
+  inp.type        = 'text';
+  inp.className   = 'rename-input';
+  inp.value       = base;
+  inp.maxLength   = 8;
+  inp.spellcheck  = false;
+  nameCell.appendChild(inp);
+
+  const hint = document.createElement('span');
+  hint.className = 'rename-hint';
+  nameCell.appendChild(hint);
+
+  inp.addEventListener('input', () => {
+    const s = sanitizeAudioBase(inp.value);
+    hint.textContent = s ? ` → ${s}.wav` : '';
+    hint.className   = s ? 'rename-hint rename-hint--ok' : 'rename-hint rename-hint--warn';
+  });
+  inp.dispatchEvent(new Event('input'));
+
+  actCell.dataset.origHtml = actCell.innerHTML;
+  actCell.innerHTML        = '';
+  actCell.style.cssText    = 'display:flex;gap:6px;align-items:center;justify-content:flex-end';
+
+  const cancelBtn = document.createElement('button');
+  cancelBtn.className   = 'btn btn-secondary btn-sm';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.addEventListener('click', () => renderAudioTable(_audioFiles));
+
+  const saveBtn = document.createElement('button');
+  saveBtn.className   = 'btn btn-primary btn-sm';
+  saveBtn.textContent = 'Save';
+
+  const doSave = async () => {
+    const newBase = sanitizeAudioBase(inp.value);
+    if (!newBase) { toast('Name cannot be empty', 'error'); return; }
+    const newName = newBase + '.wav';
+    try {
+      const r = await apiFetch(`/ota/admin/api/files/audio/${encodeURIComponent(filename)}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ newName: newBase }),
+      });
+      if (r.ok) {
+        toast(`Renamed to ${newName}`, 'success');
+        loadAudio();
+      } else {
+        const e = await r.json().catch(() => ({}));
+        toast(`Rename failed: ${e.error || r.status}`, 'error');
+      }
+    } catch (_) { toast('Rename failed', 'error'); }
+  };
+
+  saveBtn.addEventListener('click', doSave);
+  inp.addEventListener('keydown', e => {
+    if (e.key === 'Enter')  doSave();
+    if (e.key === 'Escape') renderAudioTable(_audioFiles);
+  });
+
+  actCell.appendChild(cancelBtn);
+  actCell.appendChild(saveBtn);
+  inp.focus();
+  inp.select();
+}
+
 function renderAudioTable(files) {
   _audioFiles = files;
   _stopPreview();
@@ -429,6 +506,12 @@ function renderAudioTable(files) {
     prevBtn.textContent = '▶ Preview';
     prevBtn.addEventListener('click', () => _togglePreview(f.name, prevBtn));
     cell.appendChild(prevBtn);
+
+    const renameBtn = document.createElement('button');
+    renameBtn.className   = 'btn btn-secondary btn-sm';
+    renameBtn.textContent = 'Rename';
+    renameBtn.addEventListener('click', () => _startRename(f.name, tr));
+    cell.appendChild(renameBtn);
 
     cell.appendChild(
       makeDeleteBtn(f.name, async () => {
