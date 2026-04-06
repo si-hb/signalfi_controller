@@ -868,6 +868,13 @@ function _updateCount() {
 }
 
 function onDeviceConnect(d) {
+  // Multi-file transfer: if a row already exists for this device, evict it from
+  // the DOM immediately so the old row doesn't linger while the new file runs.
+  // The old row's pending setTimeout (from onDeviceDone) checks TR identity before
+  // touching activityRows, so evicting the DOM node here is safe.
+  const existing = activityRows.get(d.sessionId);
+  if (existing) existing.remove();
+
   const tbody = document.getElementById('activity-tbody');
   const tr = document.createElement('tr');
   tr.id = `dl-${d.sessionId}`;
@@ -919,8 +926,12 @@ function onDeviceDone(d, aborted) {
   }
   setTimeout(() => {
     tr.remove();
-    activityRows.delete(d.sessionId);
-    _updateCount();
+    // Only remove the map entry if it still points to this exact TR — a new file
+    // for the same device may have already replaced it with a fresh row.
+    if (activityRows.get(d.sessionId) === tr) {
+      activityRows.delete(d.sessionId);
+      _updateCount();
+    }
   }, aborted ? 5000 : 8000);
 }
 
@@ -931,7 +942,13 @@ function onDeviceError(d) {
   statusCell.className   = 'activity-status activity-status--error';
   statusCell.textContent = `✕ error`;
   tr.title = d.error || '';
-  setTimeout(() => { tr.remove(); activityRows.delete(d.sessionId); _updateCount(); }, 8000);
+  setTimeout(() => {
+    tr.remove();
+    if (activityRows.get(d.sessionId) === tr) {
+      activityRows.delete(d.sessionId);
+      _updateCount();
+    }
+  }, 8000);
 }
 
 // Seed table with any in-progress downloads that started before the page loaded
