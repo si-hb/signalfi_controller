@@ -1131,21 +1131,33 @@ function streamFile(req, res, filePath, category) {
   activeDownloads.set(sessionId, dl);
   sseEmit('device-connect', { sessionId, ip, file: filename, category, total, startedAt });
 
-  const stream = fs.createReadStream(filePath);
+  const stream = fs.createReadStream(filePath, { highWaterMark: 65536 });
   let lastReported = 0;
 
-  stream.on('data', chunk => {
-    dl.sent += chunk.length;
+  const _reportProgress = () => {
     const now = Date.now();
     if (dl.sent - lastReported >= 65536 || now - dl.lastReportAt >= 400) {
-      lastReported      = dl.sent;
-      dl.lastReportAt   = now;
-      const elapsedSec  = (now - startedAt) / 1000 || 0.001;
-      const kbps        = Math.round(dl.sent / elapsedSec / 1024);
+      lastReported    = dl.sent;
+      dl.lastReportAt = now;
+      const elapsedSec = (now - startedAt) / 1000 || 0.001;
+      const kbps       = Math.round(dl.sent / elapsedSec / 1024);
       sseEmit('device-progress', {
         sessionId, ip, file: filename, category,
         sent: dl.sent, total, pct: Math.round(dl.sent / total * 100), kbps,
       });
+    }
+  };
+
+  // Manual backpressure pump: only advance dl.sent when the write buffer
+  // accepts data, so progress tracks actual network delivery speed, not disk
+  // read speed (which is what stream.pipe() would measure).
+  stream.on('data', chunk => {
+    dl.sent += chunk.length;
+    _reportProgress();
+    const ok = res.write(chunk);
+    if (!ok) {
+      stream.pause();
+      res.once('drain', () => stream.resume());
     }
   });
 
@@ -1160,14 +1172,14 @@ function streamFile(req, res, filePath, category) {
     }
   };
 
-  stream.on('end',   ()    => _finish(false));
+  stream.on('end',   ()    => { res.end(); _finish(false); });
   stream.on('error', (err) => {
     activeDownloads.delete(sessionId);
     sseEmit('device-error', { sessionId, ip, file: filename, category, error: err.message });
+    if (!res.headersSent) res.status(500).end();
+    else res.end();
   });
   req.on('close', () => { stream.destroy(); _finish(true); });
-
-  stream.pipe(res);
 }
 
 // Firmware, audio, config, general files — all served via streamFile so the
