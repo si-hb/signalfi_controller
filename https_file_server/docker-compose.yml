@@ -4,24 +4,18 @@ version: "3"
 # Single compose file for all services on apis.symphonyinteractive.ca
 #
 # OTA endpoints (single hostname, path-based routing):
-#   http://apis.symphonyinteractive.ca/ota/v1/manifest   → signalfi-manifest
-#   http://apis.symphonyinteractive.ca/ota/v1/firmware/  → signalfi-files (nginx)
-#   http://apis.symphonyinteractive.ca/ota/v1/audio/     → signalfi-files (nginx)
-#   http://apis.symphonyinteractive.ca/ota/v1/report     → signalfi-manifest
+#   https://apis.symphonyinteractive.ca/ota/v1/manifest  → signalfi-manifest
+#   https://apis.symphonyinteractive.ca/ota/v1/firmware/ → signalfi-files (nginx)
+#   https://apis.symphonyinteractive.ca/ota/v1/audio/    → signalfi-files (nginx)
+#   https://apis.symphonyinteractive.ca/ota/v1/report    → signalfi-manifest
 #   sftp://apis.symphonyinteractive.ca:2022               → sftpgo (admin uploads)
 #
-# HTTP/MQTT PHASE (current):
-#   - OTA and manifest served over HTTP on apis.symphonyinteractive.ca
-#   - MQTT on plain :1883 / WebSocket :9001
-#   - HTTPS labels are commented but ready — see upgrade notes below
-#
-# TO UPGRADE TO HTTPS (when firmware testing is complete):
-#   1. Uncomment the -https router labels for signalfi-manifest and signalfi-files
-#   2. Add "middlewares=redirect-https" to each -http router label
-#   3. docker compose up -d signalfi-manifest signalfi-files
-#   4. Traefik auto-issues Let's Encrypt cert for apis.symphonyinteractive.ca
-#   5. Update manifests: change url fields from http:// to https://
-#   6. Update device firmware URLs from http:// to https://
+# HTTPS PHASE (current):
+#   - OTA served over HTTPS using the Signalfi custom PKI cert
+#   - HTTP also kept active (firmware falls back to HTTP on TLS failure)
+#   - Traefik file provider loads ./certs/signalfi-web.fullchain.pem + .key
+#   - Dynamic TLS config in ./traefik-dynamic/tls.yml
+#   - Devices trust Signalfi Root CA (compiled into firmware, NOT Let's Encrypt)
 #
 # TO UPGRADE TO MQTTS (when all devices support TLS):
 #   1. Copy TLS cert/key into /root/config/ and add listener 8883 to mosquitto.conf
@@ -32,7 +26,7 @@ version: "3"
 
 services:
 
-  # ── Traefik — reverse proxy + Let's Encrypt ──────────────────────────────
+  # ── Traefik — reverse proxy + custom Signalfi PKI cert ──────────────────
   traefik:
     image: traefik:v3
     command:
@@ -43,6 +37,11 @@ services:
       - "--providers.docker=true"
       - "--providers.docker.exposedbydefault=false"
       - "--providers.docker.network=root_default"
+      # File provider watches traefik-dynamic/ for the custom TLS cert config.
+      # Traefik reloads TLS certs on file change without a restart.
+      - "--providers.file.directory=/etc/traefik/dynamic"
+      - "--providers.file.watch=true"
+      # Let's Encrypt kept for node-red / other subdomains that use browser certs
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge=true"
       - "--certificatesresolvers.letsencrypt.acme.httpchallenge.entrypoint=web"
       - "--certificatesresolvers.letsencrypt.acme.email=admin@symphonyinteractive.ca"
@@ -55,6 +54,10 @@ services:
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - /root/acme.json:/acme.json
+      # Custom Signalfi cert — mounted read-only; referenced by traefik-dynamic/tls.yml
+      - ./certs:/certs:ro
+      # Dynamic config directory — watched by the file provider above
+      - ./traefik-dynamic:/etc/traefik/dynamic:ro
     networks:
       - root_default
     labels:
@@ -166,13 +169,13 @@ services:
       - TOKEN_ROOT=/opt/signalfi/tokens
       - REPORTS_ROOT=/opt/signalfi/reports
       - CONFIG_ROOT=/opt/signalfi/configs
-      - CONFIG_BASE_URL=http://apis.symphonyinteractive.ca/ota/v1/config
+      - CONFIG_BASE_URL=https://apis.symphonyinteractive.ca/ota/v1/config
       - MQTT_BROKER_URL=mqtt://signalfi-svc:OtaService2024!@mosquitto:1883
       - MQTT_TOPIC_PREFIX=scout
       - FIRMWARE_ROOT=/opt/signalfi/files/firmware
       - AUDIO_ROOT=/opt/signalfi/files/audio
       - FILES_ROOT=/opt/signalfi/files/general
-      - FILES_BASE_URL=http://apis.symphonyinteractive.ca
+      - FILES_BASE_URL=https://apis.symphonyinteractive.ca
       - FILES_PATH_PREFIX=/ota/v1
       - ADMIN_TOKEN=signalfiadmin2026
       - DEVICE_MODEL=SF-100
@@ -190,12 +193,23 @@ services:
       - "traefik.http.routers.signalfi-manifest-http.service=signalfi-manifest"
       - "traefik.http.routers.signalfi-manifest-http.priority=10"
       - "traefik.http.services.signalfi-manifest.loadbalancer.server.port=3001"
-      # HTTPS upgrade — uncomment these and add middlewares=redirect-https to -http router:
-      # - "traefik.http.routers.signalfi-manifest-https.rule=Host(`apis.symphonyinteractive.ca`) && PathPrefix(`/ota`)"
-      # - "traefik.http.routers.signalfi-manifest-https.entrypoints=websecure"
-      # - "traefik.http.routers.signalfi-manifest-https.tls.certresolver=letsencrypt"
-      # - "traefik.http.routers.signalfi-manifest-https.service=signalfi-manifest"
-      # - "traefik.http.routers.signalfi-manifest-https.priority=10"
+      # HTTPS via Signalfi custom PKI cert (loaded by file provider from ./certs/).
+      # Uses tls=true — Traefik picks up the cert automatically from the dynamic config.
+      # NO certresolver: devices trust Signalfi Root CA, not Let's Encrypt.
+      - "traefik.http.routers.signalfi-manifest-https.rule=Host(`apis.symphonyinteractive.ca`) && PathPrefix(`/ota`)"
+      - "traefik.http.routers.signalfi-manifest-https.entrypoints=websecure"
+      - "traefik.http.routers.signalfi-manifest-https.tls=true"
+      - "traefik.http.routers.signalfi-manifest-https.service=signalfi-manifest"
+      - "traefik.http.routers.signalfi-manifest-https.priority=10"
+      # Admin subdomain — Let's Encrypt cert for human browser access.
+      # server.js root redirect (/ → /ota/admin) means the panel is at https://admin.apis.symphonyinteractive.ca
+      - "traefik.http.routers.signalfi-admin-http.rule=Host(`admin.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.signalfi-admin-http.entrypoints=web"
+      - "traefik.http.routers.signalfi-admin-http.service=signalfi-manifest"
+      - "traefik.http.routers.signalfi-admin-https.rule=Host(`admin.apis.symphonyinteractive.ca`)"
+      - "traefik.http.routers.signalfi-admin-https.entrypoints=websecure"
+      - "traefik.http.routers.signalfi-admin-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.signalfi-admin-https.service=signalfi-manifest"
 
   # ── OTA File Server (nginx) ───────────────────────────────────────────────
   # Kept in the stack but removed from Traefik routing.

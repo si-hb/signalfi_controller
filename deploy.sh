@@ -12,7 +12,28 @@ set -euo pipefail
 REMOTE_HOST="apis.symphonyinteractive.ca"
 REMOTE_APP_PATH="/opt/signalfi_controller"    # git clone on existing server
 
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CERTS_DIR="$SCRIPT_DIR/https_file_server/certs"
+
 ssh_run() { ssh "$REMOTE_HOST" "$@"; }
+
+# Copy Signalfi TLS cert + key to a server's https_file_server/certs/ dir.
+# Called during new-server setup and stack deploy.
+deploy_certs() {
+    local target_host="${1:?usage: deploy_certs host [path]}"
+    local target_path="${2:-/opt/signalfi_controller}"
+    echo "==> Copying Signalfi TLS certs → root@$target_host:$target_path/https_file_server/certs/"
+    [[ -f "$CERTS_DIR/signalfi-web.fullchain.pem" ]] || {
+        echo "ERROR: cert not found at $CERTS_DIR/signalfi-web.fullchain.pem" >&2; exit 1
+    }
+    [[ -f "$CERTS_DIR/signalfi-web.key" ]] || {
+        echo "ERROR: key not found at $CERTS_DIR/signalfi-web.key" >&2; exit 1
+    }
+    ssh "root@$target_host" "mkdir -p $target_path/https_file_server/certs"
+    scp "$CERTS_DIR/signalfi-web.fullchain.pem" "$CERTS_DIR/signalfi-web.key" \
+        "root@$target_host:$target_path/https_file_server/certs/"
+    echo "==> TLS certs deployed."
+}
 
 commit_and_push() {
     git add -A
@@ -60,21 +81,22 @@ deploy_app() {
 }
 
 deploy_stack() {
-    # NEW SERVER ONLY — uses repo-root docker-compose.yml
+    # NEW SERVER ONLY — uses https_file_server/docker-compose.yml
     local target_host="${REMOTE_TARGET:-}"
-    local target_path="${REMOTE_TARGET_PATH:-/opt/signalfi}"
+    local target_path="${REMOTE_TARGET_PATH:-/opt/signalfi_controller}"
     [[ -z "$target_host" ]] && { echo "Set REMOTE_TARGET=hostname before running stack deploy." >&2; exit 1; }
     echo ""
     echo "==> Full stack rebuild on $target_host..."
     commit_and_push "${COMMIT_MSG:-}"
-    ssh "root@$target_host" "cd $target_path && git pull && docker compose up -d --build"
+    deploy_certs "$target_host" "$target_path"
+    ssh "root@$target_host" "cd $target_path/https_file_server && docker compose up -d --build"
     echo "==> Full stack deployed on $target_host."
 }
 
 deploy_setup() {
-    # NEW SERVER ONLY
+    # NEW SERVER ONLY — git clone + certs + setup instructions
     local target_host="${REMOTE_TARGET:-}"
-    local target_path="${REMOTE_TARGET_PATH:-/opt/signalfi}"
+    local target_path="${REMOTE_TARGET_PATH:-/opt/signalfi_controller}"
     [[ -z "$target_host" ]] && { echo "Set REMOTE_TARGET=hostname before running setup." >&2; exit 1; }
     local repo_url
     repo_url=$(git remote get-url origin)
@@ -84,11 +106,16 @@ deploy_setup() {
     ssh "root@$target_host" "
       git clone $repo_url $target_path 2>/dev/null || (cd $target_path && git pull)
     "
+    deploy_certs "$target_host" "$target_path"
     echo ""
     echo "Next steps:"
-    echo "  1. Copy .env to root@$target_host:$target_path/.env"
-    echo "  2. ssh root@$target_host 'cd $target_path && ./setup.sh'"
+    echo "  1. Copy .env to root@$target_host:$target_path/https_file_server/.env"
+    echo "  2. ssh root@$target_host 'cd $target_path/https_file_server && ./setup.sh'"
     echo "  3. REMOTE_TARGET=$target_host REMOTE_TARGET_PATH=$target_path ./deploy.sh stack"
+    echo ""
+    echo "  Note: acme.json must exist on the new server:"
+    echo "    ssh root@$target_host 'touch /root/acme.json && chmod 600 /root/acme.json'"
+    echo "    (Required for Traefik Let's Encrypt — admin.* subdomain uses LE cert)"
 }
 
 # ── entry point ───────────────────────────────────────────────────────────────

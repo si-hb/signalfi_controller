@@ -401,6 +401,9 @@ function adminAuth(req, res, next) {
 
 // ── Admin static UI ───────────────────────────────────────────────────────────
 
+// Convenience redirect: https://admin.apis.symphonyinteractive.ca → /ota/admin
+app.get('/', (_req, res) => res.redirect(301, '/ota/admin'));
+
 app.use('/ota/admin', express.static(path.join(__dirname, 'public')));
 app.use('/ota/admin/api', adminAuth);
 

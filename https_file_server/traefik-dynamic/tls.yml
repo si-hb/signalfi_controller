@@ -1,0 +1,13 @@
+# Traefik dynamic TLS configuration — Signalfi custom certificate
+#
+# This file is watched by Traefik's file provider (see docker-compose.yml).
+# Traefik picks it up automatically on change without a restart.
+#
+# The cert chain includes the Signalfi Intermediate CA so that Teensy devices
+# trusting only the Signalfi Root CA can verify the full path:
+#   signalfi-root-ca → intermediate → apis.symphonyinteractive.ca (leaf)
+
+tls:
+  certificates:
+    - certFile: /certs/signalfi-web.fullchain.pem
+      keyFile:  /certs/signalfi-web.key
