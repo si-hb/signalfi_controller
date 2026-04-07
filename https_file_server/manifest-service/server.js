@@ -976,7 +976,7 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
 // Derives version from filename (fw-x.y.z.hex), generates token, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
-  const { firmwareFile, nodePath, broadcast, backup, progress } = req.body || {};
+  const { firmwareFile, nodePath, broadcast, backup, progress, force } = req.body || {};
 
   if (!firmwareFile || !safeFilename(firmwareFile))
     return res.status(400).json({ error: 'firmwareFile required' });
@@ -1029,6 +1029,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
         crc32:  fileCrc32(fwPath),
         sha256: fileSha256(fwPath),
         size:   fs.statSync(fwPath).size,
+        force:  force ? true : undefined,
       },
     };
 

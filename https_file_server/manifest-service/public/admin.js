@@ -155,16 +155,23 @@ function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh, makeActi
 
 // ── Push target dialog (shared) ───────────────────────────────────────────────
 
-// showBackup: if true, renders a "Firmware Backup" selector in the dialog.
-// onConfirm receives { broadcast, nodePath, backup } where backup is
-// 'file' | 'program' | undefined.
-function showPushTargetDialog(title, confirmLabel, onConfirm, showBackup = false) {
+// Options: { showBackup, showForce }
+// onConfirm receives { broadcast, nodePath, backup, force }
+// Node path and broadcast/group selection are persisted in localStorage so the
+// last-used value is pre-filled on every popup regardless of which section
+// (firmware / audio / files) opened it.
+const _PT_STORAGE_PATH = 'push-node-path';
+const _PT_STORAGE_MODE = 'push-node-mode';
+
+function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = false, showForce = false } = {}) {
   const existing = document.getElementById('push-target-overlay');
   if (existing) existing.remove();
 
   const overlay = document.createElement('div');
   overlay.id = 'push-target-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:150';
+
+  const savedMode = localStorage.getItem(_PT_STORAGE_MODE) || 'group';
 
   const backupHtml = showBackup ? `
     <div>
@@ -176,13 +183,19 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, showBackup = false
       </select>
     </div>` : '';
 
+  const forceHtml = showForce ? `
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="pt-force" style="width:14px;height:14px;cursor:pointer">
+      Force reflash — skip version check on device
+    </label>` : '';
+
   const box = document.createElement('div');
   box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:480px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:14px';
   box.innerHTML = `
     <h3 style="font-size:14px;margin:0">${title}</h3>
     <div class="radio-group">
-      <label class="radio-item"><input type="radio" name="pt-radio" value="group" checked> Group — node path</label>
-      <label class="radio-item"><input type="radio" name="pt-radio" value="broadcast"> Broadcast — all devices</label>
+      <label class="radio-item"><input type="radio" name="pt-radio" value="group"${savedMode === 'group' ? ' checked' : ''}> Group — node path</label>
+      <label class="radio-item"><input type="radio" name="pt-radio" value="broadcast"${savedMode === 'broadcast' ? ' checked' : ''}> Broadcast — all devices</label>
     </div>
     <div id="pt-node-wrap">
       <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Node Path</label>
@@ -190,6 +203,7 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, showBackup = false
         style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;outline:none">
     </div>
     ${backupHtml}
+    ${forceHtml}
     <div id="pt-topic-preview" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);padding:6px 10px;background:var(--bg-raised);border-radius:4px">
       Topic: scout/$group/…/$action
     </div>
@@ -207,6 +221,9 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, showBackup = false
   const topicPrev  = box.querySelector('#pt-topic-preview');
   const bcWarn     = box.querySelector('#pt-broadcast-warn');
   const confirmBtn = box.querySelector('#pt-confirm');
+
+  // Restore saved node path
+  nodeInput.value = localStorage.getItem(_PT_STORAGE_PATH) || '';
 
   function update() {
     const isBc = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
@@ -228,8 +245,12 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, showBackup = false
   confirmBtn.addEventListener('click', () => {
     const isBc   = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
     const backup = box.querySelector('#pt-backup')?.value || undefined;
+    const force  = box.querySelector('#pt-force')?.checked || false;
+    // Persist for next popup
+    localStorage.setItem(_PT_STORAGE_MODE, isBc ? 'broadcast' : 'group');
+    if (!isBc) localStorage.setItem(_PT_STORAGE_PATH, nodeInput.value.trim());
     overlay.remove();
-    onConfirm({ broadcast: isBc, nodePath: isBc ? undefined : nodeInput.value.trim(), backup });
+    onConfirm({ broadcast: isBc, nodePath: isBc ? undefined : nodeInput.value.trim(), backup, force });
   });
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
@@ -241,12 +262,12 @@ function makeFirmwarePushBtn(f) {
   btn.className = 'btn btn-primary btn-sm';
   btn.textContent = 'Push to Devices';
   btn.addEventListener('click', () => {
-    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, backup }) => {
+    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, backup, force }) => {
       try {
         const ledProgress = document.getElementById('firmware-led-progress')?.checked ?? true;
         const res = await apiFetch('/ota/admin/api/ota/push-firmware', {
           method: 'POST',
-          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, backup: backup || undefined, progress: ledProgress || undefined }),
+          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, backup: backup || undefined, progress: ledProgress || undefined, force: force || undefined }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -256,7 +277,7 @@ function makeFirmwarePushBtn(f) {
           toast(`Push failed: ${e.error || res.status}`, 'error');
         }
       } catch (_) { toast('Push failed', 'error'); }
-    }, true);
+    }, { showBackup: true, showForce: true });
   });
   return [btn];
 }
