@@ -203,12 +203,19 @@ services:
       - "traefik.http.routers.signalfi-manifest-https.priority=10"
       # Admin subdomain — Let's Encrypt cert for human browser access.
       # server.js root redirect (/ → /ota/admin) means the panel is at https://admin.apis.symphonyinteractive.ca
+      # Rate-limit: 5 req/s avg, burst 10 — throttles bearer token brute-force attempts.
+      # HTTP redirects to HTTPS so tokens are never sent in plaintext.
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.average=5"
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.burst=10"
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.period=1s"
       - "traefik.http.routers.signalfi-admin-http.rule=Host(`admin.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.signalfi-admin-http.entrypoints=web"
+      - "traefik.http.routers.signalfi-admin-http.middlewares=redirect-https@docker"
       - "traefik.http.routers.signalfi-admin-http.service=signalfi-manifest"
       - "traefik.http.routers.signalfi-admin-https.rule=Host(`admin.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.signalfi-admin-https.entrypoints=websecure"
       - "traefik.http.routers.signalfi-admin-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.signalfi-admin-https.middlewares=admin-ratelimit"
       - "traefik.http.routers.signalfi-admin-https.service=signalfi-manifest"
 
   # ── OTA File Server (nginx) ───────────────────────────────────────────────
