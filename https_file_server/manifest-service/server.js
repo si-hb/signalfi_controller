@@ -428,27 +428,25 @@ app.post('/ota/admin/auth/request', async (req, res) => {
   const code = genOtp();
   otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
 
-  // Fire-and-forget: respond to browser immediately, let Node-RED run async.
-  // If Node-RED rejects (non-whitelisted number), we delete the OTP so the
-  // code entry silently fails — caller sees the dialog but code never works.
-  res.json({ accepted: true });
-
-  fetch(NODERED_AUTH_URL, {
-    method:  'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body:    JSON.stringify({ phone: raw, code }),
-    signal:  AbortSignal.timeout(10000),
-  }).then(nr => {
+  try {
+    const nr = await fetch(NODERED_AUTH_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ phone: raw, code }),
+      signal:  AbortSignal.timeout(8000),
+    });
+    console.log(`[auth] Node-RED response: ${nr.status}`);
     if (nr.ok) {
       console.log(`[auth] OTP sent to ${raw}`);
-    } else {
-      console.log(`[auth] OTP rejected by Node-RED for ${raw} (${nr.status}) — discarding`);
-      otpStore.delete(phone);
+      return res.json({ accepted: true });
     }
-  }).catch(err => {
+    otpStore.delete(phone);
+    return res.json({ accepted: false });
+  } catch (err) {
     console.error('[auth] Node-RED request failed:', err.message);
     otpStore.delete(phone);
-  });
+    return res.json({ accepted: false });
+  }
 });
 
 // POST /ota/admin/auth/verify  {phone, code}
