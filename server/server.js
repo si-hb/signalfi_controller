@@ -521,6 +521,14 @@ async function main() {
     return res.json({ token, expiresAt });
   });
 
+  // DELETE /auth/sessions — terminate all sessions (internal network only, not exposed via Traefik)
+  app.delete('/auth/sessions', (req, res) => {
+    const count = sessionStore.size;
+    sessionStore.clear();
+    console.log(`[${ts()}] [AUTH] All sessions terminated (${count} cleared)`);
+    res.json({ cleared: count });
+  });
+
   app.get('/auth/check', (req, res) => {
     const match  = (req.headers.authorization || '').match(/^Bearer\s+(.+)$/);
     const bearer = match ? match[1] : '';

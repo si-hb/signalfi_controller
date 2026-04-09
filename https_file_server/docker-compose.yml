@@ -179,6 +179,7 @@ services:
       - FILES_PATH_PREFIX=/ota/v1
       - ADMIN_TOKEN=signalfiadmin2026
       - NODERED_AUTH_URL=http://node-red:1880/signalfi-auth
+      - CONTROL_SERVER_URL=http://signalfi_controller-signalfi-web-1:3000
       - DEVICE_MODEL=SF-100
     networks:
       - root_default

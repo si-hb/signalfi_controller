@@ -39,6 +39,20 @@ function scheduleExpiry(expiresAt) {
   } catch (_) { showPhoneDialog(); }
 })();
 
+document.getElementById('btn-terminate-sessions').addEventListener('click', async () => {
+  const btn = document.getElementById('btn-terminate-sessions');
+  btn.disabled = true; btn.textContent = 'Terminating…';
+  try {
+    const res  = await apiFetch('/ota/admin/auth/sessions', { method: 'DELETE' });
+    const data = await res.json();
+    toast(`All sessions terminated (${data.cleared} cleared)`, 'success');
+  } catch (e) {
+    if (!String(e.message).includes('Unauthorized')) toast('Failed to terminate sessions', 'error');
+  } finally {
+    btn.disabled = false; btn.textContent = 'Terminate Sessions';
+  }
+});
+
 function setAuthState(ok) {
   document.getElementById('auth-dot').className    = ok ? 'ok' : 'fail';
   document.getElementById('auth-label').textContent = ok ? 'authenticated' : 'not authenticated';

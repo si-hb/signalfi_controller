@@ -23,6 +23,7 @@ const FILES_BASE_URL    = process.env.FILES_BASE_URL    || 'http://apis.symphony
 const FILES_PATH_PREFIX = process.env.FILES_PATH_PREFIX || '/ota/v1';
 const ADMIN_TOKEN       = process.env.ADMIN_TOKEN       || '';
 const NODERED_AUTH_URL  = process.env.NODERED_AUTH_URL  || '';
+const CONTROL_SERVER_URL = process.env.CONTROL_SERVER_URL || '';
 const MQTT_BROKER       = process.env.MQTT_BROKER_URL   || 'mqtt://signalfi-svc:OtaService2024!@mosquitto:1883';
 const MQTT_PREFIX       = process.env.MQTT_TOPIC_PREFIX || 'scout';
 const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SF-100';
@@ -489,6 +490,39 @@ app.get('/ota/admin/auth/check', (req, res) => {
   const session = sessionStore.get(bearer);
   if (session && session.expiresAt > Date.now()) return res.json({ valid: true, expiresAt: session.expiresAt });
   return res.status(401).json({ valid: false });
+});
+
+// DELETE /ota/admin/auth/sessions  — terminate all sessions on both services
+app.delete('/ota/admin/auth/sessions', (req, res) => {
+  // Requires adminAuth inline (middleware not yet mounted at this point)
+  if (ADMIN_TOKEN) {
+    const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
+    const bearer = match ? match[1] : '';
+    if (bearer !== ADMIN_TOKEN) {
+      const session = sessionStore.get(bearer);
+      if (!session || session.expiresAt <= Date.now()) {
+        return res.status(401).json({ error: 'Unauthorized' });
+      }
+    }
+  }
+
+  const count = sessionStore.size;
+  sessionStore.clear();
+  console.log(`[auth] all sessions terminated (${count} cleared)`);
+
+  // Also clear control server sessions via internal network
+  if (CONTROL_SERVER_URL) {
+    fetch(`${CONTROL_SERVER_URL}/auth/sessions`, {
+      method: 'DELETE',
+      signal: AbortSignal.timeout(5000),
+    }).then(r => {
+      console.log(`[auth] control server sessions cleared (${r.status})`);
+    }).catch(err => {
+      console.error('[auth] failed to clear control server sessions:', err.message);
+    });
+  }
+
+  res.json({ cleared: count });
 });
 
 // ── Admin auth middleware ─────────────────────────────────────────────────────
