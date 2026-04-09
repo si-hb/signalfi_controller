@@ -25,59 +25,107 @@ export function scheduleRender() {
 
 // ─── Authentication Setup ─────────────────────────────────────────────────────
 
-/**
- * Check if the server requires authentication.
- * If 401 is received, prompt the user for a token.
- */
-async function setupAuth() {
+const AUTH_SESSION_KEY = 'signalfi-control-session';
+let _pendingPhone = '';
+
+function _getStoredToken()    { return sessionStorage.getItem(AUTH_SESSION_KEY) || ''; }
+function _setStoredToken(t)   { sessionStorage.setItem(AUTH_SESSION_KEY, t); }
+function _clearStoredToken()  { sessionStorage.removeItem(AUTH_SESSION_KEY); }
+
+function _showDialog(id)  { document.getElementById(id).classList.remove('hidden'); }
+function _hideDialog(id)  { document.getElementById(id).classList.add('hidden'); }
+
+function showPhoneDialog() {
+  _hideDialog('auth-code-dialog');
+  _showDialog('auth-phone-dialog');
+  document.getElementById('auth-phone').focus();
+}
+
+async function _submitPhone() {
+  const phone = document.getElementById('auth-phone').value.trim();
+  if (!phone) return;
+  const btn = document.getElementById('auth-phone-submit');
+  btn.disabled = true; btn.textContent = 'Sending…';
   try {
-    // If a token is already stored, validate it first.
-    const existingToken = loadAuthToken();
-    if (existingToken && existingToken.trim()) {
-      wsSetAuthToken(existingToken.trim());
-      try {
-        await fetchState();
+    const res  = await fetch('/auth/request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    const data = await res.json();
+    if (data.accepted) {
+      _pendingPhone = phone;
+      _hideDialog('auth-phone-dialog');
+      _showDialog('auth-code-dialog');
+      document.getElementById('auth-code').focus();
+    }
+    // Silent on rejection — no feedback to bots
+  } catch (_) {}
+  finally { btn.disabled = false; btn.textContent = 'Send Code'; }
+}
+
+async function _submitCode() {
+  const code = document.getElementById('auth-code').value.trim();
+  if (code.length !== 6) return;
+  const btn = document.getElementById('auth-code-submit');
+  btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const res = await fetch('/auth/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: _pendingPhone, code }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      _setStoredToken(data.token);
+      apiSetAuthToken(data.token);
+      wsSetAuthToken(data.token);
+      _hideDialog('auth-code-dialog');
+      initApp();
+    } else if (res.status === 429) {
+      _hideDialog('auth-code-dialog');
+      showPhoneDialog();
+    } else {
+      document.getElementById('auth-code').value = '';
+      document.getElementById('auth-code').focus();
+    }
+  } catch (_) {}
+  finally { btn.disabled = false; btn.textContent = 'Verify'; }
+}
+
+document.getElementById('auth-phone-submit').addEventListener('click', _submitPhone);
+document.getElementById('auth-phone').addEventListener('keydown', e => { if (e.key === 'Enter') _submitPhone(); });
+document.getElementById('auth-code-submit').addEventListener('click', _submitCode);
+document.getElementById('auth-code').addEventListener('keydown', e => { if (e.key === 'Enter') _submitCode(); });
+document.getElementById('auth-code').addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+  if (e.target.value.length === 6) _submitCode();
+});
+
+async function setupAuth() {
+  // Remove any legacy localStorage token
+  localStorage.removeItem('signalfi-auth-token');
+
+  const stored = _getStoredToken();
+  if (stored) {
+    // Validate against server before trusting
+    try {
+      const res = await fetch('/auth/check', { headers: { Authorization: `Bearer ${stored}` } });
+      if (res.ok) {
+        apiSetAuthToken(stored);
+        wsSetAuthToken(stored);
         return true;
-      } catch (err) {
-        if (!String(err.message || '').includes('401')) throw err;
       }
-    }
-
-    // Try unauthenticated once; if it succeeds, auth is not required.
-    const res = await fetch('/api/state');
-    if (res.status !== 401) {
-      return true;
-    }
-
-    const token = window.prompt('This server requires authentication.\nPlease enter the API token:');
-    if (token && token.trim()) {
-      const cleanToken = token.trim();
-
-      // Set token in both API and WebSocket modules.
-      apiSetAuthToken(cleanToken);
-      wsSetAuthToken(cleanToken);
-
-      // Validate token via authenticated API helper.
-      try {
-        await fetchState();
-        return true;
-      } catch (err) {
-        if (String(err.message || '').includes('401')) {
-          window.alert('Invalid token. Please refresh and try again.');
-          apiSetAuthToken(null);
-          wsSetAuthToken(null);
-          return false;
-        }
-        throw err;
-      }
-    }
-
-    window.alert('Authentication required to access this server.');
-    return false;
-  } catch (err) {
-    console.error('Error during auth setup:', err);
-    return true; // Continue anyway; might be a transient network error
+    } catch (_) {}
+    _clearStoredToken();
   }
+
+  // Check if auth is required at all
+  try {
+    const res = await fetch('/api/state');
+    if (res.status !== 401) return true; // auth not configured
+  } catch (_) {}
+
+  showPhoneDialog();
+  return false; // initApp() called after successful code verify
 }
 
 // ─── Global State ─────────────────────────────────────────────────────────────
@@ -632,42 +680,33 @@ async function loadInitialState() {
 
 // ─── Init ─────────────────────────────────────────────────────────────────────
 
+// Called once auth is confirmed — starts WS and loads state
+function initApp() {
+  registerMessageHandler(handleWsMessage);
+  initWS();
+  loadInitialState();
+  updateMqttIndicator('disconnected');
+}
+
 async function init() {
-  // Apply persisted theme before anything renders
   initTheme();
 
-  // Initialize sheets (build DOM)
   initLightingSheet();
   initPresetsSheet();
   initDeviceSheet(openSheet);
 
-  // Initialize views (build DOM + wire events)
   initDevicesView();
   initSettingsView();
   initInfoView();
   initLogView();
 
-  // Wire navigation and top-bar
   wireTopBar();
   wireTabNav();
   wireActionBar();
 
-  // Register WS message handler and start WebSocket
-  registerMessageHandler(handleWsMessage);
-  initWS();
-
-  // Check authentication before loading initial state
   const authOk = await setupAuth();
-  if (!authOk) {
-    // Auth failed; stop here. User will need to refresh after authentication is resolved.
-    return;
-  }
-
-  // Load initial state via REST
-  loadInitialState();
-
-  // Set initial indicator state
-  updateMqttIndicator('disconnected');
+  if (authOk) initApp();
+  // If !authOk, initApp() is called from _submitCode() after SMS verify
 }
 
 init();

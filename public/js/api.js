@@ -6,15 +6,17 @@ let authToken = null;
 
 export function setAuthToken(token) {
   authToken = token;
+  // sessionStorage: cleared on tab close/refresh; localStorage key removed on upgrade
   if (token) {
-    localStorage.setItem('signalfi-auth-token', token);
+    sessionStorage.setItem('signalfi-control-session', token);
   } else {
-    localStorage.removeItem('signalfi-auth-token');
+    sessionStorage.removeItem('signalfi-control-session');
   }
 }
 
 export function loadAuthToken() {
-  authToken = localStorage.getItem('signalfi-auth-token');
+  localStorage.removeItem('signalfi-auth-token'); // remove legacy key
+  authToken = sessionStorage.getItem('signalfi-control-session') || null;
   return authToken;
 }
 

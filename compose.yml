@@ -16,6 +16,7 @@ services:
       - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       - MQTT_TLS=${MQTT_TLS:-false}
       - AUTH_TOKEN=${AUTH_TOKEN:-}
+      - NODERED_AUTH_URL=${NODERED_AUTH_URL:-http://node-red:1880/signalfi-auth}
     networks:
       - default
       - root_default

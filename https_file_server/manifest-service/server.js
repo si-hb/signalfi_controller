@@ -432,7 +432,7 @@ app.post('/ota/admin/auth/request', async (req, res) => {
     const nr = await fetch(NODERED_AUTH_URL, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ phone: raw, code }),
+      body:    JSON.stringify({ phone: raw, code, origin: 'signalfi-admin' }),
       signal:  AbortSignal.timeout(8000),
     });
     console.log(`[auth] Node-RED response: ${nr.status}`);

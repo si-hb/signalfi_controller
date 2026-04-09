@@ -12,16 +12,16 @@ let authToken = null;
 
 // Auth token management
 function loadAuthToken() {
-  authToken = localStorage.getItem('signalfi-auth-token');
+  authToken = sessionStorage.getItem('signalfi-control-session') || null;
   return authToken;
 }
 
 export function setAuthToken(token) {
   authToken = token;
   if (token) {
-    localStorage.setItem('signalfi-auth-token', token);
+    sessionStorage.setItem('signalfi-control-session', token);
   } else {
-    localStorage.removeItem('signalfi-auth-token');
+    sessionStorage.removeItem('signalfi-control-session');
   }
 }
 

@@ -56,41 +56,70 @@ function loadConfig() {
       audioDir: process.env.AUDIO_DIR || fileConfig.paths?.audioDir || './audio',
     },
     auth: {
-      token: process.env.AUTH_TOKEN || fileConfig.auth?.token || '',
+      token:        process.env.AUTH_TOKEN        || fileConfig.auth?.token        || '',
+      noderedAuthUrl: process.env.NODERED_AUTH_URL || fileConfig.auth?.noderedAuthUrl || '',
     },
   };
 }
 
 // ---------------------------------------------------------------------------
-// Authentication middleware — Bearer token validation
+// OTP / SMS auth store (in-memory, per process lifetime)
+// ---------------------------------------------------------------------------
+const crypto = require('crypto');
+
+const OTP_TTL_MS       = 5  * 60 * 1000;
+const SESSION_TTL_MS   = 365 * 24 * 60 * 60 * 1000; // permanent — browser sessionStorage clears on refresh
+const OTP_MAX_ATTEMPTS = 5;
+
+const otpStore     = new Map(); // normPhone → { code, expiresAt, attempts }
+const sessionStore = new Map(); // token     → { phone, expiresAt }
+
+function normPhone(p) { return p.replace(/\D/g, ''); }
+function genOtp()     { return String(Math.floor(100000 + Math.random() * 900000)); }
+function genSession() { return crypto.randomBytes(32).toString('hex'); }
+
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of otpStore)     if (v.expiresAt < now) otpStore.delete(k);
+  for (const [k, v] of sessionStore) if (v.expiresAt < now) sessionStore.delete(k);
+}, 60_000);
+
+// ---------------------------------------------------------------------------
+// Authentication middleware — Bearer token or SMS session
 // ---------------------------------------------------------------------------
 function createAuthMiddleware(config) {
   return (req, res, next) => {
-    // If AUTH_TOKEN is not configured, skip auth (disabled)
-    if (!config.auth.token || config.auth.token.trim() === '') {
-      return next();
-    }
+    if (!config.auth.token && !config.auth.noderedAuthUrl) return next();
 
-    // Allow health checks from localhost (127.0.0.1 or ::1) without auth
+    // Allow health checks from localhost without auth
     const ip = req.ip || req.connection.remoteAddress;
     if ((ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') && req.path === '/state') {
       return next();
     }
 
-    // Extract Authorization header
     const authHeader = req.headers.authorization || '';
     const match = authHeader.match(/^Bearer\s+(.+)$/);
-    const token = match ? match[1] : '';
+    const bearer = match ? match[1] : (req.query.token || '');
 
-    if (token === config.auth.token) {
-      return next();
-    }
+    // Legacy static token
+    if (config.auth.token && bearer === config.auth.token) return next();
 
-    // Auth failed
-    const ts = new Date().toISOString();
-    console.warn(`[${ts}] [AUTH] Unauthorized access attempt to ${req.method} ${req.path}`);
+    // SMS session token
+    const session = sessionStore.get(bearer);
+    if (session && session.expiresAt > Date.now()) return next();
+
+    const now = new Date().toISOString();
+    console.warn(`[${now}] [AUTH] Unauthorized access attempt to ${req.method} ${req.path}`);
     return res.status(401).json({ error: 'Unauthorized' });
   };
+}
+
+// Same check used by WebSocket verifyClient
+function isValidToken(config, bearer) {
+  if (!config.auth.token && !config.auth.noderedAuthUrl) return true;
+  if (config.auth.token && bearer === config.auth.token) return true;
+  const session = sessionStore.get(bearer);
+  return !!(session && session.expiresAt > Date.now());
 }
 
 // ---------------------------------------------------------------------------
@@ -389,33 +418,17 @@ async function main() {
 
   // ---- WebSocket server with auth verification ----
   function verifyClient(info, callback) {
-    // If AUTH_TOKEN is not configured, allow all connections
-    if (!config.auth.token || config.auth.token.trim() === '') {
-      return callback(true);
-    }
-
-    // Extract Bearer token from either header or query parameter
-    let token = '';
-
-    // Try Authorization header first
+    let bearer = '';
     const authHeader = info.req.headers.authorization || '';
     const match = authHeader.match(/^Bearer\s+(.+)$/);
-    if (match) {
-      token = match[1];
-    }
-
-    // Fall back to query parameter (?token=...)
-    if (!token && info.req.url) {
+    if (match) bearer = match[1];
+    if (!bearer && info.req.url) {
       const url = new URL(info.req.url, `http://${info.req.headers.host || 'localhost'}`);
-      token = url.searchParams.get('token') || '';
+      bearer = url.searchParams.get('token') || '';
     }
-
-    if (token === config.auth.token) {
-      return callback(true);
-    }
-
-    const ts = new Date().toISOString();
-    console.warn(`[${ts}] [AUTH] Unauthorized WebSocket upgrade attempt`);
+    if (isValidToken(config, bearer)) return callback(true);
+    const now = new Date().toISOString();
+    console.warn(`[${now}] [AUTH] Unauthorized WebSocket upgrade attempt`);
     return callback(false, 401, 'Unauthorized');
   }
 
@@ -453,6 +466,62 @@ async function main() {
       });
     }, 200);
   }
+
+  // ---- OTP / SMS auth endpoints (unauthenticated) ----
+  app.post('/auth/request', async (req, res) => {
+    const raw   = String(req.body?.phone || '').trim();
+    const phone = normPhone(raw);
+    if (phone.length < 7 || phone.length > 15) return res.json({ accepted: false });
+    if (!config.auth.noderedAuthUrl) {
+      console.warn(`[${ts()}] [AUTH] NODERED_AUTH_URL not set — cannot deliver OTP`);
+      return res.json({ accepted: false });
+    }
+    const code = genOtp();
+    otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+    res.json({ accepted: true });
+    fetch(config.auth.noderedAuthUrl, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ phone: raw, code, origin: 'signalfi-control' }),
+      signal:  AbortSignal.timeout(10000),
+    }).then(nr => {
+      if (nr.ok) {
+        console.log(`[${ts()}] [AUTH] OTP sent to ${raw}`);
+      } else {
+        console.log(`[${ts()}] [AUTH] OTP rejected by Node-RED for ${raw} (${nr.status})`);
+        otpStore.delete(phone);
+      }
+    }).catch(err => {
+      console.error(`[${ts()}] [AUTH] Node-RED request failed:`, err.message);
+      otpStore.delete(phone);
+    });
+  });
+
+  app.post('/auth/verify', (req, res) => {
+    const raw   = String(req.body?.phone || '').trim();
+    const phone = normPhone(raw);
+    const code  = String(req.body?.code  || '').trim();
+    const entry = otpStore.get(phone);
+    if (!entry || entry.expiresAt < Date.now()) return res.status(401).json({ error: 'expired' });
+    entry.attempts++;
+    if (entry.attempts > OTP_MAX_ATTEMPTS) {
+      otpStore.delete(phone);
+      return res.status(429).json({ error: 'too many attempts' });
+    }
+    if (entry.code !== code) return res.status(401).json({ error: 'invalid' });
+    otpStore.delete(phone);
+    const token = genSession();
+    sessionStore.set(token, { phone: raw, expiresAt: Date.now() + SESSION_TTL_MS });
+    console.log(`[${ts()}] [AUTH] Session issued for ${raw}`);
+    return res.json({ token });
+  });
+
+  app.get('/auth/check', (req, res) => {
+    const match  = (req.headers.authorization || '').match(/^Bearer\s+(.+)$/);
+    const bearer = match ? match[1] : '';
+    if (isValidToken(config, bearer)) return res.json({ valid: true });
+    return res.status(401).json({ valid: false });
+  });
 
   // ---- Mount REST routes with auth middleware ----
   app.use('/api', createAuthMiddleware(config), createRouter(config, state, persistence, broadcast, logStore));

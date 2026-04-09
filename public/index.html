@@ -17,6 +17,26 @@
   <link rel="stylesheet" href="/css/status.css">
 </head>
 <body>
+  <!-- Auth step 1: phone entry -->
+  <div id="auth-phone-dialog" class="auth-overlay hidden">
+    <div class="auth-box">
+      <h2>SignalFi Control</h2>
+      <p>Enter your mobile number to receive a verification code.</p>
+      <input type="tel" id="auth-phone" placeholder="+1 604 555 0100" autocomplete="tel">
+      <button class="auth-btn" id="auth-phone-submit">Send Code</button>
+    </div>
+  </div>
+
+  <!-- Auth step 2: code entry -->
+  <div id="auth-code-dialog" class="auth-overlay hidden">
+    <div class="auth-box">
+      <h2>Enter Code</h2>
+      <p>A 6-digit code was sent to your phone.</p>
+      <input type="text" id="auth-code" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
+      <button class="auth-btn" id="auth-code-submit">Verify</button>
+    </div>
+  </div>
+
   <div id="app">
     <div id="reconnect-banner" hidden>Reconnecting…</div>
 
