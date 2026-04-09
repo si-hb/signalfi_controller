@@ -580,7 +580,8 @@ body {
 .token-table tr:last-child td { border-bottom: none; }
 
 /* ── Auth dialog ── */
-#auth-dialog {
+#auth-dialog,
+#auth-code-dialog {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.75);
@@ -590,7 +591,8 @@ body {
   z-index: 200;
 }
 
-#auth-dialog.hidden { display: none; }
+#auth-dialog.hidden,
+#auth-code-dialog.hidden { display: none; }
 
 .auth-box {
   background: var(--bg-panel);
