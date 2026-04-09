@@ -476,6 +476,16 @@ app.post('/ota/admin/auth/verify', (req, res) => {
   return res.json({ token });
 });
 
+// GET /ota/admin/auth/check  — lightweight session validity probe
+app.get('/ota/admin/auth/check', (req, res) => {
+  const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
+  const bearer = match ? match[1] : '';
+  if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) return res.json({ valid: true });
+  const session = sessionStore.get(bearer);
+  if (session && session.expiresAt > Date.now()) return res.json({ valid: true });
+  return res.status(401).json({ valid: false });
+});
+
 // ── Admin auth middleware ─────────────────────────────────────────────────────
 
 function adminAuth(req, res, next) {

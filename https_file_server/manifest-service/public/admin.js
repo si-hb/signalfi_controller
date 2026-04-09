@@ -2,9 +2,25 @@
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'signalfi-admin-session';
-let authToken   = localStorage.getItem(STORAGE_KEY) || '';
-let _pendingPhone = ''; // carries phone from step 1 → step 2
+localStorage.removeItem('signalfi-admin-token'); // remove legacy bearer token key
+const STORAGE_KEY  = 'signalfi-admin-session';
+let authToken    = localStorage.getItem(STORAGE_KEY) || '';
+let _pendingPhone  = ''; // carries phone from step 1 → step 2
+
+// On load: validate any stored token; show phone dialog if missing or expired.
+(async () => {
+  if (!authToken) { showPhoneDialog(); return; }
+  try {
+    const res = await fetch('/ota/admin/auth/check', {
+      headers: { 'Authorization': `Bearer ${authToken}` },
+    });
+    if (!res.ok) {
+      authToken = '';
+      localStorage.removeItem(STORAGE_KEY);
+      showPhoneDialog();
+    }
+  } catch (_) { showPhoneDialog(); }
+})();
 
 function setAuthState(ok) {
   document.getElementById('auth-dot').className    = ok ? 'ok' : 'fail';
