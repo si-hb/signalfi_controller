@@ -510,7 +510,10 @@ app.delete('/ota/admin/auth/sessions', (req, res) => {
   sessionStore.clear();
   console.log(`[auth] all sessions terminated (${count} cleared)`);
 
-  // Also clear control server sessions via internal network
+  // Push session-terminated to all connected admin SSE clients
+  sseEmit('session-terminated', {});
+
+  // Also clear control server sessions and push WS notification there
   if (CONTROL_SERVER_URL) {
     fetch(`${CONTROL_SERVER_URL}/auth/sessions`, {
       method: 'DELETE',
@@ -1331,18 +1334,47 @@ app.post('/ota/admin/api/upload', adminAuth, firmwareUpload.single('file'), (req
 // ── Admin API — reports ───────────────────────────────────────────────────────
 
 app.get('/ota/admin/api/reports', (req, res) => {
-  const page    = Math.max(0, parseInt(req.query.page  || '0', 10));
-  const limit   = Math.min(200, Math.max(1, parseInt(req.query.limit || '50', 10)));
-  const logPath = path.join(REPORTS_ROOT, 'updates.log');
+  const page         = Math.max(0, parseInt(req.query.page  || '0', 10));
+  const limit        = Math.min(200, Math.max(1, parseInt(req.query.limit || '50', 10)));
+  const filterStatus = (req.query.status || '').trim().toLowerCase();
+  const filterDevice = (req.query.device || '').trim().toLowerCase();
+  const logPath      = path.join(REPORTS_ROOT, 'updates.log');
   try {
     if (!fs.existsSync(logPath)) return res.json({ total: 0, page, limit, entries: [] });
-    const lines = fs.readFileSync(logPath, 'utf8')
-      .split('\n').filter(l => l.trim()).reverse();
-    const total   = lines.length;
-    const entries = lines.slice(page * limit, page * limit + limit).map(l => {
-      try { return JSON.parse(l); } catch (_) { return { raw: l }; }
-    });
-    res.json({ total, page, limit, entries });
+    let entries = fs.readFileSync(logPath, 'utf8')
+      .split('\n').filter(l => l.trim()).reverse()
+      .map(l => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean);
+    if (filterStatus) entries = entries.filter(e => (e.status || '').toLowerCase() === filterStatus);
+    if (filterDevice) entries = entries.filter(e => (e.deviceId || '').toLowerCase().includes(filterDevice));
+    const total = entries.length;
+    res.json({ total, page, limit, entries: entries.slice(page * limit, page * limit + limit) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/ota/admin/api/reports/stats', (req, res) => {
+  const logPath = path.join(REPORTS_ROOT, 'updates.log');
+  try {
+    if (!fs.existsSync(logPath)) return res.json({ total: 0, success: 0, failed: 0, devices: 0, last: null });
+    const entries = fs.readFileSync(logPath, 'utf8').split('\n').filter(l => l.trim()).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const devices = new Set(entries.map(e => e.deviceId)).size;
+    const success = entries.filter(e => e.status === 'applied').length;
+    const failed  = entries.filter(e => e.status === 'failed').length;
+    const last    = entries.length ? entries[entries.length - 1].timestamp : null;
+    res.json({ total: entries.length, success, failed, devices, last });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+app.get('/ota/admin/api/reports/export', adminAuth, (req, res) => {
+  const logPath = path.join(REPORTS_ROOT, 'updates.log');
+  try {
+    if (!fs.existsSync(logPath)) { res.setHeader('Content-Type', 'text/csv'); return res.send('timestamp,deviceId,modelId,firmwareVersion,status,ip\n'); }
+    const entries = fs.readFileSync(logPath, 'utf8').split('\n').filter(l => l.trim()).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const csv = ['timestamp,deviceId,modelId,firmwareVersion,status,ip',
+      ...entries.map(e => [e.timestamp, e.deviceId, e.modelId, e.firmwareVersion, e.status, e.ip].map(v => `"${(v||'').replace(/"/g,'""')}"`).join(','))
+    ].join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="signalfi-reports-${new Date().toISOString().slice(0,10)}.csv"`);
+    res.send(csv);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1580,6 +1612,7 @@ app.post('/ota/v1/report', (req, res) => {
   try {
     fs.mkdirSync(REPORTS_ROOT, { recursive: true });
     fs.appendFileSync(path.join(REPORTS_ROOT, 'updates.log'), JSON.stringify(entry) + '\n');
+    sseEmit('report-created', { entry });
   } catch (err) {
     console.error(`[report] failed to write log: ${err.message}`);
   }

@@ -526,6 +526,8 @@ async function main() {
     const count = sessionStore.size;
     sessionStore.clear();
     console.log(`[${ts()}] [AUTH] All sessions terminated (${count} cleared)`);
+    // Push to all connected WS clients so they get kicked immediately
+    broadcast({ type: 'session-terminated' });
     res.json({ cleared: count });
   });
 

@@ -536,8 +536,15 @@ export function handleWsMessage(msg) {
       handleLogEntry(msg.entry);
       break;
 
+    case 'session-terminated':
+      _clearStoredToken();
+      apiSetAuthToken(null);
+      wsSetAuthToken(null);
+      if (_expireTimer) { clearTimeout(_expireTimer); _expireTimer = null; }
+      showPhoneDialog();
+      break;
+
     default:
-      // Unknown message type — ignore
       break;
   }
 }

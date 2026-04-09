@@ -37,11 +37,11 @@
   <a href="#audio"    data-tab="audio">Audio</a>
   <a href="#files"    data-tab="files">Files</a>
   <a href="#reports"  data-tab="reports">Reports</a>
+  <button id="btn-terminate-sessions" class="btn btn-warn btn-sm" title="Terminate all active sessions on both servers">Terminate Sessions</button>
   <div id="auth-indicator">
     <div id="auth-dot"></div>
     <span id="auth-label">not authenticated</span>
   </div>
-  <button id="btn-terminate-sessions" class="btn btn-warn btn-sm" title="Terminate all active sessions on both servers">Terminate Sessions</button>
   <div id="device-count-badge" class="device-count">
     <div id="device-count-dot" class="device-count-dot"></div>
     <span id="device-count-label">— online</span>
@@ -193,11 +193,24 @@
   <section class="section" id="reports">
     <div class="section-header">
       <span class="section-title">Update Reports</span>
+      <button class="btn btn-secondary btn-sm" id="reports-export-btn">Export CSV</button>
     </div>
     <div class="section-body">
-      <div class="auto-refresh-row">
-        <input type="checkbox" id="auto-refresh-chk">
-        <label for="auto-refresh-chk">Auto-refresh every 10 s</label>
+      <div class="reports-stats" id="reports-stats">
+        <div class="reports-stat"><span class="reports-stat-val" id="stat-total">—</span><span class="reports-stat-lbl">Total</span></div>
+        <div class="reports-stat"><span class="reports-stat-val" id="stat-success">—</span><span class="reports-stat-lbl">Success</span></div>
+        <div class="reports-stat"><span class="reports-stat-val" id="stat-failed">—</span><span class="reports-stat-lbl">Failed</span></div>
+        <div class="reports-stat"><span class="reports-stat-val" id="stat-devices">—</span><span class="reports-stat-lbl">Unique Devices</span></div>
+        <div class="reports-stat"><span class="reports-stat-val" id="stat-last">—</span><span class="reports-stat-lbl">Last Update</span></div>
+      </div>
+      <div class="reports-filters">
+        <select id="reports-filter-status">
+          <option value="">All statuses</option>
+          <option value="applied">Applied</option>
+          <option value="failed">Failed</option>
+          <option value="started">Started</option>
+        </select>
+        <input type="text" id="reports-filter-device" placeholder="Filter by device…">
       </div>
       <table class="reports-table" id="reports-table">
         <thead>
@@ -218,7 +231,7 @@
         <span class="pagination-info" id="reports-info"></span>
         <button class="btn btn-secondary btn-sm" id="reports-prev">← Prev</button>
         <button class="btn btn-secondary btn-sm" id="reports-next">Next →</button>
-        <select id="reports-limit" style="background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:4px 8px;color:var(--text-primary);font-size:12px">
+        <select id="reports-limit">
           <option value="25">25</option>
           <option value="50" selected>50</option>
           <option value="100">100</option>

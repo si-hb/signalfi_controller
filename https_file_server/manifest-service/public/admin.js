@@ -860,11 +860,27 @@ async function loadFiles() {
 
 // ── Reports ───────────────────────────────────────────────────────────────────
 
-let reportsPage = 0, reportsTotal = 0, reportsLimit = 50, autoRefreshTimer = null;
+let reportsPage = 0, reportsTotal = 0, reportsLimit = 50;
+let reportsFilterStatus = '', reportsFilterDevice = '';
+
+async function loadReportsStats() {
+  try {
+    const res  = await apiFetch('/ota/admin/api/reports/stats');
+    const s    = await res.json();
+    document.getElementById('stat-total').textContent   = s.total ?? '—';
+    document.getElementById('stat-success').textContent = s.success ?? '—';
+    document.getElementById('stat-failed').textContent  = s.failed ?? '—';
+    document.getElementById('stat-devices').textContent = s.devices ?? '—';
+    document.getElementById('stat-last').textContent    = s.last ? new Date(s.last).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
+  } catch (_) {}
+}
 
 async function loadReports() {
   try {
-    const res  = await apiFetch(`/ota/admin/api/reports?page=${reportsPage}&limit=${reportsLimit}`);
+    const params = new URLSearchParams({ page: reportsPage, limit: reportsLimit });
+    if (reportsFilterStatus) params.set('status', reportsFilterStatus);
+    if (reportsFilterDevice) params.set('device', reportsFilterDevice);
+    const res  = await apiFetch(`/ota/admin/api/reports?${params}`);
     const data = await res.json();
     reportsTotal = data.total || 0;
     renderReports(data.entries || []);
@@ -876,6 +892,25 @@ async function loadReports() {
   } catch (_) {}
 }
 
+function reportStatusBadge(status) {
+  if (status === 'applied') return badge('applied', 'success');
+  if (status === 'failed')  return badge('failed',  'failed');
+  return badge(status || '—', 'started');
+}
+
+function makeReportRow(e) {
+  const tr = document.createElement('tr');
+  tr.innerHTML = `
+    <td>${e.timestamp ? new Date(e.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'}</td>
+    <td>${e.deviceId || '—'}</td>
+    <td>${e.modelId || '—'}</td>
+    <td class="mono">${e.firmwareVersion || '—'}</td>
+    <td>${reportStatusBadge(e.status)}</td>
+    <td class="mono text-muted">${e.ip || '—'}</td>
+  `;
+  return tr;
+}
+
 function renderReports(entries) {
   const tbody = document.getElementById('reports-tbody');
   if (!entries.length) {
@@ -883,31 +918,33 @@ function renderReports(entries) {
     return;
   }
   tbody.innerHTML = '';
-  for (const e of entries) {
-    const tr = document.createElement('tr');
-    const statusBadge = e.status === 'applied'
-      ? badge(e.status, 'success')
-      : e.status === 'failed'
-        ? badge(e.status, 'failed')
-        : badge(e.status || '—', 'started');
-    tr.innerHTML = `
-      <td>${e.timestamp ? new Date(e.timestamp).toLocaleString() : '—'}</td>
-      <td>${e.deviceId || '—'}</td>
-      <td>${e.modelId || '—'}</td>
-      <td>${e.firmwareVersion || '—'}</td>
-      <td>${statusBadge}</td>
-      <td>${e.ip || '—'}</td>
-    `;
-    tbody.appendChild(tr);
-  }
+  entries.forEach(e => tbody.appendChild(makeReportRow(e)));
+}
+
+// Live-prepend new report from SSE (only when on page 0, no filters active)
+function prependReport(entry) {
+  loadReportsStats();
+  if (reportsPage !== 0 || reportsFilterStatus || reportsFilterDevice) return;
+  const tbody = document.getElementById('reports-tbody');
+  const emptyRow = tbody.querySelector('.empty-row');
+  if (emptyRow) emptyRow.remove();
+  tbody.insertBefore(makeReportRow(entry), tbody.firstChild);
+  reportsTotal++;
+  const end = Math.min(reportsLimit, reportsTotal);
+  document.getElementById('reports-info').textContent = `1–${end} of ${reportsTotal}`;
 }
 
 document.getElementById('reports-prev').addEventListener('click', () => { if (reportsPage > 0) { reportsPage--; loadReports(); } });
 document.getElementById('reports-next').addEventListener('click', () => { if ((reportsPage + 1) * reportsLimit < reportsTotal) { reportsPage++; loadReports(); } });
 document.getElementById('reports-limit').addEventListener('change', e => { reportsLimit = parseInt(e.target.value, 10); reportsPage = 0; loadReports(); });
-document.getElementById('auto-refresh-chk').addEventListener('change', e => {
-  if (e.target.checked) autoRefreshTimer = setInterval(loadReports, 10000);
-  else { clearInterval(autoRefreshTimer); autoRefreshTimer = null; }
+document.getElementById('reports-filter-status').addEventListener('change', e => { reportsFilterStatus = e.target.value; reportsPage = 0; loadReports(); });
+let _deviceFilterTimer;
+document.getElementById('reports-filter-device').addEventListener('input', e => {
+  clearTimeout(_deviceFilterTimer);
+  _deviceFilterTimer = setTimeout(() => { reportsFilterDevice = e.target.value.trim(); reportsPage = 0; loadReports(); }, 300);
+});
+document.getElementById('reports-export-btn').addEventListener('click', () => {
+  window.location.href = '/ota/admin/api/reports/export?t=' + encodeURIComponent(authToken);
 });
 
 // ── Device count ──────────────────────────────────────────────────────────────
@@ -948,6 +985,7 @@ function loadAll() {
   loadAudio();
   loadFiles();
   loadReports();
+  loadReportsStats();
 }
 
 async function init() {
@@ -1104,14 +1142,21 @@ function onDeviceError(d) {
   es.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
-      if      (d.type === 'firmware-updated')  loadFirmware();
-      else if (d.type === 'audio-updated')     loadAudio();
-      else if (d.type === 'general-updated')   loadFiles();
-      else if (d.type === 'device-connect')    onDeviceConnect(d);
-      else if (d.type === 'device-progress')   onDeviceProgress(d);
-      else if (d.type === 'device-done')       onDeviceDone(d, false);
-      else if (d.type === 'device-aborted')    onDeviceDone(d, true);
-      else if (d.type === 'device-error')      onDeviceError(d);
+      if      (d.type === 'firmware-updated')    loadFirmware();
+      else if (d.type === 'audio-updated')       loadAudio();
+      else if (d.type === 'general-updated')     loadFiles();
+      else if (d.type === 'device-connect')      onDeviceConnect(d);
+      else if (d.type === 'device-progress')     onDeviceProgress(d);
+      else if (d.type === 'device-done')         onDeviceDone(d, false);
+      else if (d.type === 'device-aborted')      onDeviceDone(d, true);
+      else if (d.type === 'device-error')        onDeviceError(d);
+      else if (d.type === 'report-created')      prependReport(d.entry);
+      else if (d.type === 'session-terminated')  setTimeout(() => {
+        authToken = '';
+        sessionStorage.removeItem(STORAGE_KEY);
+        if (_expireTimer) { clearTimeout(_expireTimer); _expireTimer = null; }
+        showPhoneDialog();
+      }, 300); // slight delay so the DELETE response reaches the browser first
     } catch (_) {}
   };
   es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };

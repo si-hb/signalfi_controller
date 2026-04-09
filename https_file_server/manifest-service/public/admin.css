@@ -486,16 +486,59 @@ body {
 .col-check { width: 32px; text-align: center; }
 .col-check input[type="checkbox"] { accent-color: var(--accent-bright); cursor: pointer; }
 
-.auto-refresh-row {
+/* ── Reports stats bar ── */
+.reports-stats {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 14px;
-  font-size: 13px;
+  gap: 12px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+.reports-stat {
+  flex: 1;
+  min-width: 90px;
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.reports-stat-val {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--accent-bright);
+}
+.reports-stat-lbl {
+  font-size: 11px;
   color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
 }
 
-.auto-refresh-row input { accent-color: var(--accent-bright); }
+/* ── Reports filters ── */
+.reports-filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.reports-filters select,
+.reports-filters input {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+.reports-filters select:focus,
+.reports-filters input:focus { border-color: var(--accent-bright); }
+.reports-filters input { flex: 1; min-width: 160px; }
+
+.reports-table .mono { font-family: var(--font-mono); font-size: 12px; }
+.reports-table .text-muted { color: var(--text-muted); }
 
 /* ── Buttons ── */
 .btn {
