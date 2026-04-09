@@ -394,7 +394,7 @@ function validateToken(token) {
 // ── OTP / SMS auth ────────────────────────────────────────────────────────────
 
 const OTP_TTL_MS       = 5  * 60 * 1000;   // OTP expires after 5 min
-const SESSION_TTL_MS   = 8  * 60 * 60 * 1000; // session expires after 8 h
+const SESSION_TTL_MS   = 365 * 24 * 60 * 60 * 1000; // effectively permanent (browser sessionStorage clears on refresh)
 const OTP_MAX_ATTEMPTS = 5;
 
 const otpStore     = new Map(); // normPhone → {code, expiresAt, attempts}

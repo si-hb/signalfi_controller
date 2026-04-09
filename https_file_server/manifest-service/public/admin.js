@@ -3,8 +3,9 @@
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
 localStorage.removeItem('signalfi-admin-token'); // remove legacy bearer token key
+localStorage.removeItem('signalfi-admin-session'); // remove any persisted session
 const STORAGE_KEY  = 'signalfi-admin-session';
-let authToken    = localStorage.getItem(STORAGE_KEY) || '';
+let authToken    = sessionStorage.getItem(STORAGE_KEY) || '';
 let _pendingPhone  = ''; // carries phone from step 1 → step 2
 
 // On load: validate any stored token; show phone dialog if missing or expired.
@@ -16,7 +17,7 @@ let _pendingPhone  = ''; // carries phone from step 1 → step 2
     });
     if (!res.ok) {
       authToken = '';
-      localStorage.removeItem(STORAGE_KEY);
+      sessionStorage.removeItem(STORAGE_KEY);
       showPhoneDialog();
     }
   } catch (_) { showPhoneDialog(); }
@@ -31,7 +32,7 @@ async function apiFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   const res = await fetch(path, { ...opts, headers });
-  if (res.status === 401) { authToken = ''; localStorage.removeItem(STORAGE_KEY); setAuthState(false); showPhoneDialog(); throw new Error('Unauthorized'); }
+  if (res.status === 401) { authToken = ''; sessionStorage.removeItem(STORAGE_KEY); setAuthState(false); showPhoneDialog(); throw new Error('Unauthorized'); }
   setAuthState(true);
   return res;
 }
@@ -87,7 +88,7 @@ async function submitCode() {
     if (res.ok) {
       const data = await res.json();
       authToken = data.token;
-      localStorage.setItem(STORAGE_KEY, authToken);
+      sessionStorage.setItem(STORAGE_KEY, authToken);
       hideCodeDialog();
       loadAll();
     } else if (res.status === 429) {
