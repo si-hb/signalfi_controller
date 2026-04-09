@@ -22,6 +22,7 @@ const FILES_ROOT        = process.env.FILES_ROOT        || '/opt/signalfi/files/
 const FILES_BASE_URL    = process.env.FILES_BASE_URL    || 'http://apis.symphonyinteractive.ca';
 const FILES_PATH_PREFIX = process.env.FILES_PATH_PREFIX || '/ota/v1';
 const ADMIN_TOKEN       = process.env.ADMIN_TOKEN       || '';
+const NODERED_AUTH_URL  = process.env.NODERED_AUTH_URL  || '';
 const MQTT_BROKER       = process.env.MQTT_BROKER_URL   || 'mqtt://signalfi-svc:OtaService2024!@mosquitto:1883';
 const MQTT_PREFIX       = process.env.MQTT_TOPIC_PREFIX || 'scout';
 const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SF-100';
@@ -45,7 +46,9 @@ console.log(`[manifest] reports root:   ${REPORTS_ROOT}`);
 console.log(`[manifest] config root:    ${CONFIG_ROOT}`);
 console.log(`[manifest] mqtt broker:    ${MQTT_BROKER}`);
 console.log(`[manifest] mqtt prefix:    ${MQTT_PREFIX}`);
-console.log(`[manifest] admin token:    ${ADMIN_TOKEN ? 'set' : 'UNSET (admin API is open)'}`);
+console.log(`[manifest] admin token:    ${ADMIN_TOKEN ? 'set' : 'unset'}`);
+console.log(`[manifest] nodered auth:   ${NODERED_AUTH_URL || 'UNSET — SMS auth disabled'}`);
+if (!ADMIN_TOKEN && !NODERED_AUTH_URL) console.warn('[manifest] WARNING: no auth configured — admin API is open');
 
 // ── CRC32 (IEEE 802.3 / standard, inline — no extra dependency) ───────────────
 
@@ -388,14 +391,107 @@ function validateToken(token) {
 }
 
 
+// ── OTP / SMS auth ────────────────────────────────────────────────────────────
+
+const OTP_TTL_MS       = 5  * 60 * 1000;   // OTP expires after 5 min
+const SESSION_TTL_MS   = 8  * 60 * 60 * 1000; // session expires after 8 h
+const OTP_MAX_ATTEMPTS = 5;
+
+const otpStore     = new Map(); // normPhone → {code, expiresAt, attempts}
+const sessionStore = new Map(); // token     → {phone, expiresAt}
+
+function normPhone(p) { return p.replace(/\D/g, ''); }
+function genOtp()     { return String(Math.floor(100000 + Math.random() * 900000)); }
+function genSession() { return crypto.randomBytes(32).toString('hex'); }
+
+// Prune expired entries once a minute
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, v] of otpStore)     if (v.expiresAt < now) otpStore.delete(k);
+  for (const [k, v] of sessionStore) if (v.expiresAt < now) sessionStore.delete(k);
+}, 60_000);
+
+// POST /ota/admin/auth/request  {phone}
+// Generates OTP, posts {phone, code} to Node-RED for whitelist check + SMS delivery.
+// Returns {accepted:true} only if Node-RED confirms the number is allowed.
+// Silent {accepted:false} for unknown numbers — no distinguishing error body.
+app.post('/ota/admin/auth/request', async (req, res) => {
+  const raw   = String(req.body?.phone || '').trim();
+  const phone = normPhone(raw);
+  if (phone.length < 7 || phone.length > 15) return res.json({ accepted: false });
+
+  if (!NODERED_AUTH_URL) {
+    console.warn('[auth] NODERED_AUTH_URL not set — cannot deliver OTP');
+    return res.json({ accepted: false });
+  }
+
+  const code = genOtp();
+  otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+
+  try {
+    const nr = await fetch(NODERED_AUTH_URL, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify({ phone: raw, code }),
+      signal:  AbortSignal.timeout(8000),
+    });
+    if (nr.ok) {
+      console.log(`[auth] OTP sent to ${raw}`);
+      return res.json({ accepted: true });
+    }
+    // Node-RED rejected the number (not whitelisted) — discard OTP silently
+    otpStore.delete(phone);
+    return res.json({ accepted: false });
+  } catch (err) {
+    console.error('[auth] Node-RED request failed:', err.message);
+    otpStore.delete(phone);
+    return res.json({ accepted: false });
+  }
+});
+
+// POST /ota/admin/auth/verify  {phone, code}
+// Validates OTP. On success, issues an 8-hour session token.
+app.post('/ota/admin/auth/verify', (req, res) => {
+  const raw   = String(req.body?.phone || '').trim();
+  const phone = normPhone(raw);
+  const code  = String(req.body?.code  || '').trim();
+
+  const entry = otpStore.get(phone);
+  if (!entry || entry.expiresAt < Date.now()) {
+    return res.status(401).json({ error: 'expired' });
+  }
+
+  entry.attempts++;
+  if (entry.attempts > OTP_MAX_ATTEMPTS) {
+    otpStore.delete(phone);
+    return res.status(429).json({ error: 'too many attempts' });
+  }
+
+  if (entry.code !== code) return res.status(401).json({ error: 'invalid' });
+
+  otpStore.delete(phone);
+  const token = genSession();
+  sessionStore.set(token, { phone: raw, expiresAt: Date.now() + SESSION_TTL_MS });
+  console.log(`[auth] session issued for ${raw}`);
+  return res.json({ token });
+});
+
 // ── Admin auth middleware ─────────────────────────────────────────────────────
 
 function adminAuth(req, res, next) {
-  if (!ADMIN_TOKEN || ADMIN_TOKEN.trim() === '') return next();
-  const match = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
-  if (match && match[1] === ADMIN_TOKEN) return next();
-  // Allow token via ?t= query param for endpoints that can't set headers (e.g. <audio src>)
-  if (req.query.t && req.query.t === ADMIN_TOKEN) return next();
+  // Dev mode: no auth configured at all
+  if (!ADMIN_TOKEN && !NODERED_AUTH_URL) return next();
+
+  const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
+  const bearer = match ? match[1] : (req.query.t || '');
+
+  // Legacy / programmatic: static ADMIN_TOKEN (also accepts ?t= for audio src)
+  if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) return next();
+
+  // SMS-issued session token
+  const session = sessionStore.get(bearer);
+  if (session && session.expiresAt > Date.now()) return next();
+
   return res.status(401).json({ error: 'Unauthorized' });
 }
 

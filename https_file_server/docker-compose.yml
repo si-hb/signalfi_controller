@@ -178,6 +178,7 @@ services:
       - FILES_BASE_URL=https://apis.symphonyinteractive.ca
       - FILES_PATH_PREFIX=/ota/v1
       - ADMIN_TOKEN=signalfiadmin2026
+      - NODERED_AUTH_URL=http://node-red:1880/signalfi-auth
       - DEVICE_MODEL=SF-100
     networks:
       - root_default

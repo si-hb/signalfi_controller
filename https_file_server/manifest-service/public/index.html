@@ -10,13 +10,23 @@
 </head>
 <body>
 
-<!-- Auth dialog -->
+<!-- Auth step 1: phone entry -->
 <div id="auth-dialog" class="hidden">
   <div class="auth-box">
     <h2>Admin Access</h2>
-    <p>Enter the admin token to continue.</p>
-    <input type="password" id="auth-input" placeholder="Bearer token…" autocomplete="off">
-    <button class="btn btn-primary" id="auth-submit">Authenticate</button>
+    <p>Enter your mobile number to receive a verification code.</p>
+    <input type="tel" id="auth-phone" placeholder="+1 604 555 0100" autocomplete="tel">
+    <button class="btn btn-primary" id="auth-phone-submit">Send Code</button>
+  </div>
+</div>
+
+<!-- Auth step 2: code entry — only shown if phone is accepted -->
+<div id="auth-code-dialog" class="hidden">
+  <div class="auth-box">
+    <h2>Enter Code</h2>
+    <p>A 6-digit code was sent to your phone.</p>
+    <input type="text" id="auth-code" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
+    <button class="btn btn-primary" id="auth-code-submit">Verify</button>
   </div>
 </div>
 

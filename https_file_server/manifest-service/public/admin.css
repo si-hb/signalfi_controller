@@ -613,12 +613,19 @@ body {
   padding: 9px 12px;
   color: var(--text-primary);
   font-size: 13px;
-  font-family: var(--font-mono);
   width: 100%;
   outline: none;
 }
 
 .auth-box input:focus { border-color: var(--accent-bright); }
+
+#auth-code {
+  font-family: var(--font-mono);
+  font-size: 26px;
+  letter-spacing: 0.25em;
+  text-align: center;
+  padding: 12px;
+}
 
 /* ── Toast ── */
 #toast-container {

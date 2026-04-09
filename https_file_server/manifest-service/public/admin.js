@@ -2,11 +2,12 @@
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-const STORAGE_KEY = 'signalfi-admin-token';
-let authToken = localStorage.getItem(STORAGE_KEY) || '';
+const STORAGE_KEY = 'signalfi-admin-session';
+let authToken   = localStorage.getItem(STORAGE_KEY) || '';
+let _pendingPhone = ''; // carries phone from step 1 → step 2
 
 function setAuthState(ok) {
-  document.getElementById('auth-dot').className   = ok ? 'ok' : 'fail';
+  document.getElementById('auth-dot').className    = ok ? 'ok' : 'fail';
   document.getElementById('auth-label').textContent = ok ? 'authenticated' : 'not authenticated';
 }
 
@@ -14,27 +15,83 @@ async function apiFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
   const res = await fetch(path, { ...opts, headers });
-  if (res.status === 401) { setAuthState(false); showAuthDialog(); throw new Error('Unauthorized'); }
+  if (res.status === 401) { authToken = ''; localStorage.removeItem(STORAGE_KEY); setAuthState(false); showPhoneDialog(); throw new Error('Unauthorized'); }
   setAuthState(true);
   return res;
 }
 
-function showAuthDialog() {
+function showPhoneDialog() {
   document.getElementById('auth-dialog').classList.remove('hidden');
-  document.getElementById('auth-input').focus();
+  document.getElementById('auth-code-dialog').classList.add('hidden');
+  document.getElementById('auth-phone').focus();
 }
-function hideAuthDialog() { document.getElementById('auth-dialog').classList.add('hidden'); }
+function hidePhoneDialog() { document.getElementById('auth-dialog').classList.add('hidden'); }
+function showCodeDialog()  {
+  document.getElementById('auth-code-dialog').classList.remove('hidden');
+  document.getElementById('auth-code').value = '';
+  document.getElementById('auth-code').focus();
+}
+function hideCodeDialog()  { document.getElementById('auth-code-dialog').classList.add('hidden'); }
 
-document.getElementById('auth-submit').addEventListener('click', () => {
-  const val = document.getElementById('auth-input').value.trim();
-  if (!val) return;
-  authToken = val;
-  localStorage.setItem(STORAGE_KEY, val);
-  hideAuthDialog();
-  loadAll();
-});
-document.getElementById('auth-input').addEventListener('keydown', e => {
-  if (e.key === 'Enter') document.getElementById('auth-submit').click();
+// Step 1 — phone entry
+async function submitPhone() {
+  const phone = document.getElementById('auth-phone').value.trim();
+  if (!phone) return;
+  const btn = document.getElementById('auth-phone-submit');
+  btn.disabled = true; btn.textContent = 'Sending…';
+  try {
+    const res  = await fetch('/ota/admin/auth/request', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone }),
+    });
+    const data = await res.json();
+    if (data.accepted) {
+      _pendingPhone = phone;
+      hidePhoneDialog();
+      showCodeDialog();
+    }
+    // Not accepted: silent — no error shown, no feedback. Bots get nothing to key on.
+  } catch (_) { /* network error — also silent */ }
+  finally { btn.disabled = false; btn.textContent = 'Send Code'; }
+}
+document.getElementById('auth-phone-submit').addEventListener('click', submitPhone);
+document.getElementById('auth-phone').addEventListener('keydown', e => { if (e.key === 'Enter') submitPhone(); });
+
+// Step 2 — code entry
+async function submitCode() {
+  const code = document.getElementById('auth-code').value.trim();
+  if (code.length !== 6) return;
+  const btn = document.getElementById('auth-code-submit');
+  btn.disabled = true; btn.textContent = 'Verifying…';
+  try {
+    const res = await fetch('/ota/admin/auth/verify', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone: _pendingPhone, code }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      authToken = data.token;
+      localStorage.setItem(STORAGE_KEY, authToken);
+      hideCodeDialog();
+      loadAll();
+    } else if (res.status === 429) {
+      hideCodeDialog();
+      showPhoneDialog();
+      toast('Too many attempts — request a new code', 'error');
+    } else {
+      document.getElementById('auth-code').value = '';
+      document.getElementById('auth-code').focus();
+      toast('Incorrect code', 'error');
+    }
+  } catch (_) { toast('Verification failed', 'error'); }
+  finally { btn.disabled = false; btn.textContent = 'Verify'; }
+}
+document.getElementById('auth-code-submit').addEventListener('click', submitCode);
+document.getElementById('auth-code').addEventListener('keydown', e => { if (e.key === 'Enter') submitCode(); });
+// Auto-submit on 6th digit
+document.getElementById('auth-code').addEventListener('input', e => {
+  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
+  if (e.target.value.length === 6) submitCode();
 });
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
