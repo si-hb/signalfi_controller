@@ -6,7 +6,20 @@ localStorage.removeItem('signalfi-admin-token'); // remove legacy bearer token k
 localStorage.removeItem('signalfi-admin-session'); // remove any persisted session
 const STORAGE_KEY  = 'signalfi-admin-session';
 let authToken    = sessionStorage.getItem(STORAGE_KEY) || '';
-let _pendingPhone  = ''; // carries phone from step 1 → step 2
+let _pendingPhone  = '';
+let _expireTimer   = null;
+
+function scheduleExpiry(expiresAt) {
+  if (_expireTimer) clearTimeout(_expireTimer);
+  if (!expiresAt) return;
+  const ms = expiresAt - Date.now();
+  if (ms <= 0) { showPhoneDialog(); return; }
+  _expireTimer = setTimeout(() => {
+    authToken = '';
+    sessionStorage.removeItem(STORAGE_KEY);
+    showPhoneDialog();
+  }, ms);
+}
 
 // On load: validate any stored token; show phone dialog if missing or expired.
 (async () => {
@@ -15,7 +28,10 @@ let _pendingPhone  = ''; // carries phone from step 1 → step 2
     const res = await fetch('/ota/admin/auth/check', {
       headers: { 'Authorization': `Bearer ${authToken}` },
     });
-    if (!res.ok) {
+    if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      scheduleExpiry(data.expiresAt);
+    } else {
       authToken = '';
       sessionStorage.removeItem(STORAGE_KEY);
       showPhoneDialog();
@@ -89,6 +105,7 @@ async function submitCode() {
       const data = await res.json();
       authToken = data.token;
       sessionStorage.setItem(STORAGE_KEY, authToken);
+      scheduleExpiry(data.expiresAt);
       hideCodeDialog();
       loadAll();
     } else if (res.status === 429) {

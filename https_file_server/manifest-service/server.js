@@ -437,7 +437,10 @@ app.post('/ota/admin/auth/request', async (req, res) => {
     });
     console.log(`[auth] Node-RED response: ${nr.status}`);
     if (nr.ok) {
-      console.log(`[auth] OTP sent to ${raw}`);
+      const body = await nr.json().catch(() => ({}));
+      const ttl  = Number(body.ttl) || 0;
+      if (ttl > 0 && otpStore.has(phone)) otpStore.get(phone).sessionTtl = ttl * 1000;
+      console.log(`[auth] OTP sent to ${raw}${ttl ? ` (session TTL ${ttl}s)` : ''}`);
       return res.json({ accepted: true });
     }
     otpStore.delete(phone);
@@ -469,20 +472,22 @@ app.post('/ota/admin/auth/verify', (req, res) => {
 
   if (entry.code !== code) return res.status(401).json({ error: 'invalid' });
 
+  const ttlMs     = entry.sessionTtl || SESSION_TTL_MS;
+  const expiresAt = Date.now() + ttlMs;
   otpStore.delete(phone);
   const token = genSession();
-  sessionStore.set(token, { phone: raw, expiresAt: Date.now() + SESSION_TTL_MS });
-  console.log(`[auth] session issued for ${raw}`);
-  return res.json({ token });
+  sessionStore.set(token, { phone: raw, expiresAt });
+  console.log(`[auth] session issued for ${raw} (expires ${new Date(expiresAt).toISOString()})`);
+  return res.json({ token, expiresAt });
 });
 
 // GET /ota/admin/auth/check  — lightweight session validity probe
 app.get('/ota/admin/auth/check', (req, res) => {
   const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
   const bearer = match ? match[1] : '';
-  if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) return res.json({ valid: true });
+  if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) return res.json({ valid: true, expiresAt: null });
   const session = sessionStore.get(bearer);
-  if (session && session.expiresAt > Date.now()) return res.json({ valid: true });
+  if (session && session.expiresAt > Date.now()) return res.json({ valid: true, expiresAt: session.expiresAt });
   return res.status(401).json({ valid: false });
 });
 

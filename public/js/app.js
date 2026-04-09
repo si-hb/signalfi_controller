@@ -26,11 +26,25 @@ export function scheduleRender() {
 // ─── Authentication Setup ─────────────────────────────────────────────────────
 
 const AUTH_SESSION_KEY = 'signalfi-control-session';
-let _pendingPhone = '';
+let _pendingPhone  = '';
+let _expireTimer   = null;
 
 function _getStoredToken()    { return sessionStorage.getItem(AUTH_SESSION_KEY) || ''; }
 function _setStoredToken(t)   { sessionStorage.setItem(AUTH_SESSION_KEY, t); }
 function _clearStoredToken()  { sessionStorage.removeItem(AUTH_SESSION_KEY); }
+
+function scheduleExpiry(expiresAt) {
+  if (_expireTimer) clearTimeout(_expireTimer);
+  if (!expiresAt) return;
+  const ms = expiresAt - Date.now();
+  if (ms <= 0) { showPhoneDialog(); return; }
+  _expireTimer = setTimeout(() => {
+    _clearStoredToken();
+    apiSetAuthToken(null);
+    wsSetAuthToken(null);
+    showPhoneDialog();
+  }, ms);
+}
 
 function _showDialog(id)  { document.getElementById(id).classList.remove('hidden'); }
 function _hideDialog(id)  { document.getElementById(id).classList.add('hidden'); }
@@ -78,6 +92,7 @@ async function _submitCode() {
       _setStoredToken(data.token);
       apiSetAuthToken(data.token);
       wsSetAuthToken(data.token);
+      scheduleExpiry(data.expiresAt);
       _hideDialog('auth-code-dialog');
       initApp();
     } else if (res.status === 429) {
@@ -110,8 +125,10 @@ async function setupAuth() {
     try {
       const res = await fetch('/auth/check', { headers: { Authorization: `Bearer ${stored}` } });
       if (res.ok) {
+        const data = await res.json().catch(() => ({}));
         apiSetAuthToken(stored);
         wsSetAuthToken(stored);
+        scheduleExpiry(data.expiresAt);
         return true;
       }
     } catch (_) {}

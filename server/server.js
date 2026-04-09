@@ -484,9 +484,12 @@ async function main() {
       headers: { 'Content-Type': 'application/json' },
       body:    JSON.stringify({ phone: raw, code, origin: 'signalfi-control' }),
       signal:  AbortSignal.timeout(10000),
-    }).then(nr => {
+    }).then(async nr => {
       if (nr.ok) {
-        console.log(`[${ts()}] [AUTH] OTP sent to ${raw}`);
+        const body = await nr.json().catch(() => ({}));
+        const ttl  = Number(body.ttl) || 0;
+        if (ttl > 0 && otpStore.has(phone)) otpStore.get(phone).sessionTtl = ttl * 1000;
+        console.log(`[${ts()}] [AUTH] OTP sent to ${raw}${ttl ? ` (session TTL ${ttl}s)` : ''}`);
       } else {
         console.log(`[${ts()}] [AUTH] OTP rejected by Node-RED for ${raw} (${nr.status})`);
         otpStore.delete(phone);
@@ -509,17 +512,21 @@ async function main() {
       return res.status(429).json({ error: 'too many attempts' });
     }
     if (entry.code !== code) return res.status(401).json({ error: 'invalid' });
+    const ttlMs     = entry.sessionTtl || SESSION_TTL_MS;
+    const expiresAt = Date.now() + ttlMs;
     otpStore.delete(phone);
     const token = genSession();
-    sessionStore.set(token, { phone: raw, expiresAt: Date.now() + SESSION_TTL_MS });
-    console.log(`[${ts()}] [AUTH] Session issued for ${raw}`);
-    return res.json({ token });
+    sessionStore.set(token, { phone: raw, expiresAt });
+    console.log(`[${ts()}] [AUTH] Session issued for ${raw} (expires ${new Date(expiresAt).toISOString()})`);
+    return res.json({ token, expiresAt });
   });
 
   app.get('/auth/check', (req, res) => {
     const match  = (req.headers.authorization || '').match(/^Bearer\s+(.+)$/);
     const bearer = match ? match[1] : '';
-    if (isValidToken(config, bearer)) return res.json({ valid: true });
+    if (config.auth.token && bearer === config.auth.token) return res.json({ valid: true, expiresAt: null });
+    const session = sessionStore.get(bearer);
+    if (session && session.expiresAt > Date.now()) return res.json({ valid: true, expiresAt: session.expiresAt });
     return res.status(401).json({ valid: false });
   });
 
