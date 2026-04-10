@@ -383,6 +383,230 @@ Your service must be on the same Docker network as the `node-red` container. On 
 
 ---
 
+## UI / Styling
+
+The auth dialogs in both Signalfi apps share the same design language — a dark-themed, centered modal overlay with an accent colour of teal (`#097479` / `#0eb8c0`). What follows are the exact patterns used, extracted from the working implementations.
+
+### CSS custom properties (design tokens)
+
+Define these at `:root`. Adapt the values to match your app's theme, but keep the variable names if you want to copy the snippets below verbatim.
+
+```css
+:root {
+  --bg-base:       #0e0e0e;   /* page background */
+  --bg-panel:      #1a1a1a;   /* card / dialog background */
+  --bg-raised:     #222222;   /* input fields, secondary surfaces */
+  --accent:        #097479;   /* primary button fill */
+  --accent-bright: #0eb8c0;   /* focus rings, hover states */
+  --text-primary:  #eeeeee;
+  --text-muted:    #777777;
+  --border:        #2e2e2e;
+  --font-mono: "SF Mono", Consolas, "Fira Mono", "Courier New", monospace;
+}
+```
+
+### HTML structure
+
+Two separate `<div>` elements — one for each dialog step. Both start hidden. Only show the code dialog after the phone number is accepted.
+
+```html
+<!-- Step 1: phone entry -->
+<div id="auth-phone-dialog" class="auth-overlay hidden">
+  <div class="auth-box">
+    <h2>Admin Access</h2>
+    <p>Enter your mobile number to receive a verification code.</p>
+    <input type="tel" id="auth-phone" placeholder="+1 604 555 0100"
+           autocomplete="tel">
+    <button class="auth-btn" id="auth-phone-submit">Send Code</button>
+  </div>
+</div>
+
+<!-- Step 2: code entry — only shown after phone is accepted -->
+<div id="auth-code-dialog" class="auth-overlay hidden">
+  <div class="auth-box">
+    <h2>Enter Code</h2>
+    <p>A 6-digit code was sent to your phone.</p>
+    <input type="text" id="auth-code" placeholder="000000"
+           maxlength="6" autocomplete="one-time-code" inputmode="numeric">
+    <button class="auth-btn" id="auth-code-submit">Verify</button>
+  </div>
+</div>
+```
+
+**Input attributes to include:**
+
+- Phone field: `type="tel"`, `autocomplete="tel"` — triggers the phone keyboard on iOS/Android and enables autofill.
+- Code field: `type="text"`, `inputmode="numeric"`, `autocomplete="one-time-code"`, `maxlength="6"` — triggers the numeric keyboard and enables SMS autofill on supported browsers.
+
+### CSS — overlay and box
+
+```css
+/* Full-screen backdrop — sits above all app content */
+.auth-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.85);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;          /* above nav, toasts, everything */
+}
+
+.auth-overlay.hidden { display: none; }
+
+/* Dialog card */
+.auth-box {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 32px;
+  width: 320px;           /* 380px works well for wider/desktop-only UIs */
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auth-box h2 {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+}
+
+.auth-box p {
+  font-size: 13px;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+```
+
+### CSS — input fields
+
+```css
+/* Shared style for both inputs */
+.auth-box input {
+  background: var(--bg-raised);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 13px;
+  color: var(--text-primary);
+  font-size: 14px;
+  width: 100%;
+  outline: none;
+  font-family: inherit;
+}
+
+.auth-box input:focus {
+  border-color: var(--accent-bright);  /* teal focus ring — only border, not box-shadow */
+}
+
+/* Code input — large, monospace, centred, wide letter-spacing */
+#auth-code {
+  font-family: var(--font-mono);
+  font-size: 28px;
+  letter-spacing: 0.3em;   /* visually separates digits; 0.25em also looks good */
+  text-align: center;
+  padding: 12px;
+}
+```
+
+The wide `letter-spacing` on the code input makes the 6-digit string read as discrete characters without using a split-input component. Keep `maxlength="6"` on the element so the field can't grow beyond six digits.
+
+### CSS — submit button
+
+```css
+.auth-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 11px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  width: 100%;
+  font-family: inherit;
+}
+
+.auth-btn:hover   { background: var(--accent-bright); }
+.auth-btn:disabled { opacity: 0.5; cursor: default; }
+```
+
+Make the button full-width inside the card (`width: 100%`) so it fills the dialog width — this is easier to tap on mobile and gives the dialog a clean, resolved bottom edge. Disable it while a request is in flight to prevent double-submits.
+
+### Layout notes
+
+- **Width**: 320 px works well for mobile-first or mixed apps. Use 360–380 px for desktop-only admin UIs where the narrower width can feel cramped.
+- **`gap: 16px`** on the flex column gives comfortable vertical breathing room between each element without wasting space.
+- **No title bar / close button**: intentional. The auth dialog is mandatory — giving users a way to dismiss it without authenticating would require handling the unauthenticated state elsewhere. Once authenticated the dialog is simply hidden.
+- **`z-index: 1000`**: keeps the overlay above sticky navbars (`z-index: 100`) and toast containers (`z-index: 300`). If your app has other fixed-position elements check they don't bleed through.
+
+### Showing / hiding dialogs
+
+```js
+function showPhoneDialog() {
+  document.getElementById('auth-phone-dialog').classList.remove('hidden');
+  document.getElementById('auth-code-dialog').classList.add('hidden');
+  document.getElementById('auth-phone').focus();
+}
+
+function showCodeDialog() {
+  document.getElementById('auth-phone-dialog').classList.add('hidden');
+  document.getElementById('auth-code-dialog').classList.remove('hidden');
+  document.getElementById('auth-code').focus();
+}
+
+function hideDialogs() {
+  document.getElementById('auth-phone-dialog').classList.add('hidden');
+  document.getElementById('auth-code-dialog').classList.add('hidden');
+}
+```
+
+Calling `.focus()` after showing each dialog moves the cursor straight into the input — on mobile this opens the keyboard immediately, which is the right behaviour for a mandatory auth step.
+
+### Auth status indicator (optional)
+
+Both apps show a small dot + label in the navigation bar to indicate session state. This is purely cosmetic but helps during development and gives power users a quick health check.
+
+```html
+<div id="auth-indicator">
+  <div id="auth-dot"></div>
+  <span id="auth-label">not authenticated</span>
+</div>
+```
+
+```css
+#auth-indicator {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+#auth-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+#auth-dot.ok   { background: #27ae60; }
+#auth-dot.fail { background: #c0392b; }
+```
+
+```js
+function setAuthIndicator(ok) {
+  const dot   = document.getElementById('auth-dot');
+  const label = document.getElementById('auth-label');
+  dot.className = ok ? 'ok' : 'fail';
+  label.textContent = ok ? 'authenticated' : 'not authenticated';
+}
+```
+
+Call `setAuthIndicator(true)` after a successful verify, `setAuthIndicator(false)` when the session is cleared or expired.
+
+---
+
 ## Security Notes
 
 - **No enumeration**: the browser always receives `{ accepted: true }` from `/auth/request` regardless of whether Node-RED accepted the number. An attacker cannot determine which numbers are valid by observing responses.
