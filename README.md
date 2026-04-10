@@ -513,4 +513,32 @@ Multiple `scoutUpdate` messages arriving in the same animation frame are coalesc
 
 ## Authentication
 
-Set `auth.token` in `config.json` (or `AUTH_TOKEN` environment variable) to enable token authentication. All REST endpoints require `Authorization: Bearer <token>`. The WebSocket upgrade accepts the token via the same header or a `?token=` query parameter. The browser prompts for the token on first load and stores it in `localStorage`.
+Both the control app (signalfi-web) and the admin panel (signalfi-manifest) use SMS OTP authentication. There is no static password or bearer token visible in the browser.
+
+**Flow:**
+
+1. On page load, the app checks `sessionStorage` for a valid session token via `/auth/check`.
+2. If no valid session exists, a phone number dialog appears.
+3. The entered phone number is POSTed to `/auth/request`. The server dispatches it asynchronously to a Node-RED endpoint (`NODERED_AUTH_URL`) which validates the number against a whitelist and sends an SMS code. The browser gets an immediate `{accepted: true}` response only if the number is on the whitelist — otherwise silence (no error, no feedback).
+4. If accepted, a 6-digit code entry dialog appears. The code is auto-submitted when the 6th digit is entered.
+5. On successful verification (`/auth/verify`), a session token is stored in `sessionStorage` (clears on tab close/refresh) and the app initialises.
+6. Sessions are valid until the browser tab is closed or refreshed. The server TTL (default 365 days) can be overridden per-number by returning `{ttl: <seconds>}` from the Node-RED flow.
+
+**Terminate Sessions** — the admin panel has a "Terminate Sessions" button that clears all active sessions on both servers simultaneously. All connected browser tabs (including the one that triggered it) are force-logged out via SSE (admin) or WebSocket (control).
+
+**Node-RED endpoint:** `POST http://node-red:1880/signalfi-auth`  
+Request body: `{ "phone": "+16045550100", "code": "123456", "origin": "signalfi-admin" }`  
+Expected response: `200 OK` with optional `{ "ttl": 86400 }` to accept; any non-2xx to reject.
+
+See [`AUTH_README.md`](AUTH_README.md) for a complete implementation guide suitable for adding this auth system to a new app on the same server.
+
+**Traefik security:** The admin panel router has rate limiting (5 req/s average, burst 10) and HTTP→HTTPS redirect enforced at the Traefik layer.
+
+## Reports
+
+The admin panel Reports section shows:
+
+- **Stats bar** — total updates, success count, failed count, unique devices, last update timestamp.
+- **Filters** — filter by status (applied / failed / started) and by device identifier.
+- **Live updates** — new OTA report entries appear at the top of the table in real time via SSE without a page refresh.
+- **CSV export** — download all report entries as a dated CSV file.
