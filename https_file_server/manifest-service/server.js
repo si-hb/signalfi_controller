@@ -1170,18 +1170,74 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
   }
 });
 
+// ── MQTT target resolution ────────────────────────────────────────────────────
+// Resolves the smartest set of MQTT topics for a given array of device MACs:
+//   1. $broadcast       — if every currently-online device is selected
+//   2. $group/<node>    — for each node where ALL online members are selected
+//   3. scout/<MAC>/$action — for individual devices (partial node coverage or no node)
+//
+// The same manifest payload is published to every resolved topic.
+
+function resolvePublishTargets(deviceIds) {
+  const cutoff   = Date.now() - DEVICE_TIMEOUT_MS;
+  const selSet   = new Set(deviceIds);
+
+  const allOnline = [...deviceLastSeen.entries()]
+    .filter(([, ts]) => ts > cutoff)
+    .map(([id]) => id);
+
+  // If the selection covers every online device → single broadcast
+  if (allOnline.length > 0 && allOnline.every(id => selSet.has(id))) {
+    return [`${MQTT_PREFIX}/$broadcast/$action`];
+  }
+
+  // Count online devices per node (across ALL online devices, not just selected)
+  const onlineCountByNode = new Map();
+  for (const id of allOnline) {
+    const node = deviceInfo.get(id)?.node;
+    if (node) onlineCountByNode.set(node, (onlineCountByNode.get(node) || 0) + 1);
+  }
+
+  // Group the selected devices by their known node
+  const selectedByNode = new Map();
+  const noNode = [];
+  for (const mac of deviceIds) {
+    const node = deviceInfo.get(mac)?.node;
+    if (!node) { noNode.push(mac); continue; }
+    if (!selectedByNode.has(node)) selectedByNode.set(node, []);
+    selectedByNode.get(node).push(mac);
+  }
+
+  const topics = [];
+  for (const [node, macs] of selectedByNode.entries()) {
+    const totalOnline = onlineCountByNode.get(node) || 0;
+    if (totalOnline > 0 && macs.length === totalOnline) {
+      // All online devices in this node are selected → group topic
+      topics.push(`${MQTT_PREFIX}/$group/${node}/$action`);
+    } else {
+      // Partial selection → individual device topics
+      for (const mac of macs) topics.push(`${MQTT_PREFIX}/${mac}/$action`);
+    }
+  }
+
+  // Devices with no known node are always targeted individually
+  for (const mac of noNode) topics.push(`${MQTT_PREFIX}/${mac}/$action`);
+
+  return [...new Set(topics)];
+}
+
 // ── Admin API — auto push-firmware (inline manifest generation) ───────────────
 // POST /ota/admin/api/ota/push-firmware
-// Body: { firmwareFile, nodePath?, broadcast? }
+// Body: { firmwareFile, nodePath?, broadcast?, deviceIds? }
 // Derives version from filename (fw-x.y.z.hex), generates token, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
-  const { firmwareFile, nodePath, broadcast, backup, progress, force } = req.body || {};
+  const { firmwareFile, nodePath, broadcast, deviceIds, backup, progress, force } = req.body || {};
 
   if (!firmwareFile || !safeFilename(firmwareFile))
     return res.status(400).json({ error: 'firmwareFile required' });
-  if (!broadcast && !nodePath)
-    return res.status(400).json({ error: 'nodePath or broadcast:true required' });
+  if (!broadcast && !nodePath && (!Array.isArray(deviceIds) || !deviceIds.length))
+    return res.status(400).json({ error: 'nodePath, broadcast:true, or deviceIds required' });
 
   const fwPath = path.join(FIRMWARE_ROOT, firmwareFile);
   if (!fs.existsSync(fwPath))
@@ -1235,14 +1291,17 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
 
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
-    const topic   = broadcast
-      ? `${MQTT_PREFIX}/$broadcast/$action`
-      : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
+    const topics = broadcast
+      ? [`${MQTT_PREFIX}/$broadcast/$action`]
+      : deviceIds?.length
+        ? resolvePublishTargets(deviceIds)
+        : [`${MQTT_PREFIX}/$group/${nodePath}/$action`];
     const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
-    mqttPublish(topic, payload, false);
+    for (const topic of topics) mqttPublish(topic, payload, false);
 
-    console.log(`[admin] firmware push: ${firmwareFile} v${version} → ${topic}`);
-    res.json({ published: true, topic, version, manifest });
+    const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
+    console.log(`[admin] firmware push: ${firmwareFile} v${version} → ${topicSummary}`);
+    res.json({ published: true, topic: topicSummary, topics, version, manifest });
   } catch (err) {
     console.error(`[admin] push-firmware error: ${err.message}`);
     res.status(500).json({ error: err.message });
@@ -1255,12 +1314,12 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
 // Generates token, resolves checksums for 'put' ops, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-files', (req, res) => {
-  const { files = [], nodePath, broadcast, sync = false, progress } = req.body || {};
+  const { files = [], nodePath, broadcast, deviceIds, sync = false, progress } = req.body || {};
 
   if (!files.length)
     return res.status(400).json({ error: 'files array required' });
-  if (!broadcast && !nodePath)
-    return res.status(400).json({ error: 'nodePath or broadcast:true required' });
+  if (!broadcast && !nodePath && (!Array.isArray(deviceIds) || !deviceIds.length))
+    return res.status(400).json({ error: 'nodePath, broadcast:true, or deviceIds required' });
 
   try {
     const tokenHex    = crypto.randomBytes(32).toString('hex');
@@ -1296,14 +1355,17 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
     const manifestPath = path.join(MODELS_DIR, `${DEVICE_MODEL}.json`);
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
-    const topic   = broadcast
-      ? `${MQTT_PREFIX}/$broadcast/$action`
-      : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
+    const topics = broadcast
+      ? [`${MQTT_PREFIX}/$broadcast/$action`]
+      : deviceIds?.length
+        ? resolvePublishTargets(deviceIds)
+        : [`${MQTT_PREFIX}/$group/${nodePath}/$action`];
     const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
-    mqttPublish(topic, payload, false);
+    for (const topic of topics) mqttPublish(topic, payload, false);
 
-    console.log(`[admin] files push: ${files.length} op(s) → ${topic}`);
-    res.json({ published: true, topic, manifest });
+    const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
+    console.log(`[admin] files push: ${files.length} op(s) → ${topicSummary}`);
+    res.json({ published: true, topic: topicSummary, topics, manifest });
   } catch (err) {
     console.error(`[admin] push-files error: ${err.message}`);
     res.status(500).json({ error: err.message });
