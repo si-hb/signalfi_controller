@@ -155,12 +155,13 @@ function connectMqtt() {
           ipToDevice.set(payload.ip, deviceId);
         }
         // Accumulate device info (version/node may not be present in every $state)
+        // Firmware sends: ver (version), nod (node path), sta (status), ip
         const prev = deviceInfo.get(deviceId) || {};
         const updated = {
-          ip:      payload.ip      || prev.ip,
-          version: payload.version || payload.firmwareVersion || prev.version,
-          node:    payload.node    || payload.nodePath        || prev.node,
-          lastState: payload.status || prev.lastState,
+          ip:        payload.ip      || prev.ip,
+          version:   payload.ver     || payload.version || payload.firmwareVersion || prev.version,
+          node:      payload.nod     || payload.node    || payload.nodePath        || prev.node,
+          lastState: payload.sta     || payload.status  || prev.lastState,
         };
         deviceInfo.set(deviceId, updated);
         // Push live update to admin panel devices tab
@@ -619,18 +620,18 @@ app.get('/ota/admin/api/devices', (_req, res) => {
   const cutoff = Date.now() - DEVICE_TIMEOUT_MS;
   const list = [];
   for (const [id, ts] of deviceLastSeen.entries()) {
+    if (ts <= cutoff) continue; // only include devices that are online
     const info = deviceInfo.get(id) || {};
     list.push({
       id,
       ip:      info.ip      || deviceIp.get(id) || null,
       version: info.version || null,
       node:    info.node    || null,
-      online:  ts > cutoff,
+      online:  true,
       lastSeen: ts,
     });
   }
-  // Online first, then most-recently-seen
-  list.sort((a, b) => (b.online - a.online) || (b.lastSeen - a.lastSeen));
+  list.sort((a, b) => b.lastSeen - a.lastSeen);
   res.json(list);
 });
 
@@ -716,8 +717,12 @@ app.get('/ota/admin/api/events', (req, res) => {
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
 
-  // Ask all online devices to report their current status so the Devices tab
-  // reflects live state immediately after a browser connect or page refresh.
+  // Clear all tracked devices so stale retained MQTT state doesn't show phantom
+  // devices as online. Only devices that actively respond to the broadcast below
+  // will reappear. deviceInfo is kept so version/node survive the reset.
+  deviceLastSeen.clear();
+
+  // Ask all devices to report their current status immediately.
   if (mqttClient && mqttClient.connected) {
     mqttClient.publish(
       `${MQTT_PREFIX}/$broadcast/$action`,
