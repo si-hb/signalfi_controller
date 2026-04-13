@@ -37,6 +37,7 @@ const mqttDownloads   = new Map(); // deviceId  → download info (MQTT-based, a
 const deviceIp        = new Map(); // deviceId  → last known IP string
 const ipToDevice      = new Map(); // IP string → deviceId
 const deviceInfo      = new Map(); // deviceId  → { ip, version, node, lastState }
+const pushManifests   = new Map(); // downloadToken → { manifestId, category, version, files[] }
 
 console.log(`[manifest] starting v3`);
 console.log(`[manifest] manifest root:  ${MANIFEST_ROOT}`);
@@ -173,7 +174,7 @@ function connectMqtt() {
           online:  true,
         });
         // Device went idle → the last tracked download for this device is complete
-        if (payload.status === 'idle' && mqttDownloads.has(deviceId)) {
+        if ((payload.sta === 'idle' || payload.status === 'idle') && mqttDownloads.has(deviceId)) {
           const dl = mqttDownloads.get(deviceId);
           mqttDownloads.delete(deviceId);
           sseEmit('device-done', {
@@ -1301,6 +1302,20 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
 
     const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
     console.log(`[admin] firmware push: ${firmwareFile} v${version} → ${topicSummary}`);
+
+    // Record push event in reports log
+    writeReport({
+      type:      'push',
+      timestamp: new Date().toISOString(),
+      pushId:    manifestId,
+      category:  'firmware',
+      version,
+      files:     [firmwareFile],
+      topics,
+      manifest:  { manifestId, modelId: DEVICE_MODEL, type: 'firmware', version, firmware: manifest.firmware },
+    });
+    pushManifests.set(tokenHex, { manifestId, category: 'firmware', version, files: [firmwareFile] });
+
     res.json({ published: true, topic: topicSummary, topics, version, manifest });
   } catch (err) {
     console.error(`[admin] push-firmware error: ${err.message}`);
@@ -1365,6 +1380,19 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
 
     const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
     console.log(`[admin] files push: ${files.length} op(s) → ${topicSummary}`);
+
+    // Record push event in reports log
+    writeReport({
+      type:      'push',
+      timestamp: new Date().toISOString(),
+      pushId:    manifestId,
+      category:  'files',
+      files:     files.map(f => (f.op === 'delete' ? `delete:${f.id}` : f.id)),
+      topics,
+      manifest:  { manifestId, modelId: DEVICE_MODEL, type: 'files', sync: sync || undefined, files: fileEntries },
+    });
+    pushManifests.set(tokenHex, { manifestId, category: 'files', files: files.map(f => f.id) });
+
     res.json({ published: true, topic: topicSummary, topics, manifest });
   } catch (err) {
     console.error(`[admin] push-files error: ${err.message}`);
@@ -1445,6 +1473,18 @@ app.post('/ota/admin/api/upload', adminAuth, firmwareUpload.single('file'), (req
   res.json(result);
 });
 
+// ── Report helpers ────────────────────────────────────────────────────────────
+
+function writeReport(entry) {
+  try {
+    fs.mkdirSync(REPORTS_ROOT, { recursive: true });
+    fs.appendFileSync(path.join(REPORTS_ROOT, 'updates.log'), JSON.stringify(entry) + '\n');
+    sseEmit('report-created', { entry });
+  } catch (err) {
+    console.error(`[report] failed to write log: ${err.message}`);
+  }
+}
+
 // ── Admin API — reports ───────────────────────────────────────────────────────
 
 app.get('/ota/admin/api/reports', (req, res) => {
@@ -1455,13 +1495,64 @@ app.get('/ota/admin/api/reports', (req, res) => {
   const logPath      = path.join(REPORTS_ROOT, 'updates.log');
   try {
     if (!fs.existsSync(logPath)) return res.json({ total: 0, page, limit, entries: [] });
-    let entries = fs.readFileSync(logPath, 'utf8')
-      .split('\n').filter(l => l.trim()).reverse()
+
+    const rawEntries = fs.readFileSync(logPath, 'utf8')
+      .split('\n').filter(l => l.trim())
       .map(l => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean);
-    if (filterStatus) entries = entries.filter(e => (e.status || '').toLowerCase() === filterStatus);
-    if (filterDevice) entries = entries.filter(e => (e.deviceId || '').toLowerCase().includes(filterDevice));
-    const total = entries.length;
-    res.json({ total, page, limit, entries: entries.slice(page * limit, page * limit + limit) });
+
+    // Group device completions into their push events
+    const pushMap       = new Map(); // pushId → enriched push entry
+    const devicesByPush = new Map(); // pushId → [device entries]
+    const legacy        = [];        // old-format entries (no type field)
+
+    for (const e of rawEntries) {
+      if (e.type === 'push') {
+        pushMap.set(e.pushId, { ...e, devices: [] });
+      } else if (e.type === 'device') {
+        if (e.pushId) {
+          if (!devicesByPush.has(e.pushId)) devicesByPush.set(e.pushId, []);
+          devicesByPush.get(e.pushId).push(e);
+        } else {
+          legacy.push(e);
+        }
+      } else {
+        legacy.push(e); // legacy format (no type)
+      }
+    }
+
+    for (const [pushId, devices] of devicesByPush) {
+      if (pushMap.has(pushId)) pushMap.get(pushId).devices = devices;
+      else legacy.push(...devices); // orphaned — parent push rolled off
+    }
+
+    // Sort newest first
+    let combined = [...pushMap.values(), ...legacy]
+      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+    // Filters
+    if (filterStatus) {
+      combined = combined.filter(e => {
+        if (e.type === 'push') {
+          if (filterStatus === 'applied') return (e.devices || []).some(d => d.status === 'applied');
+          if (filterStatus === 'failed')  return (e.devices || []).some(d => d.status === 'failed');
+          if (filterStatus === 'started') return (e.devices || []).length === 0;
+          return false;
+        }
+        return (e.status || '').toLowerCase() === filterStatus;
+      });
+    }
+    if (filterDevice) {
+      combined = combined.filter(e => {
+        if (e.type === 'push') {
+          return (e.topics || []).some(t => t.toLowerCase().includes(filterDevice))
+              || (e.devices || []).some(d => (d.deviceId || '').toLowerCase().includes(filterDevice));
+        }
+        return (e.deviceId || '').toLowerCase().includes(filterDevice);
+      });
+    }
+
+    const total = combined.length;
+    res.json({ total, page, limit, entries: combined.slice(page * limit, page * limit + limit) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1469,12 +1560,16 @@ app.get('/ota/admin/api/reports/stats', (req, res) => {
   const logPath = path.join(REPORTS_ROOT, 'updates.log');
   try {
     if (!fs.existsSync(logPath)) return res.json({ total: 0, success: 0, failed: 0, devices: 0, last: null });
-    const entries = fs.readFileSync(logPath, 'utf8').split('\n').filter(l => l.trim()).map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-    const devices = new Set(entries.map(e => e.deviceId)).size;
-    const success = entries.filter(e => e.status === 'applied').length;
-    const failed  = entries.filter(e => e.status === 'failed').length;
+    const entries = fs.readFileSync(logPath, 'utf8').split('\n').filter(l => l.trim())
+      .map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
+    const pushes  = entries.filter(e => e.type === 'push');
+    const devEvts = entries.filter(e => e.type === 'device' || !e.type);
+    const deviceIds = new Set(devEvts.map(e => e.deviceId).filter(Boolean));
+    const success = devEvts.filter(e => e.status === 'applied').length;
+    const failed  = devEvts.filter(e => e.status === 'failed').length;
+    const total   = pushes.length || devEvts.length; // prefer push count
     const last    = entries.length ? entries[entries.length - 1].timestamp : null;
-    res.json({ total: entries.length, success, failed, devices, last });
+    res.json({ total, success, failed, devices: deviceIds.size, last });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1505,6 +1600,8 @@ function _bearerToken(req) {
 
 function streamFile(req, res, filePath, category) {
   if (!fs.existsSync(filePath)) return res.status(404).send('Not found');
+
+  const bearerToken = _bearerToken(req); // captured for device report in _finish
 
   const stat      = fs.statSync(filePath);
   const total     = stat.size;
@@ -1562,6 +1659,29 @@ function streamFile(req, res, filePath, category) {
       } else {
         sseEmit('device-done', { sessionId, ip, file: filename, category, total, durationMs });
       }
+    }
+
+    // Write device completion record for all non-config, non-aborted transfers
+    if (!aborted && category !== 'config') {
+      const pushInfo = bearerToken ? pushManifests.get(bearerToken) : null;
+      const deviceId = devId || ipToDevice.get(ip) || null;
+      const info     = deviceId ? (deviceInfo.get(deviceId) || {}) : {};
+      const version  = pushInfo?.version
+                     || (filename.match(/fw-(\d+\.\d+\.\d+)/i) || [])[1]
+                     || null;
+      writeReport({
+        type:       'device',
+        timestamp:  new Date().toISOString(),
+        pushId:     pushInfo?.manifestId || null,
+        deviceId:   deviceId || ip,
+        ip,
+        node:       info.node || null,
+        file:       filename,
+        category,
+        version,
+        durationMs,
+        status:     'applied',
+      });
     }
   };
 
@@ -1715,6 +1835,7 @@ app.get('/ota/v1/validate', (req, res) => {
 app.post('/ota/v1/report', (req, res) => {
   const { deviceId, modelId, firmwareVersion, status } = req.body || {};
   const entry = {
+    // No 'type' field — legacy format, shown as standalone row in reports table
     timestamp:       new Date().toISOString(),
     deviceId:        deviceId        || 'unknown',
     modelId:         modelId         || 'unknown',
@@ -1723,13 +1844,7 @@ app.post('/ota/v1/report', (req, res) => {
     ip: req.headers['x-forwarded-for'] || req.socket.remoteAddress,
   };
   console.log(`[report] ${JSON.stringify(entry)}`);
-  try {
-    fs.mkdirSync(REPORTS_ROOT, { recursive: true });
-    fs.appendFileSync(path.join(REPORTS_ROOT, 'updates.log'), JSON.stringify(entry) + '\n');
-    sseEmit('report-created', { entry });
-  } catch (err) {
-    console.error(`[report] failed to write log: ${err.message}`);
-  }
+  writeReport(entry);
   res.json({ received: true });
 });
 

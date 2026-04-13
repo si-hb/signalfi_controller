@@ -437,6 +437,8 @@ body {
 .reports-table td:first-child { color: var(--text-primary); }
 
 .reports-table tr:last-child td { border-bottom: none; }
+.reports-table tbody tr { cursor: pointer; }
+.reports-table tbody tr:hover td { background: var(--bg-raised); }
 
 /* Pagination */
 .pagination {

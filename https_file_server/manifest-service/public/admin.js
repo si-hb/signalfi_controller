@@ -925,20 +925,160 @@ async function loadReports() {
 function reportStatusBadge(status) {
   if (status === 'applied') return badge('applied', 'success');
   if (status === 'failed')  return badge('failed',  'failed');
+  if (status === 'pushed')  return badge('pushed',  'started');
   return badge(status || '—', 'started');
+}
+
+function _pushStatusBadge(devices) {
+  if (!devices || devices.length === 0) return badge('pushed', 'started');
+  const nApplied = devices.filter(d => d.status === 'applied').length;
+  const nFailed  = devices.filter(d => d.status === 'failed').length;
+  if (nFailed > 0) return badge(`${nApplied}/${devices.length} applied`, 'failed');
+  return badge(`${nApplied} applied`, 'success');
+}
+
+function _fmtTopicShort(topics) {
+  if (!topics || !topics.length) return '—';
+  if (topics.length === 1) return topics[0].replace('scout/', '').replace('/$action', '');
+  return `${topics.length} topics`;
 }
 
 function makeReportRow(e) {
   const tr = document.createElement('tr');
-  tr.innerHTML = `
-    <td>${e.timestamp ? new Date(e.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'}</td>
-    <td>${e.deviceId || '—'}</td>
-    <td>${e.modelId || '—'}</td>
-    <td class="mono">${e.firmwareVersion || '—'}</td>
-    <td>${reportStatusBadge(e.status)}</td>
-    <td class="mono text-muted">${e.ip || '—'}</td>
-  `;
+  tr.style.cursor = 'pointer';
+  tr.title = 'Click for details';
+
+  if (e.type === 'push') {
+    const n = (e.devices || []).length;
+    tr.innerHTML = `
+      <td>${e.timestamp ? new Date(e.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'}</td>
+      <td class="mono" style="font-size:11px">${_fmtTopicShort(e.topics)}</td>
+      <td>${e.manifest?.modelId || '—'}</td>
+      <td class="mono">${e.version || (e.category === 'files' ? 'files' : '—')}</td>
+      <td>${_pushStatusBadge(e.devices)}</td>
+      <td class="mono text-muted">${n ? `${n} device${n > 1 ? 's' : ''}` : '—'}</td>
+    `;
+  } else {
+    tr.innerHTML = `
+      <td>${e.timestamp ? new Date(e.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'}</td>
+      <td>${e.deviceId || '—'}</td>
+      <td>${e.modelId || '—'}</td>
+      <td class="mono">${e.firmwareVersion || e.version || '—'}</td>
+      <td>${reportStatusBadge(e.status)}</td>
+      <td class="mono text-muted">${e.ip || '—'}</td>
+    `;
+  }
+  tr.addEventListener('click', () => showReportDetail(e));
   return tr;
+}
+
+function showReportDetail(e) {
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.75);display:flex;align-items:center;justify-content:center;z-index:200;padding:24px;overflow:auto';
+
+  const box = document.createElement('div');
+  box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;width:min(800px,100%);max-height:80vh;display:flex;flex-direction:column;overflow:hidden';
+
+  const fmtTs = ts => ts ? new Date(ts).toLocaleString(undefined, { month:'short', day:'numeric', year:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—';
+  const fmtDur = ms => ms ? (ms / 1000).toFixed(1) + 's' : '—';
+
+  if (e.type === 'push') {
+    const fw      = e.manifest?.firmware;
+    const fFiles  = fw ? [fw] : (e.manifest?.files || []);
+    const fileRows = fFiles.map(f => {
+      const name = f.url ? f.url.split('/').pop() : (f.id || '—');
+      const op   = f.op === 'delete' ? ' <span style="color:var(--warn);font-size:10px">DELETE</span>' : '';
+      return `<tr>
+        <td class="mono" style="font-size:11px">${name}${op}</td>
+        <td style="font-size:11px;color:var(--text-muted)">${f.size ? fmtSize(f.size) : '—'}</td>
+        <td class="mono" style="font-size:11px;color:var(--text-muted)">${f.crc32 || '—'}</td>
+        <td class="mono" style="font-size:11px;color:var(--text-muted)">${f.sha256 ? f.sha256.slice(0,16) + '…' : '—'}</td>
+      </tr>`;
+    }).join('') || `<tr><td colspan="4" style="text-align:center;color:var(--text-muted);padding:12px;font-style:italic">—</td></tr>`;
+
+    const deviceRows = (e.devices || []).map(d => `<tr>
+      <td class="mono" style="font-size:11px">${d.deviceId || '—'}</td>
+      <td class="mono" style="font-size:11px;color:var(--text-muted)">${d.ip || '—'}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${d.node || '—'}</td>
+      <td class="mono" style="font-size:11px">${d.file || '—'}</td>
+      <td>${reportStatusBadge(d.status)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${fmtDur(d.durationMs)}</td>
+      <td style="font-size:11px;color:var(--text-muted)">${fmtTs(d.timestamp)}</td>
+    </tr>`).join('') || `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:16px;font-style:italic">No device reports yet — devices may still be downloading</td></tr>`;
+
+    const topicsHtml = (e.topics || []).map(t =>
+      `<span class="mono" style="font-size:11px;color:var(--accent-bright);display:block">${t}</span>`
+    ).join('') || '<span style="color:var(--text-muted)">—</span>';
+
+    box.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <div style="display:flex;align-items:center;gap:12px">
+          <span style="font-size:13px;font-weight:700">${e.category === 'firmware' ? 'Firmware Push' : 'File Push'}</span>
+          ${e.version ? `<span class="mono" style="font-size:12px;color:var(--accent-bright)">v${e.version}</span>` : ''}
+          <span style="font-size:11px;color:var(--text-muted)">${fmtTs(e.timestamp)}</span>
+        </div>
+        <button id="rpt-close" class="btn btn-secondary btn-sm">Close</button>
+      </div>
+      <div style="overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:20px">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:8px;padding:14px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:10px">Push Details</div>
+            <table style="width:100%;font-size:12px;border-collapse:collapse">
+              <tr><td style="color:var(--text-muted);padding:3px 0;width:90px">Push ID</td><td class="mono" style="font-size:10px;word-break:break-all">${e.pushId || '—'}</td></tr>
+              <tr><td style="color:var(--text-muted);padding:3px 0">Model</td><td>${e.manifest?.modelId || '—'}</td></tr>
+              <tr><td style="color:var(--text-muted);padding:3px 0">Type</td><td>${e.manifest?.type || e.category || '—'}${e.manifest?.sync ? ' (sync)' : ''}</td></tr>
+            </table>
+          </div>
+          <div style="background:var(--bg-raised);border:1px solid var(--border);border-radius:8px;padding:14px">
+            <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:10px">Targets</div>
+            ${topicsHtml}
+          </div>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:8px">Files</div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              ${['Filename','Size','CRC32','SHA256'].map(h => `<th style="text-align:left;padding:5px 10px;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.05em">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>${fileRows}</tbody>
+          </table>
+        </div>
+        <div>
+          <div style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.07em;color:var(--text-muted);margin-bottom:8px">Device Outcomes <span style="font-weight:400;text-transform:none;letter-spacing:0">(${(e.devices||[]).length} reported)</span></div>
+          <table style="width:100%;border-collapse:collapse">
+            <thead><tr>
+              ${['MAC','IP','Node','File','Status','Duration','Time'].map(h => `<th style="text-align:left;padding:5px 10px;color:var(--text-muted);border-bottom:1px solid var(--border);font-size:10px;text-transform:uppercase;letter-spacing:.05em">${h}</th>`).join('')}
+            </tr></thead>
+            <tbody>${deviceRows}</tbody>
+          </table>
+        </div>
+      </div>`;
+  } else {
+    // Legacy / standalone device report
+    box.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <span style="font-size:13px;font-weight:700">Device Report</span>
+        <button id="rpt-close" class="btn btn-secondary btn-sm">Close</button>
+      </div>
+      <div style="padding:20px">
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr><td style="color:var(--text-muted);padding:7px 0;width:140px">Timestamp</td><td>${fmtTs(e.timestamp)}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Device ID</td><td class="mono">${e.deviceId || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">IP</td><td class="mono">${e.ip || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Node</td><td>${e.node || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Model</td><td>${e.modelId || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Version</td><td class="mono">${e.firmwareVersion || e.version || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">File</td><td class="mono">${e.file || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Duration</td><td>${fmtDur(e.durationMs)}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Status</td><td>${reportStatusBadge(e.status)}</td></tr>
+        </table>
+      </div>`;
+  }
+
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  box.querySelector('#rpt-close').addEventListener('click', () => overlay.remove());
+  overlay.addEventListener('click', ev => { if (ev.target === overlay) overlay.remove(); });
 }
 
 function renderReports(entries) {
@@ -951,17 +1091,10 @@ function renderReports(entries) {
   entries.forEach(e => tbody.appendChild(makeReportRow(e)));
 }
 
-// Live-prepend new report from SSE (only when on page 0, no filters active)
+// Live update: reload reports on any new event so push rows show updated device counts
 function prependReport(entry) {
   loadReportsStats();
-  if (reportsPage !== 0 || reportsFilterStatus || reportsFilterDevice) return;
-  const tbody = document.getElementById('reports-tbody');
-  const emptyRow = tbody.querySelector('.empty-row');
-  if (emptyRow) emptyRow.remove();
-  tbody.insertBefore(makeReportRow(entry), tbody.firstChild);
-  reportsTotal++;
-  const end = Math.min(reportsLimit, reportsTotal);
-  document.getElementById('reports-info').textContent = `1–${end} of ${reportsTotal}`;
+  if (reportsPage === 0 && !reportsFilterStatus && !reportsFilterDevice) loadReports();
 }
 
 document.getElementById('reports-prev').addEventListener('click', () => { if (reportsPage > 0) { reportsPage--; loadReports(); } });
