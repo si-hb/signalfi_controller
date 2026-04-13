@@ -988,3 +988,46 @@ body {
 }
 .rename-hint--ok   { color: var(--accent-bright); }
 .rename-hint--warn { color: var(--text-muted); }
+
+/* ── Global text-muted utility ── */
+.text-muted { color: var(--text-muted); }
+
+/* ── Devices tab ── */
+
+/* Selected-device hint in section headers (firmware / audio / files) */
+.selected-hint {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--accent-bright);
+  background: rgba(9,116,121,0.12);
+  border: 1px solid rgba(9,116,121,0.35);
+  border-radius: 10px;
+  padding: 2px 9px;
+}
+.selected-hint.hidden { display: none; }
+
+/* Status dot — online / offline indicator in the Devices table */
+.device-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
+}
+.device-dot--online  { background: var(--success); }
+.device-dot--offline { background: var(--text-muted); }
+
+/* Offline device rows are dimmed */
+.device-offline td { color: var(--text-muted); }
+.device-offline .device-mac,
+.device-offline .device-ip,
+.device-offline .device-node,
+.device-offline .device-version { opacity: 0.55; }
+
+/* Mono columns in devices table */
+.device-mac,
+.device-ip,
+.device-version { font-family: var(--font-mono); font-size: 12px; }
+.device-node { font-size: 12px; }

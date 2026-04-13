@@ -33,6 +33,7 @@
 <!-- Top nav -->
 <nav id="top-nav">
   <h1>Signalfi Admin</h1>
+  <a href="#devices"  data-tab="devices">Devices</a>
   <a href="#firmware" data-tab="firmware">Firmware</a>
   <a href="#audio"    data-tab="audio">Audio</a>
   <a href="#files"    data-tab="files">Files</a>
@@ -50,6 +51,33 @@
 
 <!-- Page content -->
 <div id="page">
+
+  <!-- ── Devices ── -->
+  <section class="section" id="devices">
+    <div class="section-header">
+      <span class="section-title">Devices</span>
+      <label class="sel-all-label"><input type="checkbox" id="devices-select-all"> Select all</label>
+      <span class="sel-count" id="devices-sel-count">0 selected</span>
+      <button class="btn btn-secondary btn-sm" id="devices-refresh-btn">Refresh</button>
+    </div>
+    <div class="section-body">
+      <table class="file-table devices-table" id="devices-table">
+        <thead>
+          <tr>
+            <th class="col-check"></th>
+            <th>Status</th>
+            <th>MAC Address</th>
+            <th>IP</th>
+            <th>Node Path</th>
+            <th>Firmware</th>
+          </tr>
+        </thead>
+        <tbody id="devices-tbody">
+          <tr class="empty-row"><td colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <!-- ── Live Activity ── -->
   <section class="section" id="live-activity">
@@ -82,6 +110,7 @@
   <section class="section" id="firmware">
     <div class="section-header">
       <span class="section-title">Firmware Files</span>
+      <span class="selected-hint hidden" id="firmware-selected-hint"></span>
       <label class="header-toggle"><input type="checkbox" id="firmware-led-progress" checked> LED Progress</label>
     </div>
     <div class="section-body">
@@ -115,6 +144,7 @@
   <section class="section" id="audio">
     <div class="section-header">
       <span class="section-title">Audio Files</span>
+      <span class="selected-hint hidden" id="audio-selected-hint"></span>
       <label class="header-toggle"><input type="checkbox" id="audio-led-progress" checked> LED Progress</label>
     </div>
     <div class="section-body">
@@ -160,6 +190,7 @@
   <section class="section" id="files">
     <div class="section-header">
       <span class="section-title">General Files</span>
+      <span class="selected-hint hidden" id="files-selected-hint"></span>
     </div>
     <div class="section-body">
       <div class="upload-zone" id="files-zone">

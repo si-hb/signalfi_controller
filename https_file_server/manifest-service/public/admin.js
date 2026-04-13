@@ -276,7 +276,11 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
   overlay.id = 'push-target-overlay';
   overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.6);display:flex;align-items:center;justify-content:center;z-index:150';
 
-  const savedMode = localStorage.getItem(_PT_STORAGE_MODE) || 'group';
+  const nSel     = selectedDevices.size;
+  const savedMode = nSel > 0 ? 'selected' : (localStorage.getItem(_PT_STORAGE_MODE) || 'group');
+
+  const selHtml = nSel > 0 ? `
+      <label class="radio-item"><input type="radio" name="pt-radio" value="selected"${savedMode === 'selected' ? ' checked' : ''}> Selected Devices — ${nSel} device${nSel === 1 ? '' : 's'} chosen in Devices tab</label>` : '';
 
   const backupHtml = showBackup ? `
     <div>
@@ -299,6 +303,7 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
   box.innerHTML = `
     <h3 style="font-size:14px;margin:0">${title}</h3>
     <div class="radio-group">
+      ${selHtml}
       <label class="radio-item"><input type="radio" name="pt-radio" value="group"${savedMode === 'group' ? ' checked' : ''}> Group — node path</label>
       <label class="radio-item"><input type="radio" name="pt-radio" value="broadcast"${savedMode === 'broadcast' ? ' checked' : ''}> Broadcast — all devices</label>
     </div>
@@ -331,14 +336,16 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
   nodeInput.value = localStorage.getItem(_PT_STORAGE_PATH) || '';
 
   function update() {
-    const isBc = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
-    nodeWrap.style.display = isBc ? 'none' : '';
+    const mode = box.querySelector('input[name="pt-radio"]:checked')?.value;
+    const isBc  = mode === 'broadcast';
+    const isSel = mode === 'selected';
+    nodeWrap.style.display = (isBc || isSel) ? 'none' : '';
     bcWarn.style.display   = isBc ? '' : 'none';
     const nodePath = nodeInput.value.trim();
-    topicPrev.textContent  = isBc
-      ? 'Topic: scout/$broadcast/$action'
+    topicPrev.textContent = isBc  ? 'Topic: scout/$broadcast/$action'
+      : isSel ? `Targeting ${selectedDevices.size} selected device(s)`
       : (nodePath ? `Topic: scout/$group/${nodePath}/$action` : 'Topic: scout/$group/…/$action');
-    confirmBtn.disabled = !isBc && !nodePath;
+    confirmBtn.disabled = !isBc && !isSel && !nodePath;
   }
 
   box.querySelectorAll('input[name="pt-radio"]').forEach(r => r.addEventListener('change', update));
@@ -348,14 +355,24 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
 
   box.querySelector('#pt-cancel').addEventListener('click', () => overlay.remove());
   confirmBtn.addEventListener('click', () => {
-    const isBc   = box.querySelector('input[name="pt-radio"]:checked')?.value === 'broadcast';
+    const mode   = box.querySelector('input[name="pt-radio"]:checked')?.value;
+    const isBc   = mode === 'broadcast';
+    const isSel  = mode === 'selected';
     const backup = box.querySelector('#pt-backup')?.value || undefined;
     const force  = box.querySelector('#pt-force')?.checked || false;
-    // Persist for next popup
-    localStorage.setItem(_PT_STORAGE_MODE, isBc ? 'broadcast' : 'group');
-    if (!isBc) localStorage.setItem(_PT_STORAGE_PATH, nodeInput.value.trim());
+    // Persist for next popup (don't persist 'selected' — it's contextual)
+    if (!isSel) {
+      localStorage.setItem(_PT_STORAGE_MODE, isBc ? 'broadcast' : 'group');
+      if (!isBc) localStorage.setItem(_PT_STORAGE_PATH, nodeInput.value.trim());
+    }
     overlay.remove();
-    onConfirm({ broadcast: isBc, nodePath: isBc ? undefined : nodeInput.value.trim(), backup, force });
+    onConfirm({
+      broadcast:       isBc,
+      selectedDevices: isSel ? Array.from(selectedDevices) : undefined,
+      nodePath:        (!isBc && !isSel) ? nodeInput.value.trim() : undefined,
+      backup,
+      force,
+    });
   });
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
 }
@@ -367,12 +384,12 @@ function makeFirmwarePushBtn(f) {
   btn.className = 'btn btn-primary btn-sm';
   btn.textContent = 'Push to Devices';
   btn.addEventListener('click', () => {
-    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, backup, force }) => {
+    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, selectedDevices: devs, backup, force }) => {
       try {
         const ledProgress = document.getElementById('firmware-led-progress')?.checked ?? true;
         const res = await apiFetch('/ota/admin/api/ota/push-firmware', {
           method: 'POST',
-          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, backup: backup || undefined, progress: ledProgress || undefined, force: force || undefined }),
+          body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined, backup: backup || undefined, progress: ledProgress || undefined, force: force || undefined }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -422,11 +439,11 @@ function makeFilePushBtns(f) {
   sendBtn.className = 'btn btn-primary btn-sm';
   sendBtn.textContent = 'Send to Devices';
   sendBtn.addEventListener('click', () => {
-    showPushTargetDialog(`Send ${f.name} to Devices`, 'Send', async ({ broadcast, nodePath }) => {
+    showPushTargetDialog(`Send ${f.name} to Devices`, 'Send', async ({ broadcast, nodePath, selectedDevices: devs }) => {
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
           method: 'POST',
-          body: JSON.stringify({ files: [{ op: 'put', id: f.name }], nodePath, broadcast: broadcast || undefined }),
+          body: JSON.stringify({ files: [{ op: 'put', id: f.name }], nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -443,11 +460,11 @@ function makeFilePushBtns(f) {
   removeBtn.className = 'btn btn-warn btn-sm';
   removeBtn.textContent = 'Remove from Devices';
   removeBtn.addEventListener('click', () => {
-    showPushTargetDialog(`Remove ${f.name} from Devices`, 'Remove', async ({ broadcast, nodePath }) => {
+    showPushTargetDialog(`Remove ${f.name} from Devices`, 'Remove', async ({ broadcast, nodePath, selectedDevices: devs }) => {
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
           method: 'POST',
-          body: JSON.stringify({ files: [{ op: 'delete', id: f.name }], nodePath, broadcast: broadcast || undefined }),
+          body: JSON.stringify({ files: [{ op: 'delete', id: f.name }], nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -665,7 +682,7 @@ function _pushAudioSelected(op) {
   showPushTargetDialog(
     `${verb} ${names.length} file${names.length > 1 ? 's' : ''} ${op === 'put' ? 'to' : 'from'} Devices`,
     verb,
-    async ({ broadcast, nodePath }) => {
+    async ({ broadcast, nodePath, selectedDevices: devs }) => {
       const ledProgress = document.getElementById('audio-led-progress')?.checked ?? true;
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
@@ -674,6 +691,7 @@ function _pushAudioSelected(op) {
             files: names.map(n => ({ op, id: n })),
             nodePath,
             broadcast: broadcast || undefined,
+            deviceIds: devs || undefined,
             progress: ledProgress || undefined,
           }),
         });
@@ -697,7 +715,7 @@ document.getElementById('audio-sync-btn').addEventListener('click', () => {
   showPushTargetDialog(
     `Sync all ${_audioFiles.length} audio file${_audioFiles.length > 1 ? 's' : ''} to Devices`,
     'Sync',
-    async ({ broadcast, nodePath }) => {
+    async ({ broadcast, nodePath, selectedDevices: devs }) => {
       const ledProgress = document.getElementById('audio-led-progress')?.checked ?? true;
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
@@ -707,6 +725,7 @@ document.getElementById('audio-sync-btn').addEventListener('click', () => {
             sync: true,
             nodePath,
             broadcast: broadcast || undefined,
+            deviceIds: devs || undefined,
             progress: ledProgress || undefined,
           }),
         });
@@ -960,9 +979,120 @@ async function updateDeviceCount() {
   } catch (_) {}
 }
 
+// ── Devices tab ───────────────────────────────────────────────────────────────
+
+const selectedDevices = new Set(); // Set of device IDs (MACs) currently checked
+
+function _updateSelectionBadges() {
+  const n    = selectedDevices.size;
+  const text = n === 0 ? '' : `${n} device${n === 1 ? '' : 's'} selected`;
+  ['firmware', 'audio', 'files'].forEach(tab => {
+    const el = document.getElementById(`${tab}-selected-hint`);
+    if (!el) return;
+    el.textContent = text;
+    el.classList.toggle('hidden', n === 0);
+  });
+  const countEl = document.getElementById('devices-sel-count');
+  if (countEl) countEl.textContent = `${n} selected`;
+}
+
+function _renderDevices(list) {
+  const tbody  = document.getElementById('devices-tbody');
+  if (!tbody) return;
+  tbody.innerHTML = '';
+
+  if (!list || list.length === 0) {
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No devices seen yet</td></tr>';
+    return;
+  }
+
+  list.forEach(dev => {
+    const tr = document.createElement('tr');
+    tr.dataset.devId = dev.id;
+    tr.className = dev.online ? '' : 'device-offline';
+
+    const checked = selectedDevices.has(dev.id) ? ' checked' : '';
+    const dot     = dev.online
+      ? '<span class="device-dot device-dot--online" title="Online"></span>'
+      : '<span class="device-dot device-dot--offline" title="Offline"></span>';
+    const node    = dev.node    || '<span class="text-muted">—</span>';
+    const version = dev.version || '<span class="text-muted">—</span>';
+
+    tr.innerHTML = `
+      <td class="col-check"><input type="checkbox" class="device-check"${checked}></td>
+      <td>${dot}</td>
+      <td class="device-mac">${dev.id}</td>
+      <td class="device-ip">${dev.ip || '—'}</td>
+      <td class="device-node">${node}</td>
+      <td class="device-version">${version}</td>
+    `;
+
+    tr.querySelector('.device-check').addEventListener('change', e => {
+      if (e.target.checked) selectedDevices.add(dev.id);
+      else                  selectedDevices.delete(dev.id);
+      _syncSelectAll();
+      _updateSelectionBadges();
+    });
+
+    tbody.appendChild(tr);
+  });
+}
+
+function _syncSelectAll() {
+  const all   = document.querySelectorAll('#devices-tbody .device-check');
+  const chked = document.querySelectorAll('#devices-tbody .device-check:checked');
+  const sa    = document.getElementById('devices-select-all');
+  if (!sa) return;
+  sa.indeterminate = chked.length > 0 && chked.length < all.length;
+  sa.checked       = all.length > 0 && chked.length === all.length;
+}
+
+async function loadDevices() {
+  try {
+    const res  = await apiFetch('/ota/admin/api/devices');
+    const list = await res.json();
+    _renderDevices(list);
+    _syncSelectAll();
+    _updateSelectionBadges();
+  } catch (_) {}
+}
+
+// Live update: refresh a single device row in-place from a device-state SSE event
+function onDeviceState(d) {
+  const existing = document.querySelector(`#devices-tbody tr[data-dev-id="${d.id}"]`);
+  if (existing) {
+    // Update in-place — preserves checkbox state
+    const dot     = d.online
+      ? '<span class="device-dot device-dot--online" title="Online"></span>'
+      : '<span class="device-dot device-dot--offline" title="Offline"></span>';
+    const dotCell = existing.cells[1];
+    if (dotCell) dotCell.innerHTML = dot;
+    if (existing.cells[3] && d.ip)      existing.cells[3].textContent = d.ip;
+    if (existing.cells[4] && d.node)    existing.cells[4].textContent = d.node;
+    if (existing.cells[5] && d.version) existing.cells[5].textContent = d.version;
+    existing.className = d.online ? '' : 'device-offline';
+  } else {
+    // New device — reload the full list
+    loadDevices();
+  }
+}
+
+document.getElementById('devices-select-all')?.addEventListener('change', e => {
+  document.querySelectorAll('#devices-tbody .device-check').forEach(cb => {
+    cb.checked = e.target.checked;
+    const id   = cb.closest('tr')?.dataset.devId;
+    if (!id) return;
+    if (e.target.checked) selectedDevices.add(id);
+    else                  selectedDevices.delete(id);
+  });
+  _updateSelectionBadges();
+});
+
+document.getElementById('devices-refresh-btn')?.addEventListener('click', loadDevices);
+
 // ── Tab navigation ────────────────────────────────────────────────────────────
 
-const TAB_IDS = ['firmware', 'audio', 'files', 'reports'];
+const TAB_IDS = ['devices', 'firmware', 'audio', 'files', 'reports'];
 
 function showTab(id) {
   TAB_IDS.forEach(t => {
@@ -971,6 +1101,7 @@ function showTab(id) {
   });
   document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === id));
+  if (id === 'devices') loadDevices();
 }
 
 document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
@@ -1150,6 +1281,7 @@ function onDeviceError(d) {
       else if (d.type === 'device-done')         onDeviceDone(d, false);
       else if (d.type === 'device-aborted')      onDeviceDone(d, true);
       else if (d.type === 'device-error')        onDeviceError(d);
+      else if (d.type === 'device-state')         onDeviceState(d);
       else if (d.type === 'report-created')      prependReport(d.entry);
       else if (d.type === 'session-terminated')  setTimeout(() => {
         authToken = '';

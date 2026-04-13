@@ -36,6 +36,7 @@ const activeDownloads = new Map(); // sessionId → download info (HTTP-based fa
 const mqttDownloads   = new Map(); // deviceId  → download info (MQTT-based, authoritative)
 const deviceIp        = new Map(); // deviceId  → last known IP string
 const ipToDevice      = new Map(); // IP string → deviceId
+const deviceInfo      = new Map(); // deviceId  → { ip, version, node, lastState }
 
 console.log(`[manifest] starting v3`);
 console.log(`[manifest] manifest root:  ${MANIFEST_ROOT}`);
@@ -153,6 +154,23 @@ function connectMqtt() {
           deviceIp.set(deviceId, payload.ip);
           ipToDevice.set(payload.ip, deviceId);
         }
+        // Accumulate device info (version/node may not be present in every $state)
+        const prev = deviceInfo.get(deviceId) || {};
+        const updated = {
+          ip:      payload.ip      || prev.ip,
+          version: payload.version || payload.firmwareVersion || prev.version,
+          node:    payload.node    || payload.nodePath        || prev.node,
+          lastState: payload.status || prev.lastState,
+        };
+        deviceInfo.set(deviceId, updated);
+        // Push live update to admin panel devices tab
+        sseEmit('device-state', {
+          id:      deviceId,
+          ip:      updated.ip,
+          version: updated.version,
+          node:    updated.node,
+          online:  true,
+        });
         // Device went idle → the last tracked download for this device is complete
         if (payload.status === 'idle' && mqttDownloads.has(deviceId)) {
           const dl = mqttDownloads.get(deviceId);
@@ -597,6 +615,25 @@ app.get('/ota/admin/api/devices/count', (_req, res) => {
   res.json({ online, total: deviceLastSeen.size });
 });
 
+app.get('/ota/admin/api/devices', (_req, res) => {
+  const cutoff = Date.now() - DEVICE_TIMEOUT_MS;
+  const list = [];
+  for (const [id, ts] of deviceLastSeen.entries()) {
+    const info = deviceInfo.get(id) || {};
+    list.push({
+      id,
+      ip:      info.ip      || deviceIp.get(id) || null,
+      version: info.version || null,
+      node:    info.node    || null,
+      online:  ts > cutoff,
+      lastSeen: ts,
+    });
+  }
+  // Online first, then most-recently-seen
+  list.sort((a, b) => (b.online - a.online) || (b.lastSeen - a.lastSeen));
+  res.json(list);
+});
+
 // ── Admin API — file listings ─────────────────────────────────────────────────
 
 app.get('/ota/admin/api/files/firmware', (_req, res) => {
@@ -678,6 +715,16 @@ app.get('/ota/admin/api/events', (req, res) => {
   res.write(':\n\n'); // initial comment to open the stream
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
+
+  // Ask all online devices to report their current status so the Devices tab
+  // reflects live state immediately after a browser connect or page refresh.
+  if (mqttClient && mqttClient.connected) {
+    mqttClient.publish(
+      `${MQTT_PREFIX}/$broadcast/$action`,
+      JSON.stringify({ act: 'get' }),
+      { qos: 0, retain: false },
+    );
+  }
 });
 
 function sseEmit(type, payload) {
