@@ -923,9 +923,11 @@ async function loadReports() {
 }
 
 function reportStatusBadge(status) {
-  if (status === 'applied') return badge('applied', 'success');
-  if (status === 'failed')  return badge('failed',  'failed');
-  if (status === 'pushed')  return badge('pushed',  'started');
+  if (status === 'applied')  return badge('applied',  'success');
+  if (status === 'failed')   return badge('failed',   'failed');
+  if (status === 'deleted')  return badge('deleted',  'warn');
+  if (status === 'skipped')  return badge('skipped',  'no');
+  if (status === 'pushed')   return badge('pushed',   'started');
   return badge(status || '—', 'started');
 }
 

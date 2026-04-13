@@ -145,6 +145,12 @@ function connectMqtt() {
       return;
     }
 
+    // scout/<deviceId>/$ota/result — per-file outcome: applied, skipped, deleted, failed
+    if (parts.length === 4 && parts[2] === '$ota' && parts[3] === 'result') {
+      try { _handleMqttOtaResult(deviceId, JSON.parse(message.toString())); } catch (_) {}
+      return;
+    }
+
     // scout/<deviceId>/$state — regular device status published by MQTTsendStatus()
     // (mqtt_publish_topic = scout/<MAC>/$state, i.e. 3 segments ending in $state)
     if (parts.length === 3 && parts[2] === '$state') {
@@ -257,6 +263,44 @@ function _handleMqttOtaProgress(deviceId, data) {
       }
     }, 5000);
   }
+}
+
+// Handle scout/<deviceId>/$ota/result — per-file outcome published by firmware.
+// outcome: "applied" | "skipped" | "deleted" | "failed"
+function _handleMqttOtaResult(deviceId, data) {
+  const { file, res: outcome } = data;
+  if (!file || !outcome) return;
+
+  const ip    = deviceIp.get(deviceId) || deviceId;
+  const info  = deviceInfo.get(deviceId) || {};
+
+  // Find the most recent push that included this file so we can link the record
+  let pushId  = null;
+  let version = null;
+  for (const [token, pm] of pushManifests) {
+    if (pm.files && pm.files.some(f => f === file || f === `delete:${file}`)) {
+      pushId  = pm.manifestId;
+      version = pm.version || null;
+      break;
+    }
+  }
+
+  const category = file.endsWith('.wav')                              ? 'audio'
+                 : (file.endsWith('.hex') || file.endsWith('.bin')) ? 'firmware'
+                 : 'general';
+
+  writeReport({
+    type:      'device',
+    timestamp: new Date().toISOString(),
+    pushId,
+    deviceId,
+    ip,
+    node:      info.node    || null,
+    version:   version      || info.version || null,
+    file,
+    category,
+    status:    outcome,  // "applied" | "skipped" | "deleted" | "failed"
+  });
 }
 
 function mqttPublish(topic, payload, retain = false) {

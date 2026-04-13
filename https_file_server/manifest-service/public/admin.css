@@ -406,6 +406,7 @@ body {
 .badge-started { background: rgba(9,116,121,0.18);  color: var(--accent-bright); }
 .badge-yes     { background: rgba(39,174,96,0.18);  color: #2ecc71; }
 .badge-no      { background: rgba(120,120,120,0.15); color: var(--text-muted); }
+.badge-warn    { background: rgba(232,124,42,0.18);  color: var(--warn); }
 
 /* ── Reports table ── */
 .reports-table {
