@@ -260,15 +260,16 @@ function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh, makeActi
 
 // ── Push target dialog (shared) ───────────────────────────────────────────────
 
-// Options: { showBackup, showForce }
-// onConfirm receives { broadcast, nodePath, backup, force }
+// Options: { showBackup, showForce, showLedProgress }
+// onConfirm receives { broadcast, nodePath, backup, force, ledProgress }
 // Node path and broadcast/group selection are persisted in localStorage so the
 // last-used value is pre-filled on every popup regardless of which section
 // (firmware / audio / files) opened it.
-const _PT_STORAGE_PATH = 'push-node-path';
-const _PT_STORAGE_MODE = 'push-node-mode';
+const _PT_STORAGE_PATH        = 'push-node-path';
+const _PT_STORAGE_MODE        = 'push-node-mode';
+const _PT_STORAGE_LED_PROGRESS = 'push-led-progress';
 
-function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = false, showForce = false } = {}) {
+function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = false, showForce = false, showLedProgress = false } = {}) {
   const existing = document.getElementById('push-target-overlay');
   if (existing) existing.remove();
 
@@ -298,6 +299,13 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
       Force reflash — skip version check on device
     </label>` : '';
 
+  const ledProgressChecked = localStorage.getItem(_PT_STORAGE_LED_PROGRESS) !== 'false';
+  const ledProgressHtml = showLedProgress ? `
+    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none">
+      <input type="checkbox" id="pt-led-progress" style="width:14px;height:14px;cursor:pointer"${ledProgressChecked ? ' checked' : ''}>
+      LED Progress — show transfer progress on device LEDs
+    </label>` : '';
+
   const box = document.createElement('div');
   box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:480px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:14px';
   box.innerHTML = `
@@ -314,6 +322,7 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
     </div>
     ${backupHtml}
     ${forceHtml}
+    ${ledProgressHtml}
     <div id="pt-topic-preview" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);padding:6px 10px;background:var(--bg-raised);border-radius:4px">
       Topic: scout/$group/…/$action
     </div>
@@ -355,16 +364,18 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
 
   box.querySelector('#pt-cancel').addEventListener('click', () => overlay.remove());
   confirmBtn.addEventListener('click', () => {
-    const mode   = box.querySelector('input[name="pt-radio"]:checked')?.value;
-    const isBc   = mode === 'broadcast';
-    const isSel  = mode === 'selected';
-    const backup = box.querySelector('#pt-backup')?.value || undefined;
-    const force  = box.querySelector('#pt-force')?.checked || false;
+    const mode        = box.querySelector('input[name="pt-radio"]:checked')?.value;
+    const isBc        = mode === 'broadcast';
+    const isSel       = mode === 'selected';
+    const backup      = box.querySelector('#pt-backup')?.value || undefined;
+    const force       = box.querySelector('#pt-force')?.checked || false;
+    const ledProgress = box.querySelector('#pt-led-progress')?.checked ?? true;
     // Persist for next popup (don't persist 'selected' — it's contextual)
     if (!isSel) {
       localStorage.setItem(_PT_STORAGE_MODE, isBc ? 'broadcast' : 'group');
       if (!isBc) localStorage.setItem(_PT_STORAGE_PATH, nodeInput.value.trim());
     }
+    if (showLedProgress) localStorage.setItem(_PT_STORAGE_LED_PROGRESS, String(ledProgress));
     overlay.remove();
     onConfirm({
       broadcast:       isBc,
@@ -372,6 +383,7 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
       nodePath:        (!isBc && !isSel) ? nodeInput.value.trim() : undefined,
       backup,
       force,
+      ledProgress,
     });
   });
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
@@ -384,9 +396,8 @@ function makeFirmwarePushBtn(f) {
   btn.className = 'btn btn-primary btn-sm';
   btn.textContent = 'Push to Devices';
   btn.addEventListener('click', () => {
-    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, selectedDevices: devs, backup, force }) => {
+    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, selectedDevices: devs, backup, force, ledProgress }) => {
       try {
-        const ledProgress = document.getElementById('firmware-led-progress')?.checked ?? true;
         const res = await apiFetch('/ota/admin/api/ota/push-firmware', {
           method: 'POST',
           body: JSON.stringify({ firmwareFile: f.name, nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined, backup: backup || undefined, progress: ledProgress || undefined, force: force || undefined }),
@@ -399,7 +410,7 @@ function makeFirmwarePushBtn(f) {
           toast(`Push failed: ${e.error || res.status}`, 'error');
         }
       } catch (_) { toast('Push failed', 'error'); }
-    }, { showBackup: true, showForce: true });
+    }, { showBackup: true, showForce: true, showLedProgress: true });
   });
   return [btn];
 }
@@ -439,11 +450,11 @@ function makeFilePushBtns(f) {
   sendBtn.className = 'btn btn-primary btn-sm';
   sendBtn.textContent = 'Send to Devices';
   sendBtn.addEventListener('click', () => {
-    showPushTargetDialog(`Send ${f.name} to Devices`, 'Send', async ({ broadcast, nodePath, selectedDevices: devs }) => {
+    showPushTargetDialog(`Send ${f.name} to Devices`, 'Send', async ({ broadcast, nodePath, selectedDevices: devs, ledProgress }) => {
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
           method: 'POST',
-          body: JSON.stringify({ files: [{ op: 'put', id: f.name }], nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined }),
+          body: JSON.stringify({ files: [{ op: 'put', id: f.name }], nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined, progress: ledProgress || undefined }),
         });
         if (res.ok) {
           const data = await res.json();
@@ -453,7 +464,7 @@ function makeFilePushBtns(f) {
           toast(`Send failed: ${e.error || res.status}`, 'error');
         }
       } catch (_) { toast('Send failed', 'error'); }
-    });
+    }, { showLedProgress: true });
   });
 
   const removeBtn = document.createElement('button');
@@ -682,8 +693,7 @@ function _pushAudioSelected(op) {
   showPushTargetDialog(
     `${verb} ${names.length} file${names.length > 1 ? 's' : ''} ${op === 'put' ? 'to' : 'from'} Devices`,
     verb,
-    async ({ broadcast, nodePath, selectedDevices: devs }) => {
-      const ledProgress = document.getElementById('audio-led-progress')?.checked ?? true;
+    async ({ broadcast, nodePath, selectedDevices: devs, ledProgress }) => {
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
           method: 'POST',
@@ -703,7 +713,8 @@ function _pushAudioSelected(op) {
           toast(`${verb} failed: ${e.error || res.status}`, 'error');
         }
       } catch (_) { toast(`${verb} failed`, 'error'); }
-    }
+    },
+    op === 'put' ? { showLedProgress: true } : {}
   );
 }
 
@@ -715,8 +726,7 @@ document.getElementById('audio-sync-btn').addEventListener('click', () => {
   showPushTargetDialog(
     `Sync all ${_audioFiles.length} audio file${_audioFiles.length > 1 ? 's' : ''} to Devices`,
     'Sync',
-    async ({ broadcast, nodePath, selectedDevices: devs }) => {
-      const ledProgress = document.getElementById('audio-led-progress')?.checked ?? true;
+    async ({ broadcast, nodePath, selectedDevices: devs, ledProgress }) => {
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-files', {
           method: 'POST',
@@ -737,7 +747,8 @@ document.getElementById('audio-sync-btn').addEventListener('click', () => {
           toast(`Sync failed: ${e.error || res.status}`, 'error');
         }
       } catch (_) { toast('Sync failed', 'error'); }
-    }
+    },
+    { showLedProgress: true }
   );
 });
 
