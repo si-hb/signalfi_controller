@@ -1375,8 +1375,10 @@ function onDeviceConnect(d) {
   const tbody = document.getElementById('activity-tbody');
   const tr = document.createElement('tr');
   tr.id = `dl-${d.sessionId}`;
+  const modelBadge = d.model ? `<span class="model-badge">${d.model}</span>` : '<span class="text-muted">—</span>';
   tr.innerHTML = `
     <td class="activity-ip">${d.ip}</td>
+    <td class="activity-model">${modelBadge}</td>
     <td class="activity-file" title="${d.file}">${d.file}</td>
     <td>${_categoryBadge(d.category)}</td>
     <td class="activity-progress-cell">

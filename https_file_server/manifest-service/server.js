@@ -229,9 +229,9 @@ function _handleMqttOtaProgress(deviceId, data) {
 
   // Create row on first message for this file
   if (!mqttDownloads.has(deviceId)) {
-    const dl = { sessionId: deviceId, ip, file, category, total, sent: 0, startedAt: now, lastReportAt: now, kbps: 0 };
+    const dl = { sessionId: deviceId, ip, file, category, total, sent: 0, startedAt: now, lastReportAt: now, kbps: 0, model: deviceInfo.get(deviceId)?.model || null };
     mqttDownloads.set(deviceId, dl);
-    sseEmit('device-connect', { sessionId: deviceId, ip, file, category, total, startedAt: now });
+    sseEmit('device-connect', { sessionId: deviceId, ip, file, category, total, startedAt: now, model: dl.model });
     if (received === 0) return; // start notification only — no progress bar update yet
   }
 
