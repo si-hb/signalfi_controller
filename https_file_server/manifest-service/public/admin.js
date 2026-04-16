@@ -331,11 +331,11 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
     <h3 style="font-size:14px;margin:0">${title}</h3>
     <div class="radio-group">
       ${selHtml}
-      <label class="radio-item"><input type="radio" name="pt-radio" value="group"${savedMode === 'group' ? ' checked' : ''}> Group — node path</label>
+      <label class="radio-item"><input type="radio" name="pt-radio" value="group"${savedMode === 'group' ? ' checked' : ''}> Group — node</label>
       <label class="radio-item"><input type="radio" name="pt-radio" value="broadcast"${savedMode === 'broadcast' ? ' checked' : ''}> Broadcast — all devices</label>
     </div>
     <div id="pt-node-wrap">
-      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Node Path</label>
+      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">Node</label>
       <input type="text" id="pt-node-path" placeholder="e.g. buildingA/1stfloor/cafeteria"
         style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;outline:none">
     </div>
@@ -1221,11 +1221,11 @@ function _renderDevices(list) {
     tr.innerHTML = `
       <td class="col-check"><input type="checkbox" class="device-check"${checked}></td>
       <td>${dot}</td>
+      <td class="device-model">${model}</td>
+      <td class="device-version">${version}</td>
       <td class="device-mac">${dev.id}</td>
       <td class="device-ip">${dev.ip || '—'}</td>
       <td class="device-node">${node}</td>
-      <td class="device-model">${model}</td>
-      <td class="device-version">${version}</td>
     `;
 
     tr.querySelector('.device-check').addEventListener('change', e => {
@@ -1257,6 +1257,7 @@ async function loadDevices() {
     _renderDevices(list);
     _syncSelectAll();
     _updateSelectionBadges();
+    updateDeviceCount();
   } catch (_) {}
 }
 
@@ -1275,10 +1276,10 @@ function onDeviceState(d) {
     const dot     = '<span class="device-dot device-dot--online" title="Online"></span>';
     const dotCell = existing.cells[1];
     if (dotCell) dotCell.innerHTML = dot;
-    if (existing.cells[3] && d.ip)      existing.cells[3].textContent = d.ip;
-    if (existing.cells[4] && d.node)    existing.cells[4].textContent = d.node;
-    if (existing.cells[5] && d.model)   existing.cells[5].innerHTML   = `<span class="model-badge">${d.model}</span>`;
-    if (existing.cells[6] && d.version) existing.cells[6].textContent = d.version;
+    if (existing.cells[2] && d.model)   existing.cells[2].innerHTML   = `<span class="model-badge">${d.model}</span>`;
+    if (existing.cells[3] && d.version) existing.cells[3].textContent = d.version;
+    if (existing.cells[5] && d.ip)      existing.cells[5].textContent = d.ip;
+    if (existing.cells[6] && d.node)    existing.cells[6].textContent = d.node;
     existing.className = '';
   } else {
     if (d.online === false) return; // evicted device not in table — nothing to do

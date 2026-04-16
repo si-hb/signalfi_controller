@@ -281,7 +281,7 @@ function buildSettingsView() {
   nodeDesc.style.fontSize = '13px';
   nodeDesc.style.color = 'var(--text-muted)';
   nodeDesc.style.marginBottom = '12px';
-  nodeDesc.textContent = 'Assign a node path to the target devices. Format: building/floor/room';
+  nodeDesc.textContent = 'Assign a node to the target devices. Format: building/floor/room';
 
   const nodeRow = document.createElement('div');
   nodeRow.className = 'input-row';
@@ -630,11 +630,11 @@ function wireSettingsEvents() {
   document.getElementById('settings-node-btn').addEventListener('click', () => {
     const val = document.getElementById('settings-node-input').value.trim().toLowerCase();
     if (!val) {
-      showToast('Enter a node path', 'warn');
+      showToast('Enter a node', 'warn');
       return;
     }
     if (!NODE_REGEX.test(val)) {
-      showToast('Invalid node path (use lowercase letters, numbers, / and -)', 'error');
+      showToast('Invalid node (use lowercase letters, numbers, / and -)', 'error');
       return;
     }
     let targetMacs = [];

@@ -94,7 +94,7 @@ function _moveDevice(mac, newParentPath, evt) {
   const newNode    = newParentPath ? `${newParentPath}/${deviceName}` : deviceName;
 
   if (!NODE_REGEX.test(newNode)) {
-    showToast(`Cannot move — "${deviceName}" contains characters not allowed in a node path`, 'error');
+    showToast(`Cannot move — "${deviceName}" contains characters not allowed in a node`, 'error');
     _revert(evt);
     return;
   }

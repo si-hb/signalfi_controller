@@ -16,7 +16,7 @@ const FIELD_DEFS = [
   { key: 'status', label: 'Status' },
   { key: 'ip', label: 'IP Address', mono: true },
   { key: 'mac', label: 'MAC Address', mono: true },
-  { key: 'node', label: 'Node Path', mono: true },
+  { key: 'node', label: 'Node', mono: true },
   { key: 'ver', label: 'Firmware' },
   { key: 'dhcp', label: 'DHCP' },
   { key: 'subnet', label: 'Subnet', mono: true },
@@ -156,7 +156,7 @@ function renderDeviceSheet(scout) {
   nodeSection.className = 'sheet-section';
   const nodeLabel = document.createElement('div');
   nodeLabel.className = 'sheet-section-label';
-  nodeLabel.textContent = 'Set Node Path';
+  nodeLabel.textContent = 'Set Node';
   const nodeRow = document.createElement('div');
   nodeRow.className = 'input-row';
   const nodeInput = document.createElement('input');
@@ -256,15 +256,15 @@ function wireDeviceEvents(scout) {
   nodeBtn.addEventListener('click', () => {
     const val = nodeInput.value.trim().toLowerCase();
     if (!val) {
-      showToast('Enter a node path', 'warn');
+      showToast('Enter a node', 'warn');
       return;
     }
     if (validateNodeInput()) {
-      showToast('Invalid node path format', 'error');
+      showToast('Invalid node format', 'error');
       return;
     }
     sendCommand({ cmd: 'setNode', mac: scout.mac, node: val });
-    showToast('Node path sent');
+    showToast('Node sent');
   });
 
   // Identify
