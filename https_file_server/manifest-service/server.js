@@ -1409,6 +1409,9 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
         crc32:  fileCrc32(fwPath),
         sha256: fileSha256(fwPath),
         size:   fs.statSync(fwPath).size,
+        // force=true bypasses the device-side version guard (same-version skip).
+        // Distinct from the MQTT payload force which bypasses the model check.
+        force:  force ? true : undefined,
       },
     };
 
