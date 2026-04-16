@@ -26,7 +26,7 @@ const NODERED_AUTH_URL  = process.env.NODERED_AUTH_URL  || '';
 const CONTROL_SERVER_URL = process.env.CONTROL_SERVER_URL || '';
 const MQTT_BROKER       = process.env.MQTT_BROKER_URL   || 'mqtt://signalfi-svc:OtaService2024!@mosquitto:1883';
 const MQTT_PREFIX       = process.env.MQTT_TOPIC_PREFIX || 'scout';
-const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SF-100';
+const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SSH-100';
 
 const TOKEN_RE          = /^[0-9a-f]{64}$/i;
 const DEVICE_TIMEOUT_MS = 10 * 60 * 1000; // 10 min = online window
@@ -683,11 +683,20 @@ app.get('/ota/admin/api/devices', (_req, res) => {
 // ── Admin API — file listings ─────────────────────────────────────────────────
 
 app.get('/ota/admin/api/files/firmware', (_req, res) => {
-  const files = listDir(FIRMWARE_ROOT, '.hex').map(f => ({
-    ...f,
-    crc32:  fileCrc32(path.join(FIRMWARE_ROOT, f.name)),
-    sha256: fileSha256(path.join(FIRMWARE_ROOT, f.name)),
-  }));
+  const files = listDir(FIRMWARE_ROOT, '.hex').map(f => {
+    const metaPath = path.join(FIRMWARE_ROOT, f.name + '.meta.json');
+    let targetModels = [];
+    if (fs.existsSync(metaPath)) {
+      try { targetModels = JSON.parse(fs.readFileSync(metaPath, 'utf8')).targetModels || []; }
+      catch (_) {}
+    }
+    return {
+      ...f,
+      crc32:        fileCrc32(path.join(FIRMWARE_ROOT, f.name)),
+      sha256:       fileSha256(path.join(FIRMWARE_ROOT, f.name)),
+      targetModels,
+    };
+  });
   res.json(files);
 });
 
@@ -788,9 +797,34 @@ app.post('/ota/admin/api/files/firmware', firmwareUpload.single('file'), (req, r
   if (!req.file) return res.status(400).json({ error: 'no .hex file received' });
   const crc32  = fileCrc32(req.file.path);
   const sha256 = fileSha256(req.file.path);
-  console.log(`[admin] firmware uploaded: ${req.file.originalname} (${req.file.size} B, crc32: ${crc32})`);
-  sseEmit('firmware-updated', { name: req.file.originalname, size: req.file.size, crc32 });
-  res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256 });
+
+  // Parse targetModels: prefer explicit body field, fall back to filename prefix (e.g. SSH-100-1.3.0.hex)
+  let targetModels = [];
+  if (req.body?.targetModels) {
+    try {
+      targetModels = Array.isArray(req.body.targetModels)
+        ? req.body.targetModels
+        : JSON.parse(req.body.targetModels);
+    } catch (_) { targetModels = [req.body.targetModels]; }
+  } else {
+    const prefixMatch = req.file.originalname.match(/^([A-Za-z0-9_-]+?)-\d+\.\d+/);
+    if (prefixMatch) targetModels = [prefixMatch[1]];
+  }
+
+  // Write sidecar metadata alongside the hex file
+  const metaPath = req.file.path + '.meta.json';
+  try {
+    fs.writeFileSync(metaPath, JSON.stringify({
+      targetModels,
+      uploadedAt: new Date().toISOString(),
+    }, null, 2));
+  } catch (err) {
+    console.warn(`[admin] failed to write firmware sidecar: ${err.message}`);
+  }
+
+  console.log(`[admin] firmware uploaded: ${req.file.originalname} (${req.file.size} B, crc32: ${crc32}, targetModels: ${JSON.stringify(targetModels)})`);
+  sseEmit('firmware-updated', { name: req.file.originalname, size: req.file.size, crc32, targetModels });
+  res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256, targetModels });
 });
 
 app.post('/ota/admin/api/files/audio', audioUpload.single('file'), async (req, res) => {
@@ -972,6 +1006,7 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
     reason         = 'Update available',
     delaySeconds   = 0,
     target         = 'group',
+    force          = false,
   } = req.body || {};
 
   if (!modelId || !safeFilename(modelId))
@@ -995,12 +1030,23 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
       if (!fs.existsSync(firmwarePath))
         return res.status(400).json({ error: `firmware file not found: ${firmwareFile}` });
 
-      // Produce a versioned filename e.g. SF-100-1.2.0.hex
+      // Produce a versioned filename e.g. SSH-100-1.3.0.hex
       const ext            = path.extname(firmwareFile) || '.hex';
       const firmwareVersName = `${modelId}-${version}${ext}`;
       const versionedPath  = path.join(FIRMWARE_ROOT, firmwareVersName);
       if (firmwarePath !== versionedPath && !fs.existsSync(versionedPath)) {
         fs.copyFileSync(firmwarePath, versionedPath);
+      }
+      // Ensure the versioned copy has a sidecar (write if absent)
+      const versionedMeta = versionedPath + '.meta.json';
+      if (!fs.existsSync(versionedMeta)) {
+        try {
+          fs.writeFileSync(versionedMeta, JSON.stringify({
+            targetModels: [modelId],
+            version,
+            uploadedAt: new Date().toISOString(),
+          }, null, 2));
+        } catch (_) {}
       }
 
       // Build audio entries
@@ -1080,7 +1126,7 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
     const uploadTopic   = target === 'broadcast'
       ? `${MQTT_PREFIX}/$broadcast/$action`
       : `${MQTT_PREFIX}/$group/${modelId}/$action`;
-    mqttPublish(uploadTopic, JSON.stringify({ act: 'frm', mdl: modelId, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex }), false);
+    mqttPublish(uploadTopic, JSON.stringify({ act: 'frm', mdl: modelId, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex, ...(force ? { force: true } : {}) }), false);
 
     res.json(manifest);
 
@@ -1122,7 +1168,7 @@ app.post('/ota/admin/api/manifests/draft', saveManifestDraft);
 // broadcast targets: scout/$broadcast/$action
 
 app.post('/ota/admin/api/ota/push', (req, res) => {
-  const { modelId, nodePath, broadcast } = req.body || {};
+  const { modelId, nodePath, broadcast, force = false, targetModels } = req.body || {};
 
   if (!modelId || !safeFilename(modelId))
     return res.status(400).json({ error: 'modelId required' });
@@ -1203,11 +1249,28 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
       : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
     // Token is the authorization credential for the device to access OTA endpoints.
     // Only devices on the broker receive it; they present it as Bearer on all OTA requests.
-    const payload = JSON.stringify({ act: 'frm', mdl: modelId, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
 
-    mqttPublish(topic, payload, false);
-    console.log(`[admin] OTA pushed: ${topic}`);
-    res.json({ published: true, topic, manifest });
+    // Build the list of model IDs to target — supports migration pushes to multiple models.
+    // Each model gets its own trigger with the matching mdl field so devices can filter.
+    const models = Array.isArray(targetModels) && targetModels.length > 0
+      ? targetModels.filter(m => m && safeFilename(m))
+      : [modelId];
+
+    const publishedTopics = [];
+    for (const mdl of models) {
+      const mdlTopic  = broadcast
+        ? `${MQTT_PREFIX}/$broadcast/$action`
+        : `${MQTT_PREFIX}/$group/${nodePath}/$action`;
+      const mdlPayload = JSON.stringify({
+        act: 'frm', mdl, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex,
+        ...(force ? { force: true } : {}),
+      });
+      mqttPublish(mdlTopic, mdlPayload, false);
+      publishedTopics.push(mdlTopic);
+      console.log(`[admin] OTA pushed: ${mdlTopic} (mdl=${mdl}${force ? ', force' : ''})`);
+    }
+
+    res.json({ published: true, topics: publishedTopics, manifest });
 
   } catch (err) {
     console.error(`[admin] push error: ${err.message}`);
@@ -1288,9 +1351,22 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
   if (!fs.existsSync(fwPath))
     return res.status(400).json({ error: `firmware file not found: ${firmwareFile}` });
 
-  // Derive version from filename: fw-x.y.z.hex → x.y.z, else use filename stem
-  const versionMatch = firmwareFile.match(/fw-(\d+\.\d+\.\d+)\.hex$/i);
-  const version      = versionMatch ? versionMatch[1] : path.basename(firmwareFile, path.extname(firmwareFile));
+  // Derive version and model from filename: SSH-100-1.3.0.hex → {model:'SSH-100', version:'1.3.0'}
+  // Also handles legacy fw-1.3.0.hex and scout-1.0.0.hex patterns.
+  const prefixMatch = firmwareFile.match(/^(.*?)-(\d+\.\d+\.\d+)/);
+  const version     = prefixMatch ? prefixMatch[2] : path.basename(firmwareFile, path.extname(firmwareFile));
+
+  // Model: prefer sidecar targetModels[0], then filename prefix, then server default
+  let modelId = DEVICE_MODEL;
+  const metaPath = fwPath + '.meta.json';
+  if (fs.existsSync(metaPath)) {
+    try {
+      const meta = JSON.parse(fs.readFileSync(metaPath, 'utf8'));
+      if (Array.isArray(meta.targetModels) && meta.targetModels.length) modelId = meta.targetModels[0];
+    } catch (_) {}
+  } else if (prefixMatch && prefixMatch[1] && prefixMatch[1] !== 'fw') {
+    modelId = prefixMatch[1];
+  }
 
   try {
     const tokenHex    = crypto.randomBytes(32).toString('hex');
@@ -1299,7 +1375,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
 
     // Reuse existing manifestId if the same firmware is being pushed again;
     // only generate a new one when the firmware file or version changes.
-    const manifestPath = path.join(MODELS_DIR, `${DEVICE_MODEL}.json`);
+    const manifestPath = path.join(MODELS_DIR, `${modelId}.json`);
     let manifestId;
     try {
       const existing = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -1315,7 +1391,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
     const manifest = {
       manifestId,
       type:          'firmware',
-      modelId:       DEVICE_MODEL,
+      modelId,
       version,
       update:        true,
       reason:        'Firmware update available',
@@ -1330,7 +1406,6 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
         crc32:  fileCrc32(fwPath),
         sha256: fileSha256(fwPath),
         size:   fs.statSync(fwPath).size,
-        force:  force ? true : undefined,
       },
     };
 
@@ -1341,7 +1416,10 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
       : deviceIds?.length
         ? resolvePublishTargets(deviceIds)
         : [`${MQTT_PREFIX}/$group/${nodePath}/$action`];
-    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
+    const payload = JSON.stringify({
+      act: 'frm', mdl: modelId, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex,
+      ...(force ? { force: true } : {}),
+    });
     for (const topic of topics) mqttPublish(topic, payload, false);
 
     const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
@@ -1356,7 +1434,7 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
       version,
       files:     [firmwareFile],
       topics,
-      manifest:  { manifestId, modelId: DEVICE_MODEL, type: 'firmware', version, firmware: manifest.firmware },
+      manifest:  { manifestId, modelId, type: 'firmware', version, firmware: manifest.firmware },
     });
     pushManifests.set(tokenHex, { manifestId, category: 'firmware', version, files: [firmwareFile] });
 

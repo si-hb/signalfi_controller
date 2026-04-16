@@ -408,6 +408,25 @@ body {
 .badge-no      { background: rgba(120,120,120,0.15); color: var(--text-muted); }
 .badge-warn    { background: rgba(232,124,42,0.18);  color: var(--warn); }
 
+/* ── Model target badges (firmware file list) ── */
+.model-badge {
+  display: inline-block;
+  padding: 1px 6px;
+  border-radius: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  background: rgba(9,116,121,0.18);
+  color: var(--accent-bright);
+  vertical-align: middle;
+  margin-left: 4px;
+}
+.model-badge-untagged {
+  background: rgba(120,120,120,0.12);
+  color: var(--text-muted);
+}
+
 /* ── Reports table ── */
 .reports-table {
   width: 100%;

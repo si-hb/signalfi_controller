@@ -223,8 +223,9 @@ function makeDeleteBtn(label, onConfirm) {
 
 // ── Generic file table renderer ───────────────────────────────────────────────
 // makeActionBtns(f) → optional array of HTMLElement prepended before the delete button
+// formatName(f)     → optional function returning an HTML string for the name cell
 
-function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh, makeActionBtns) {
+function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh, makeActionBtns, formatName) {
   const tbody = document.getElementById(tbodyId);
   if (!files.length) {
     tbody.innerHTML = `<tr class="empty-row"><td colspan="${colCount}">No files uploaded yet</td></tr>`;
@@ -232,9 +233,10 @@ function renderFileTable(tbodyId, files, colCount, endpoint, onRefresh, makeActi
   }
   tbody.innerHTML = '';
   for (const f of files) {
+    const nameHtml = formatName ? formatName(f) : f.name;
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td class="file-name">${f.name}</td>
+      <td class="file-name">${nameHtml}</td>
       <td class="file-size">${fmtSize(f.size)}</td>
       <td class="file-hash" title="${f.crc32 || ''}">${f.crc32 || '—'}</td>
       <td class="file-date">${fmtDate(f.mtime)}</td>
@@ -294,10 +296,13 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
     </div>` : '';
 
   const forceHtml = showForce ? `
-    <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none">
-      <input type="checkbox" id="pt-force" style="width:14px;height:14px;cursor:pointer">
-      Force reflash — skip version check on device
-    </label>` : '';
+    <div style="border:1px solid rgba(232,124,42,0.35);border-radius:6px;padding:8px 10px">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none">
+        <input type="checkbox" id="pt-force" style="width:14px;height:14px;cursor:pointer">
+        <span><strong style="color:var(--warn)">Force</strong> — bypass device model check.
+        Use only for cross-model migrations where devices should accept firmware for a different model.</span>
+      </label>
+    </div>` : '';
 
   const ledProgressChecked = localStorage.getItem(_PT_STORAGE_LED_PROGRESS) !== 'false';
   const ledProgressHtml = showLedProgress ? `
@@ -415,11 +420,19 @@ function makeFirmwarePushBtn(f) {
   return [btn];
 }
 
+function fmtFirmwareName(f) {
+  const models = Array.isArray(f.targetModels) ? f.targetModels : [];
+  const badges = models.length
+    ? models.map(m => `<span class="model-badge">${m}</span>`).join('')
+    : `<span class="model-badge model-badge-untagged">⚠ untagged</span>`;
+  return `${f.name} ${badges}`;
+}
+
 async function loadFirmware() {
   try {
     const res = await apiFetch('/ota/admin/api/files/firmware');
     const files = await res.json();
-    renderFileTable('firmware-tbody', files, 5, '/ota/admin/api/files/firmware', loadFirmware, makeFirmwarePushBtn);
+    renderFileTable('firmware-tbody', files, 5, '/ota/admin/api/files/firmware', loadFirmware, makeFirmwarePushBtn, fmtFirmwareName);
   } catch (_) {}
 }
 
