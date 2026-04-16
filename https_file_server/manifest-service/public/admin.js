@@ -1250,6 +1250,8 @@ function _syncSelectAll() {
 
 async function loadDevices() {
   try {
+    // GET /devices also triggers a {act:"get"} broadcast — devices respond via MQTT,
+    // which emits device-state SSE events that update the table as they arrive.
     const res  = await apiFetch('/ota/admin/api/devices');
     const list = await res.json();
     _renderDevices(list);

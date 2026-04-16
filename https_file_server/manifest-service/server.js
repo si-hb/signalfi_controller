@@ -663,7 +663,15 @@ app.get('/ota/admin/api/devices/count', (_req, res) => {
   res.json({ online, total: deviceLastSeen.size });
 });
 
-app.get('/ota/admin/api/devices', (_req, res) => {
+app.get('/ota/admin/api/devices', adminAuth, (req, res) => {
+  // Ask all devices to report status so the next poll has fresh data.
+  if (mqttClient?.connected) {
+    mqttClient.publish(
+      `${MQTT_PREFIX}/$broadcast/$action`,
+      JSON.stringify({ act: 'get' }),
+      { qos: 0, retain: false },
+    );
+  }
   const cutoff = Date.now() - DEVICE_TIMEOUT_MS;
   const list = [];
   for (const [id, ts] of deviceLastSeen.entries()) {
