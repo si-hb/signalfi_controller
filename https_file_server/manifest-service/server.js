@@ -1497,7 +1497,7 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
     const manifest = {
       manifestId,
       type:          'files',
-      modelId:       DEVICE_MODEL,
+      modelId:       '*',
       update:        true,
       reason:        sync ? 'Audio sync' : 'File transfer',
       downloadToken: tokenHex,
@@ -1507,18 +1507,39 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
       files:         fileEntries,
     };
 
-    const manifestPath = path.join(MODELS_DIR, `${DEVICE_MODEL}.json`);
+    // Files are model-agnostic — write manifest under a shared key
+    const manifestPath = path.join(MODELS_DIR, `_files.json`);
     fs.writeFileSync(manifestPath, JSON.stringify(manifest, null, 2));
 
-    const topics = broadcast
-      ? [`${MQTT_PREFIX}/$broadcast/$action`]
-      : deviceIds?.length
-        ? resolvePublishTargets(deviceIds)
-        : [`${MQTT_PREFIX}/$group/${nodePath}/$action`];
-    const payload = JSON.stringify({ act: 'frm', mdl: DEVICE_MODEL, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
-    for (const topic of topics) mqttPublish(topic, payload, false);
+    // Build MQTT triggers.
+    // - broadcast / nodePath: unknown mix of models → mdl:"" bypasses device model guard
+    // - selected devices: group by known model from deviceInfo so each device sees its
+    //   own model in the trigger (or "" for devices with no known model)
+    let mqttTriggers; // Array of { topics: string[], mdl: string }
+    if (broadcast) {
+      mqttTriggers = [{ topics: [`${MQTT_PREFIX}/$broadcast/$action`], mdl: '' }];
+    } else if (deviceIds?.length) {
+      const modelGroups = new Map(); // model string → deviceId[]
+      for (const id of deviceIds) {
+        const mdl = deviceInfo.get(id)?.model || '';
+        if (!modelGroups.has(mdl)) modelGroups.set(mdl, []);
+        modelGroups.get(mdl).push(id);
+      }
+      mqttTriggers = [];
+      for (const [mdl, ids] of modelGroups) {
+        mqttTriggers.push({ topics: resolvePublishTargets(ids), mdl });
+      }
+    } else {
+      mqttTriggers = [{ topics: [`${MQTT_PREFIX}/$group/${nodePath}/$action`], mdl: '' }];
+    }
 
-    const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
+    const allTopics = mqttTriggers.flatMap(t => t.topics);
+    for (const { topics, mdl } of mqttTriggers) {
+      const payload = JSON.stringify({ act: 'frm', mdl, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex });
+      for (const topic of topics) mqttPublish(topic, payload, false);
+    }
+
+    const topicSummary = allTopics.length === 1 ? allTopics[0] : `${allTopics.length} topics`;
     console.log(`[admin] files push: ${files.length} op(s) → ${topicSummary}`);
 
     // Record push event in reports log
@@ -1528,12 +1549,12 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
       pushId:    manifestId,
       category:  'files',
       files:     files.map(f => (f.op === 'delete' ? `delete:${f.id}` : f.id)),
-      topics,
-      manifest:  { manifestId, modelId: DEVICE_MODEL, type: 'files', sync: sync || undefined, files: fileEntries },
+      topics:    allTopics,
+      manifest:  { manifestId, modelId: '*', type: 'files', sync: sync || undefined, files: fileEntries },
     });
     pushManifests.set(tokenHex, { manifestId, category: 'files', files: files.map(f => f.id) });
 
-    res.json({ published: true, topic: topicSummary, topics, manifest });
+    res.json({ published: true, topic: topicSummary, topics: allTopics, manifest });
   } catch (err) {
     console.error(`[admin] push-files error: ${err.message}`);
     res.status(500).json({ error: err.message });
