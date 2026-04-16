@@ -655,14 +655,6 @@ const generalUpload = multer({
 // ── Admin API — device presence ───────────────────────────────────────────────
 
 app.get('/ota/admin/api/devices/count', (_req, res) => {
-  // Also broadcast so devices re-report — count stays current without a full page reload.
-  if (mqttClient?.connected) {
-    mqttClient.publish(
-      `${MQTT_PREFIX}/$broadcast/$action`,
-      JSON.stringify({ act: 'get' }),
-      { qos: 0, retain: false },
-    );
-  }
   const cutoff = Date.now() - DEVICE_TIMEOUT_MS;
   let online = 0;
   for (const ts of deviceLastSeen.values()) {
@@ -672,14 +664,6 @@ app.get('/ota/admin/api/devices/count', (_req, res) => {
 });
 
 app.get('/ota/admin/api/devices', adminAuth, (req, res) => {
-  // Ask all devices to report status so the next poll has fresh data.
-  if (mqttClient?.connected) {
-    mqttClient.publish(
-      `${MQTT_PREFIX}/$broadcast/$action`,
-      JSON.stringify({ act: 'get' }),
-      { qos: 0, retain: false },
-    );
-  }
   const cutoff = Date.now() - DEVICE_TIMEOUT_MS;
   const list = [];
   for (const [id, ts] of deviceLastSeen.entries()) {
@@ -790,12 +774,8 @@ app.get('/ota/admin/api/events', (req, res) => {
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
 
-  // Clear all tracked devices so stale retained MQTT state doesn't show phantom
-  // devices as online. Only devices that actively respond to the broadcast below
-  // will reappear. deviceInfo is kept so version/node survive the reset.
-  deviceLastSeen.clear();
-
-  // Ask all devices to report their current status immediately.
+  // Ask all devices to report their current status immediately so the new
+  // client sees live state without waiting for the next periodic $state publish.
   if (mqttClient && mqttClient.connected) {
     mqttClient.publish(
       `${MQTT_PREFIX}/$broadcast/$action`,
