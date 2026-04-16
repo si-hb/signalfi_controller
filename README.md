@@ -542,3 +542,34 @@ The admin panel Reports section shows:
 - **Filters** — filter by status (applied / failed / started) and by device identifier.
 - **Live updates** — new OTA report entries appear at the top of the table in real time via SSE without a page refresh.
 - **CSV export** — download all report entries as a dated CSV file.
+
+---
+
+## Multi-Model Support (SSH-100 and others)
+
+Devices report their model via the `model` field in MQTT `$state` messages. The server tracks model per device and surfaces it throughout the UI.
+
+### Firmware Upload and Targeting
+
+When a firmware file is uploaded via the admin panel, the server parses the filename prefix (e.g. `SSH-100-fw-1.3.2.hex`) and writes a `.meta.json` sidecar file alongside it:
+
+```json
+{ "targetModels": ["SSH-100"] }
+```
+
+The firmware list API returns `targetModels` from the sidecar. The push dialog shows model badges on each firmware entry and a **target models** field (visible when Force is checked) to restrict or broaden the push scope.
+
+### Push Endpoint Behaviour
+
+- **Per-model push** (`POST /ota/admin/api/push`): iterates devices grouped by model; sends one push message per model group using the manifest's `targetModels` filter.
+- **Push-files endpoint**: uses `mdl: ""` for model-agnostic broadcast; uses per-model grouping when targeting specific devices.
+- **Force flag**: `force: true` in the push payload is passed through to `manifest.firmware.force`, bypassing the device-side CRC/version skip-flash guard and the model filter.
+
+### Admin UI Changes
+
+- **Firmware file list**: model badges on each entry showing which models the file targets.
+- **Devices table**: 7-column layout with a Model column; model badges per row.
+- **Live activity table**: model column added.
+- **Push dialog**: force toggle; target models field shown when force is checked.
+- **Device state refresh**: `GET /ota/admin/api/devices` now also broadcasts `{act:"get"}` to trigger fresh `$state` reports from all devices.
+- **SSE device-state event**: includes `model` field so the admin UI updates badges in real time without a page refresh.
