@@ -156,6 +156,14 @@ function connectMqtt() {
     if (parts.length === 3 && parts[2] === '$state') {
       try {
         const payload = JSON.parse(message.toString());
+
+        // LWT (Last Will and Testament) — broker emits this when device disconnects
+        if (payload.status === 'offline' || payload.sta === 'offline') {
+          deviceLastSeen.delete(deviceId);
+          sseEmit('device-state', { id: deviceId, online: false });
+          return;
+        }
+
         // Keep IP ↔ deviceId mapping current so abort detection in streamFile works
         if (payload.ip) {
           deviceIp.set(deviceId, payload.ip);
