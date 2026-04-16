@@ -774,8 +774,10 @@ app.get('/ota/admin/api/events', (req, res) => {
   sseClients.add(res);
   req.on('close', () => sseClients.delete(res));
 
-  // Ask all devices to report their current status immediately so the new
-  // client sees live state without waiting for the next periodic $state publish.
+  // Broadcast {act:"get"} — all live devices will respond with $state within ~500ms,
+  // updating their deviceLastSeen timestamp.  After 3 s we evict any device whose
+  // timestamp is older than the broadcast: they are truly offline.
+  const broadcastAt = Date.now();
   if (mqttClient && mqttClient.connected) {
     mqttClient.publish(
       `${MQTT_PREFIX}/$broadcast/$action`,
@@ -783,6 +785,14 @@ app.get('/ota/admin/api/events', (req, res) => {
       { qos: 0, retain: false },
     );
   }
+  setTimeout(() => {
+    for (const [id, ts] of deviceLastSeen.entries()) {
+      if (ts < broadcastAt) {
+        deviceLastSeen.delete(id);
+        sseEmit('device-state', { id, online: false });
+      }
+    }
+  }, 3000);
 });
 
 function sseEmit(type, payload) {

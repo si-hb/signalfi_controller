@@ -1264,18 +1264,24 @@ async function loadDevices() {
 function onDeviceState(d) {
   const existing = document.querySelector(`#devices-tbody tr[data-dev-id="${d.id}"]`);
   if (existing) {
+    if (d.online === false) {
+      // Device evicted by the server's offline-detection sweep — remove its row
+      existing.remove();
+      _syncSelectAll();
+      _updateSelectionBadges();
+      return;
+    }
     // Update in-place — preserves checkbox state
-    const dot     = d.online
-      ? '<span class="device-dot device-dot--online" title="Online"></span>'
-      : '<span class="device-dot device-dot--offline" title="Offline"></span>';
+    const dot     = '<span class="device-dot device-dot--online" title="Online"></span>';
     const dotCell = existing.cells[1];
     if (dotCell) dotCell.innerHTML = dot;
     if (existing.cells[3] && d.ip)      existing.cells[3].textContent = d.ip;
     if (existing.cells[4] && d.node)    existing.cells[4].textContent = d.node;
     if (existing.cells[5] && d.model)   existing.cells[5].innerHTML   = `<span class="model-badge">${d.model}</span>`;
     if (existing.cells[6] && d.version) existing.cells[6].textContent = d.version;
-    existing.className = d.online ? '' : 'device-offline';
+    existing.className = '';
   } else {
+    if (d.online === false) return; // evicted device not in table — nothing to do
     // New device — reload the full list
     loadDevices();
   }
