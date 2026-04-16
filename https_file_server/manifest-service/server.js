@@ -168,6 +168,7 @@ function connectMqtt() {
           ip:        payload.ip      || prev.ip,
           version:   payload.ver     || payload.version || payload.firmwareVersion || prev.version,
           node:      payload.nod     || payload.node    || payload.nodePath        || prev.node,
+          model:     payload.mdl     || payload.model   || prev.model,
           lastState: payload.sta     || payload.status  || prev.lastState,
         };
         deviceInfo.set(deviceId, updated);
@@ -177,6 +178,7 @@ function connectMqtt() {
           ip:      updated.ip,
           version: updated.version,
           node:    updated.node,
+          model:   updated.model,
           online:  true,
         });
         // Device went idle → the last tracked download for this device is complete
@@ -672,6 +674,7 @@ app.get('/ota/admin/api/devices', (_req, res) => {
       ip:      info.ip      || deviceIp.get(id) || null,
       version: info.version || null,
       node:    info.node    || null,
+      model:   info.model   || null,
       online:  true,
       lastSeen: ts,
     });
@@ -1340,7 +1343,7 @@ function resolvePublishTargets(deviceIds) {
 // Derives version from filename (fw-x.y.z.hex), generates token, writes manifest, publishes MQTT.
 
 app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
-  const { firmwareFile, nodePath, broadcast, deviceIds, backup, progress, force } = req.body || {};
+  const { firmwareFile, nodePath, broadcast, deviceIds, backup, progress, force, targetModels } = req.body || {};
 
   if (!firmwareFile || !safeFilename(firmwareFile))
     return res.status(400).json({ error: 'firmwareFile required' });
@@ -1416,11 +1419,23 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
       : deviceIds?.length
         ? resolvePublishTargets(deviceIds)
         : [`${MQTT_PREFIX}/$group/${nodePath}/$action`];
-    const payload = JSON.stringify({
-      act: 'frm', mdl: modelId, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex,
-      ...(force ? { force: true } : {}),
-    });
-    for (const topic of topics) mqttPublish(topic, payload, false);
+
+    // Build the list of model IDs to broadcast as mdl in the trigger.
+    // Supports migration pushes: e.g. targetModels=["SSH-100","SF-100"] sends a
+    // separate trigger for each so old SF-100 devices (which ignore force) still
+    // match their compiled model and accept the firmware.
+    const models = Array.isArray(targetModels) && targetModels.length > 0
+      ? targetModels.filter(m => m && safeFilename(m))
+      : [modelId];
+
+    for (const topic of topics) {
+      for (const mdl of models) {
+        mqttPublish(topic, JSON.stringify({
+          act: 'frm', mdl, mid: manifestId, url: `/ota/v1/manifest`, token: tokenHex,
+          ...(force ? { force: true } : {}),
+        }), false);
+      }
+    }
 
     const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
     console.log(`[admin] firmware push: ${firmwareFile} v${version} → ${topicSummary}`);
