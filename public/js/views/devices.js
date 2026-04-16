@@ -627,6 +627,34 @@ export function updateScoutCard(mac, scout, allowFallback = true) {
     const displayName = scout.node.split('/').pop();
     nameEl.textContent = displayName;
   }
+
+  // Update model label — may arrive after initial render (device was offline at page load)
+  if (scout.model) {
+    // Grid view: label lives inside .card-status-col
+    const statusCol = card.querySelector('.card-status-col');
+    if (statusCol) {
+      let modelEl = statusCol.querySelector('.card-model');
+      if (!modelEl) {
+        modelEl = document.createElement('span');
+        modelEl.className = 'card-model';
+        statusCol.insertBefore(modelEl, statusCol.firstChild);
+      }
+      modelEl.textContent = scout.model;
+    }
+    // List view: label lives inside .card-body
+    const cardBody = card.querySelector('.card-body');
+    if (cardBody) {
+      let modelListEl = cardBody.querySelector('.card-model-list');
+      if (!modelListEl) {
+        modelListEl = document.createElement('span');
+        modelListEl.className = 'card-model card-model-list';
+        // Insert before the status row (last child)
+        const statusRow = cardBody.querySelector('.card-status');
+        cardBody.insertBefore(modelListEl, statusRow);
+      }
+      modelListEl.textContent = scout.model;
+    }
+  }
 }
 
 // ─── Pull-to-refresh ─────────────────────────────────────────────────────────
