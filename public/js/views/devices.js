@@ -199,15 +199,31 @@ function makeDeviceCard(scout) {
     return row;
   }
 
-  // Icon row (grid view): icon + status side-by-side
+  // Icon row (grid view): icon + status column (model label above status)
+  const statusCol = document.createElement('div');
+  statusCol.className = 'card-status-col';
+  if (scout.model) {
+    const modelLabel = document.createElement('span');
+    modelLabel.className = 'card-model';
+    modelLabel.textContent = scout.model;
+    statusCol.appendChild(modelLabel);
+  }
+  statusCol.appendChild(makeStatusRow());
+
   const iconRow = document.createElement('div');
   iconRow.className = 'card-icon-row';
   iconRow.appendChild(icon);
-  iconRow.appendChild(makeStatusRow());
+  iconRow.appendChild(statusCol);
 
-  // card-body status row (list view only — hidden in grid via CSS)
+  // card-body (list view only — hidden in grid via CSS)
   cardBody.appendChild(name);
   cardBody.appendChild(mac);
+  if (scout.model) {
+    const modelLabelList = document.createElement('span');
+    modelLabelList.className = 'card-model card-model-list';
+    modelLabelList.textContent = scout.model;
+    cardBody.appendChild(modelLabelList);
+  }
   cardBody.appendChild(makeStatusRow());
 
   card.appendChild(iconRow);

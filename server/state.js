@@ -66,6 +66,7 @@ function makeScout(mac) {
     mac,
     ip: '',
     status: 'offline',
+    model: '',
     ver: '',
     mask: '',
     gate: '',
@@ -115,6 +116,9 @@ function mergeScoutFields(scout, payload) {
   if (payload.usb   !== undefined) scout.usb       = payload.usb;
   if (payload.ftp   !== undefined) scout.ftp       = payload.ftp;
   if (payload.oled  !== undefined) scout.oledLevel = payload.oled;
+  // model: firmware sends 'mdl' in status messages and 'model' in get responses
+  const incomingModel = payload.mdl ?? payload.model;
+  if (incomingModel !== undefined && incomingModel !== '') scout.model = incomingModel;
 
   // Node path: only update from a get-response payload (act === 'get').
   // Status updates (sta field) always carry the trigger topic in nod, not

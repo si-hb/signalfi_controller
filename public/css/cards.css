@@ -305,6 +305,29 @@
   text-overflow: ellipsis;
 }
 
+.card-status-col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.card-model {
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+  line-height: 1;
+}
+
+/* In list view the model label sits inside card-body; hide the redundant
+   card-body copy if no model (rendered conditionally in JS anyway) */
+.card-model-list {
+  display: none;
+}
+
 .card-status {
   display: flex;
   align-items: center;
@@ -345,9 +368,13 @@
   gap: 0;
 }
 
-/* List view: status lives in card-body; hide the icon-row copy */
-.device-list.list-mode .card-icon-row .card-status {
+/* List view: status + model col live in card-body; hide the icon-row copies */
+.device-list.list-mode .card-icon-row .card-status-col {
   display: none;
+}
+
+.device-list.list-mode .card-body .card-model-list {
+  display: block;
 }
 
 .device-list.list-mode .card-body .card-status {
