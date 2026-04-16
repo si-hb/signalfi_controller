@@ -655,6 +655,14 @@ const generalUpload = multer({
 // ── Admin API — device presence ───────────────────────────────────────────────
 
 app.get('/ota/admin/api/devices/count', (_req, res) => {
+  // Also broadcast so devices re-report — count stays current without a full page reload.
+  if (mqttClient?.connected) {
+    mqttClient.publish(
+      `${MQTT_PREFIX}/$broadcast/$action`,
+      JSON.stringify({ act: 'get' }),
+      { qos: 0, retain: false },
+    );
+  }
   const cutoff = Date.now() - DEVICE_TIMEOUT_MS;
   let online = 0;
   for (const ts of deviceLastSeen.values()) {

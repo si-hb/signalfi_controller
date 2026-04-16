@@ -1487,7 +1487,7 @@ function onDeviceError(d) {
       else if (d.type === 'device-done')         onDeviceDone(d, false);
       else if (d.type === 'device-aborted')      onDeviceDone(d, true);
       else if (d.type === 'device-error')        onDeviceError(d);
-      else if (d.type === 'device-state')         onDeviceState(d);
+      else if (d.type === 'device-state')        { onDeviceState(d); updateDeviceCount(); }
       else if (d.type === 'report-created')      prependReport(d.entry);
       else if (d.type === 'session-terminated')  setTimeout(() => {
         authToken = '';
