@@ -207,8 +207,8 @@ services:
       # server.js root redirect (/ → /ota/admin) means the panel is at https://admin.apis.symphonyinteractive.ca
       # Rate-limit: 5 req/s avg, burst 10 — throttles bearer token brute-force attempts.
       # HTTP redirects to HTTPS so tokens are never sent in plaintext.
-      - "traefik.http.middlewares.admin-ratelimit.ratelimit.average=5"
-      - "traefik.http.middlewares.admin-ratelimit.ratelimit.burst=10"
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.average=30"
+      - "traefik.http.middlewares.admin-ratelimit.ratelimit.burst=60"
       - "traefik.http.middlewares.admin-ratelimit.ratelimit.period=1s"
       - "traefik.http.routers.signalfi-admin-http.rule=Host(`admin.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.signalfi-admin-http.entrypoints=web"

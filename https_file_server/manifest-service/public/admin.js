@@ -154,6 +154,19 @@ function toast(msg, type = '') {
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// Mirror of server-side cleanNodePath: strip MQTT topic wrappers that the firmware
+// sometimes sends in nod fields (e.g. "scout/$broadcast/$action" → "").
+// Provides a client-side safety net so raw MQTT topics never appear in the UI.
+function sanitizeNode(raw) {
+  if (!raw) return '';
+  const m = raw.match(/^[^/]+\/(.+?)\/\$action$/);
+  if (m) {
+    const g = m[1].match(/^\$group\/(.+)$/);
+    return g ? g[1] : '';
+  }
+  return raw.replace(/^\/+/, '').replace(/\/+$/, '');
+}
+
 function fmtSize(bytes) {
   if (bytes < 1024)        return bytes + ' B';
   if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1214,7 +1227,8 @@ function _renderDevices(list) {
     const dot     = dev.online
       ? '<span class="device-dot device-dot--online" title="Online"></span>'
       : '<span class="device-dot device-dot--offline" title="Offline"></span>';
-    const node    = dev.node    || '<span class="text-muted">—</span>';
+    const nodeStr = sanitizeNode(dev.node);
+    const node    = nodeStr || '<span class="text-muted">—</span>';
     const model   = dev.model   ? `<span class="model-badge">${dev.model}</span>` : '<span class="text-muted">—</span>';
     const version = dev.version || '<span class="text-muted">—</span>';
 
@@ -1261,7 +1275,43 @@ async function loadDevices() {
   } catch (_) {}
 }
 
-// Live update: refresh a single device row in-place from a device-state SSE event
+// Insert a single device row from SSE data — used when a new device appears without
+// reloading the full list, to avoid hammering the API on multi-device state bursts.
+function _insertDeviceRow(d) {
+  const tbody = document.getElementById('devices-tbody');
+  if (!tbody) return;
+  // Remove the "no devices" empty row if present
+  const emptyRow = tbody.querySelector('.empty-row');
+  if (emptyRow) emptyRow.remove();
+
+  const tr = document.createElement('tr');
+  tr.dataset.devId = d.id;
+  const dot     = '<span class="device-dot device-dot--online" title="Online"></span>';
+  const model   = d.model   ? `<span class="model-badge">${d.model}</span>` : '<span class="text-muted">—</span>';
+  const version = d.version || '<span class="text-muted">—</span>';
+  const nodeStr = sanitizeNode(d.node);
+  const node    = nodeStr    || '<span class="text-muted">—</span>';
+  tr.innerHTML = `
+    <td class="col-check"><input type="checkbox" class="device-check"></td>
+    <td>${dot}</td>
+    <td class="device-model">${model}</td>
+    <td class="device-version">${version}</td>
+    <td class="device-mac">${d.id}</td>
+    <td class="device-ip">${d.ip || '—'}</td>
+    <td class="device-node">${node}</td>
+  `;
+  tr.querySelector('.device-check').addEventListener('change', e => {
+    if (e.target.checked) selectedDevices.add(d.id);
+    else                  selectedDevices.delete(d.id);
+    _syncSelectAll();
+    _updateSelectionBadges();
+  });
+  tbody.appendChild(tr);
+}
+
+// Live update: refresh a single device row in-place from a device-state SSE event.
+// Never calls loadDevices() — inserting rows directly avoids request-rate cascades
+// when many devices respond to the broadcast at once.
 function onDeviceState(d) {
   const existing = document.querySelector(`#devices-tbody tr[data-dev-id="${d.id}"]`);
   if (existing) {
@@ -1279,12 +1329,17 @@ function onDeviceState(d) {
     if (existing.cells[2] && d.model)   existing.cells[2].innerHTML   = `<span class="model-badge">${d.model}</span>`;
     if (existing.cells[3] && d.version) existing.cells[3].textContent = d.version;
     if (existing.cells[5] && d.ip)      existing.cells[5].textContent = d.ip;
-    if (existing.cells[6] && d.node)    existing.cells[6].textContent = d.node;
+    const cleanNode = sanitizeNode(d.node);
+    if (existing.cells[6] && cleanNode) existing.cells[6].textContent = cleanNode;
     existing.className = '';
   } else {
     if (d.online === false) return; // evicted device not in table — nothing to do
-    // New device — reload the full list
-    loadDevices();
+    // New device seen via SSE — insert row directly; do NOT call loadDevices() here
+    // because many devices respond to the broadcast simultaneously and each would
+    // trigger a separate API request, easily exceeding the Traefik rate limit.
+    _insertDeviceRow(d);
+    _syncSelectAll();
+    _updateSelectionBadges();
   }
 }
 
@@ -1313,6 +1368,7 @@ function showTab(id) {
   document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === id));
   if (id === 'devices') loadDevices();
+  else if (id === 'audio') loadAudio();
 }
 
 document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
@@ -1494,7 +1550,7 @@ function onDeviceError(d) {
       else if (d.type === 'device-done')         onDeviceDone(d, false);
       else if (d.type === 'device-aborted')      onDeviceDone(d, true);
       else if (d.type === 'device-error')        onDeviceError(d);
-      else if (d.type === 'device-state')        { onDeviceState(d); updateDeviceCount(); }
+      else if (d.type === 'device-state')        onDeviceState(d);
       else if (d.type === 'report-created')      prependReport(d.entry);
       else if (d.type === 'session-terminated')  setTimeout(() => {
         authToken = '';

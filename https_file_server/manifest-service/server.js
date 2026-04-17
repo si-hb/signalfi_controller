@@ -130,6 +130,23 @@ function connectMqtt() {
     });
   });
 
+  // Strip MQTT topic wrappers from a node path reported by a device.
+  //   "scout/$group/root/1/$action"  → "root/1"
+  //   "scout/$broadcast/$action"     → ""   (broadcast — no configured path)
+  //   "scout/<MAC>/$action"          → ""   (individual device topic)
+  //   "/root/1"  or  "root/1"        → "root/1"
+  function cleanNodePath(raw) {
+    if (!raw) return '';
+    const mqttMatch = raw.match(/^[^/]+\/(.+?)\/\$action$/);
+    if (mqttMatch) {
+      const middle = mqttMatch[1];
+      const groupMatch = middle.match(/^\$group\/(.+)$/);
+      if (groupMatch) return groupMatch[1];
+      return ''; // $broadcast, MAC, or other special segment
+    }
+    return raw.replace(/^\/+/, '').replace(/\/+$/, '');
+  }
+
   mqttClient.on('message', (topic, message) => {
     // Topic format: scout/<deviceId>/... or scout/$group/... or scout/$broadcast/...
     // Only process real device IDs (not $ pseudo-segments like $group, $broadcast).
@@ -169,15 +186,23 @@ function connectMqtt() {
           deviceIp.set(deviceId, payload.ip);
           ipToDevice.set(payload.ip, deviceId);
         }
-        // Accumulate device info (version/node may not be present in every $state)
-        // Firmware sends: ver (version), nod (node path), sta (status), ip
+        // Accumulate device info — only certain fields are present in each message.
+        // Node path: only trust nod when act==="get" (status messages carry the trigger
+        // topic in nod, not the device's own configured path — matches signalfi-web behaviour).
         const prev = deviceInfo.get(deviceId) || {};
+        const incomingModel = payload.mdl ?? payload.model;
+        let node = prev.node || '';
+        if (payload.act === 'get') {
+          const rawNode = payload.nod ?? payload.node ?? payload.nodePath;
+          const cleaned = cleanNodePath(rawNode);
+          if (cleaned) node = cleaned;
+        }
         const updated = {
-          ip:        payload.ip      || prev.ip,
-          version:   payload.ver     || payload.version || payload.firmwareVersion || prev.version,
-          node:      payload.nod     || payload.node    || payload.nodePath        || prev.node,
-          model:     payload.mdl     || payload.model   || prev.model,
-          lastState: payload.sta     || payload.status  || prev.lastState,
+          ip:        payload.ip  || prev.ip,
+          version:   payload.ver || payload.version || payload.firmwareVersion || prev.version,
+          node,
+          model:     (incomingModel !== undefined && incomingModel !== '') ? incomingModel : prev.model,
+          lastState: payload.sta || payload.status || prev.lastState,
         };
         deviceInfo.set(deviceId, updated);
         // Push live update to admin panel devices tab
