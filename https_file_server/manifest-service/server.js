@@ -1030,7 +1030,6 @@ function buildFileEntry(id, audioRoot, filesRoot, baseUrl, pathPrefix) {
     id,
     url,
     crc32:  fileCrc32(filePath),
-    sha256: fileSha256(filePath),
     size:   fs.statSync(filePath).size,
   };
 }
@@ -1101,7 +1100,6 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
           id:     af,
           url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/audio/${af}`,
           crc32:  fileCrc32(afPath),
-          sha256: fileSha256(afPath),
           size:   fs.statSync(afPath).size,
         });
       }
@@ -1120,7 +1118,6 @@ app.post('/ota/admin/api/manifests/upload', (req, res) => {
           version,
           url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/firmware/${firmwareVersName}`,
           crc32:  fileCrc32(path.join(FIRMWARE_ROOT, firmwareVersName)),
-          sha256: fileSha256(path.join(FIRMWARE_ROOT, firmwareVersName)),
           size:   fs.statSync(path.join(FIRMWARE_ROOT, firmwareVersName)).size,
         },
         audio: audioEntries,
@@ -1267,7 +1264,6 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
         version: manifest.version || '0.0.0',
         url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/firmware/${fwFilename}`,
         crc32:  fileCrc32(fwPath),
-        sha256: fileSha256(fwPath),
         size:   fs.statSync(fwPath).size,
       };
 
@@ -1279,7 +1275,7 @@ app.post('/ota/admin/api/ota/push', (req, res) => {
         const inFiles = path.join(FILES_ROOT, f.id);
         const fp = fs.existsSync(inAudio) ? inAudio : fs.existsSync(inFiles) ? inFiles : null;
         if (!fp) { errors.push(`file not found: ${f.id}`); return f; }
-        return { ...f, crc32: fileCrc32(fp), sha256: fileSha256(fp), size: fs.statSync(fp).size };
+        return { ...f, crc32: fileCrc32(fp), size: fs.statSync(fp).size };
       });
       if (errors.length) return res.status(400).json({ error: 'file verification failed', details: errors });
     }
@@ -1446,7 +1442,6 @@ app.post('/ota/admin/api/ota/push-firmware', (req, res) => {
         version,
         url:    `${FILES_BASE_URL}${FILES_PATH_PREFIX}/firmware/${firmwareFile}`,
         crc32:  fileCrc32(fwPath),
-        sha256: fileSha256(fwPath),
         size:   fs.statSync(fwPath).size,
         // force=true bypasses the device-side version guard (same-version skip).
         // Distinct from the MQTT payload force which bypasses the model check.
