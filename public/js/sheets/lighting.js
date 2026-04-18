@@ -330,7 +330,7 @@ function buildSheet() {
   followLabel.className = 'sheet-section-label';
   followLabel.textContent = 'Follow audio';
   const followToggleWrap = document.createElement('div');
-  followToggleWrap.className = 'slider-row follow-audio-toggle-wrap';
+  followToggleWrap.className = 'follow-audio-toggle-wrap';
   const followToggle = document.createElement('input');
   followToggle.type = 'checkbox';
   followToggle.id = 'lighting-follow-audio';

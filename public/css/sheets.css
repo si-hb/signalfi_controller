@@ -210,8 +210,7 @@
 .follow-audio-toggle-wrap {
   display: flex;
   align-items: center;
-  gap: 10px;
-  min-height: 32px;
+  gap: 8px;
 }
 
 .follow-audio-hint {
