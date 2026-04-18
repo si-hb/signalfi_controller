@@ -48,6 +48,11 @@ services:
       - "--certificatesresolvers.letsencrypt.acme.storage=/acme.json"
       - "--global.checknewversion=false"
       - "--global.sendanonymoususage=false"
+      # Traefik v3 defaults readTimeout (client→Traefik body read) to 60s.
+      # Audio file uploads can be 30–100 MB; at a typical 500 KB/s upstream that
+      # takes 60–200s and trips the timeout with a 502.  Set to 600s (10 min).
+      - "--entrypoints.websecure.transport.respondingTimeouts.readTimeout=600"
+      - "--entrypoints.web.transport.respondingTimeouts.readTimeout=600"
     ports:
       - "80:80"
       - "443:443"
