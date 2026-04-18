@@ -826,6 +826,173 @@ async function loadAudio() {
   } catch (_) {}
 }
 
+// ── Audio upload validation dialogs ──────────────────────────────────────────
+
+// Shown when the filename would be changed by sanitization (illegal chars, spaces,
+// truncation) or is entirely invalid.  Returns the accepted base string (no ext),
+// or null if the user cancels.
+function showAudioRenameDialog(originalName, proposedBase, reason) {
+  return new Promise(resolve => {
+    const existing = document.getElementById('audio-rename-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'audio-rename-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:160';
+
+    const isInvalid = !proposedBase;
+    const titleText = isInvalid ? 'Filename is not valid' : 'Filename will be renamed';
+    const reasonHtml = reason
+      ? `<p style="font-size:12px;color:var(--text-muted);margin:0">Reason: ${reason}</p>`
+      : '';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:440px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:14px';
+    box.innerHTML = `
+      <h3 style="font-size:14px;margin:0">${titleText}</h3>
+      <p style="font-size:13px;margin:0;color:var(--text-muted)">
+        Original: <code style="color:var(--text-secondary)">${originalName}</code>
+      </p>
+      ${reasonHtml}
+      <div>
+        <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">
+          New name <span style="font-weight:400;text-transform:none;letter-spacing:0">(base only, max 8 chars — <code>.wav</code> added automatically)</span>
+        </label>
+        <input id="arn-input" type="text" maxlength="20" spellcheck="false"
+          value="${proposedBase}"
+          style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;outline:none">
+        <div id="arn-preview" style="font-size:12px;margin-top:6px;font-family:var(--font-mono)"></div>
+      </div>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary btn-sm" id="arn-cancel">Cancel</button>
+        <button class="btn btn-primary btn-sm" id="arn-confirm" disabled>Use This Name</button>
+      </div>
+    `;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    const input   = box.querySelector('#arn-input');
+    const preview = box.querySelector('#arn-preview');
+    const confirm = box.querySelector('#arn-confirm');
+
+    function update() {
+      const clean = sanitizeAudioBase(input.value);
+      if (!clean) {
+        preview.innerHTML = '<span style="color:var(--error,#e55)">No valid characters — enter a name using letters, numbers, underscores, or hyphens</span>';
+        confirm.disabled = true;
+      } else {
+        const truncated = input.value.replace(/\s+/g, '_').replace(/[^A-Za-z0-9_\-]/g, '').length > 8;
+        preview.innerHTML = `<span style="color:var(--success,#4c4)">Will be stored as: <strong>${clean}.wav</strong></span>`
+          + (truncated ? ' <span style="color:var(--text-muted)">(truncated)</span>' : '');
+        confirm.disabled = false;
+      }
+    }
+
+    input.addEventListener('input', update);
+    update();
+
+    const doConfirm = () => {
+      const clean = sanitizeAudioBase(input.value);
+      if (!clean) return;
+      overlay.remove();
+      resolve(clean);
+    };
+
+    box.querySelector('#arn-cancel').addEventListener('click', () => { overlay.remove(); resolve(null); });
+    confirm.addEventListener('click', doConfirm);
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter' && !confirm.disabled) doConfirm();
+      if (e.key === 'Escape') { overlay.remove(); resolve(null); }
+    });
+    overlay.addEventListener('click', e => { if (e.target === overlay) { overlay.remove(); resolve(null); } });
+
+    input.focus();
+    input.select();
+  });
+}
+
+// Shown when a file with the same sanitized name already exists on the server.
+// Returns true (replace) or false (cancel).
+function showAudioReplaceDialog(filename) {
+  return new Promise(resolve => {
+    const existing = document.getElementById('audio-replace-overlay');
+    if (existing) existing.remove();
+
+    const overlay = document.createElement('div');
+    overlay.id = 'audio-replace-overlay';
+    overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.65);display:flex;align-items:center;justify-content:center;z-index:160';
+
+    const box = document.createElement('div');
+    box.style.cssText = 'background:var(--bg-panel);border:1px solid var(--border);border-radius:12px;padding:24px 28px;max-width:400px;width:calc(100% - 48px);display:flex;flex-direction:column;gap:14px';
+    box.innerHTML = `
+      <h3 style="font-size:14px;margin:0">File already exists</h3>
+      <p style="font-size:13px;margin:0">
+        <code style="color:var(--text-secondary)">${filename}</code> is already on the server.
+        Do you want to replace it?
+      </p>
+      <div style="display:flex;gap:10px;justify-content:flex-end">
+        <button class="btn btn-secondary btn-sm" id="arr-cancel">Cancel</button>
+        <button class="btn btn-danger btn-sm"    id="arr-replace">Replace</button>
+      </div>
+    `;
+    overlay.appendChild(box);
+    document.body.appendChild(overlay);
+
+    box.querySelector('#arr-cancel').addEventListener('click',  () => { overlay.remove(); resolve(false); });
+    box.querySelector('#arr-replace').addEventListener('click', () => { overlay.remove(); resolve(true);  });
+    overlay.addEventListener('keydown', e => { if (e.key === 'Escape') { overlay.remove(); resolve(false); } });
+    overlay.addEventListener('click',   e => { if (e.target === overlay) { overlay.remove(); resolve(false); } });
+
+    box.querySelector('#arr-replace').focus();
+  });
+}
+
+// Validate a filename via the server, then optionally prompt for rename / replace,
+// then upload.  Returns after the upload completes (or is cancelled).
+async function _validateAndUploadAudio(file, uploadFn) {
+  // Ask the server what it will store this file as, and if that name exists already.
+  let sanitized, exists, changed, reason;
+  try {
+    const r = await apiFetch(`/ota/admin/api/files/audio/validate-name?name=${encodeURIComponent(file.name)}`);
+    if (!r.ok) throw new Error('validate failed');
+    ({ sanitized, exists, changed, reason } = await r.json());
+  } catch (_) {
+    // If validation endpoint unreachable, fall through and let the upload fail normally.
+    uploadFn(file);
+    return;
+  }
+
+  let finalBase = sanitized.replace(/\.wav$/i, '');
+
+  // Show rename dialog if the name would change or is entirely invalid.
+  if (changed || !finalBase) {
+    const chosen = await showAudioRenameDialog(file.name, finalBase, reason);
+    if (chosen === null) return; // user cancelled
+    finalBase = chosen;
+    // Re-check existence with the user-chosen name.
+    try {
+      const r2 = await apiFetch(`/ota/admin/api/files/audio/validate-name?name=${encodeURIComponent(chosen + '.wav')}`);
+      if (r2.ok) ({ exists } = await r2.json());
+    } catch (_) {}
+  }
+
+  const finalName = finalBase + '.wav';
+
+  // Show replace dialog if a file by this name already exists.
+  if (exists) {
+    const replace = await showAudioReplaceDialog(finalName);
+    if (!replace) return; // user cancelled
+  }
+
+  // Upload — if the name changed, wrap the bytes in a new File with the accepted name
+  // so the server's sanitizeAudioName() produces exactly finalName.  Original extension
+  // is preserved so the server can detect the format (WAV check / ffmpeg conversion).
+  const origExt   = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';
+  const uploadAs  = finalBase + origExt;
+  const fileToSend = uploadAs === file.name ? file : new File([file], uploadAs, { type: file.type });
+  uploadFn(fileToSend);
+}
+
 (function () {
   const zone       = document.getElementById('audio-zone');
   const inp        = document.getElementById('audio-file-input');
@@ -913,14 +1080,21 @@ async function loadAudio() {
     xhr.send(formData);
   }
 
+  // Process files sequentially so rename/replace dialogs appear one at a time.
+  async function handleAudioFiles(files) {
+    for (const file of files) {
+      await _validateAndUploadAudio(file, uploadAudio);
+    }
+  }
+
   zone.addEventListener('dragover',  e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => {
     e.preventDefault(); zone.classList.remove('drag-over');
-    [...e.dataTransfer.files].forEach(uploadAudio);
+    handleAudioFiles([...e.dataTransfer.files]);
   });
   inp.addEventListener('change', () => {
-    [...inp.files].forEach(uploadAudio);
+    handleAudioFiles([...inp.files]);
     inp.value = '';
   });
 })();

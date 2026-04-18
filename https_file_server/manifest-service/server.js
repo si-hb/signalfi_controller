@@ -753,6 +753,32 @@ app.get('/ota/admin/api/files/audio', (_req, res) => {
   res.json(listDir(AUDIO_ROOT, '.wav'));
 });
 
+// Pre-upload name validation — returns what the server will store the file as, and whether
+// a file by that name already exists.  Lets the UI prompt the user before the upload starts.
+app.get('/ota/admin/api/files/audio/validate-name', (req, res) => {
+  const raw = req.query.name;
+  if (!raw) return res.status(400).json({ error: 'missing name query param' });
+  const sanitized = sanitizeAudioName(raw);
+  const exists    = fs.existsSync(path.join(AUDIO_ROOT, sanitized));
+  // Explain why the name changed (for UI hint text)
+  const rawBase  = path.basename(raw, path.extname(raw));
+  const cleanBase = rawBase.replace(/\s+/g, '_').replace(/[^A-Za-z0-9_\-]/g, '').slice(0, 8);
+  let reason = null;
+  if (!cleanBase) {
+    reason = 'contains no valid characters';
+  } else if (rawBase !== cleanBase) {
+    const hasSpaces   = /\s/.test(rawBase);
+    const hasIllegal  = /[^A-Za-z0-9_\-\s]/.test(rawBase);
+    const wasTruncated = rawBase.replace(/\s+/g, '_').replace(/[^A-Za-z0-9_\-]/g, '').length > 8;
+    const parts = [];
+    if (hasSpaces)   parts.push('spaces replaced with underscores');
+    if (hasIllegal)  parts.push('illegal characters removed');
+    if (wasTruncated) parts.push('truncated to 8 characters (FAT32 8.3 limit)');
+    reason = parts.join('; ');
+  }
+  res.json({ sanitized, exists, changed: sanitized !== path.basename(raw, path.extname(raw)) + '.wav', reason });
+});
+
 app.get('/ota/admin/api/files/audio/:filename', (req, res) => {
   const { filename } = req.params;
   if (!safeFilename(filename)) return res.status(400).json({ error: 'invalid filename' });
