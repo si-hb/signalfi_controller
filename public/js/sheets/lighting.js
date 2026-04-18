@@ -326,23 +326,22 @@ function buildSheet() {
   // ── Follow audio row ──────────────────────────────────────────────────────
   const followRow = document.createElement('div');
   followRow.className = 'timeout-row follow-audio-row';
-  const followLabel = document.createElement('div');
-  followLabel.className = 'sheet-section-label';
+  const followSliderRow = document.createElement('div');
+  followSliderRow.className = 'slider-row';
+  const followLabel = document.createElement('label');
+  followLabel.htmlFor = 'lighting-follow-audio';
   followLabel.textContent = 'Follow audio';
-  const followToggleWrap = document.createElement('div');
-  followToggleWrap.className = 'follow-audio-toggle-wrap';
   const followToggle = document.createElement('input');
   followToggle.type = 'checkbox';
   followToggle.id = 'lighting-follow-audio';
-  followToggle.className = 'follow-audio-checkbox';
   const followHint = document.createElement('span');
   followHint.id = 'lighting-follow-audio-hint';
   followHint.className = 'follow-audio-hint';
   followHint.textContent = 'LEDs stop when audio ends';
-  followToggleWrap.appendChild(followToggle);
-  followToggleWrap.appendChild(followHint);
-  followRow.appendChild(followLabel);
-  followRow.appendChild(followToggleWrap);
+  followSliderRow.appendChild(followLabel);
+  followSliderRow.appendChild(followToggle);
+  followSliderRow.appendChild(followHint);
+  followRow.appendChild(followSliderRow);
   el.appendChild(followRow);
 
   // Footer
