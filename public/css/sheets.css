@@ -207,6 +207,13 @@
   padding-top: 0 !important;
 }
 
+/* Loops row — label + stepper inline */
+.loops-section {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
 /* Follow audio row — label + checkbox inline, left-aligned */
 .follow-audio-row {
   display: flex;

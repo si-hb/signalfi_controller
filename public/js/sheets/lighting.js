@@ -268,9 +268,10 @@ function buildSheet() {
 
   // Loops stepper
   const loopsSection = document.createElement('div');
-  loopsSection.className = 'sheet-section';
+  loopsSection.className = 'sheet-section loops-section';
   loopsSection.id = 'sound-loops-section';
-  const loopsLabel = document.createElement('div');
+  const loopsLabel = document.createElement('label');
+  loopsLabel.htmlFor = 'sound-loops-value';
   loopsLabel.className = 'sheet-section-label';
   loopsLabel.textContent = 'Loops';
   const stepper = document.createElement('div');
