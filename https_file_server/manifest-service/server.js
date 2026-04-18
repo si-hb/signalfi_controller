@@ -885,7 +885,11 @@ app.post('/ota/admin/api/files/audio', audioUpload.single('file'), async (req, r
   if (alreadyOk) {
     try {
       if (fs.existsSync(outPath)) fs.unlinkSync(outPath);
-      fs.renameSync(tmpPath, outPath);
+      // copyFileSync + unlinkSync instead of renameSync: the temp dir (/tmp) and
+      // destination (/opt) are on different filesystems; rename(2) fails with EXDEV
+      // across device boundaries.
+      fs.copyFileSync(tmpPath, outPath);
+      fs.unlinkSync(tmpPath);
     } catch (err) {
       cleanup();
       return res.status(500).json({ error: `Failed to store file: ${err.message}` });
