@@ -79,6 +79,16 @@ input, select, textarea {
   outline: none;
 }
 
+input[type=checkbox],
+input[type=radio] {
+  width: auto;
+  padding: 0;
+  background: none;
+  border: none;
+  border-radius: 0;
+  flex-shrink: 0;
+}
+
 input:focus, select:focus {
   border-color: var(--accent-bright);
 }

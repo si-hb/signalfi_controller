@@ -201,32 +201,31 @@
   display: none;
 }
 
-/* Follow audio row — no top border, sits flush under timeout row */
-.follow-audio-row {
-  border-top: none !important;
-  padding-top: 0 !important;
-}
-
-/* Loops row — label + stepper inline */
+/* Loops row — label + stepper inline, stepper aligned with sliders above */
 .loops-section {
   display: flex;
   align-items: center;
   gap: 12px;
 }
 
-/* Follow audio row — label + checkbox inline, left-aligned */
+.loops-section label {
+  width: 80px;
+  flex-shrink: 0;
+  margin-bottom: 0;
+}
+
+/* Follow audio row — label + checkbox on the same line */
 .follow-audio-row {
   display: flex;
   align-items: center;
   gap: 10px;
+  border-top: none !important;
+  padding-top: 0 !important;
 }
 
 .follow-audio-row label {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--text-muted);
   flex-shrink: 0;
+  margin-bottom: 0;
 }
 
 /* Timeout slider dimmed when follow-audio is active */
