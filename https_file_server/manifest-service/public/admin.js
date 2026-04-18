@@ -958,7 +958,7 @@ async function _validateAndUploadAudio(file, uploadFn) {
     ({ sanitized, exists, changed, reason } = await r.json());
   } catch (_) {
     // If validation endpoint unreachable, fall through and let the upload fail normally.
-    uploadFn(file);
+    await uploadFn(file);
     return;
   }
 
@@ -990,7 +990,7 @@ async function _validateAndUploadAudio(file, uploadFn) {
   const origExt   = file.name.includes('.') ? file.name.slice(file.name.lastIndexOf('.')).toLowerCase() : '';
   const uploadAs  = finalBase + origExt;
   const fileToSend = uploadAs === file.name ? file : new File([file], uploadAs, { type: file.type });
-  uploadFn(fileToSend);
+  await uploadFn(fileToSend);
 }
 
 (function () {
@@ -1038,49 +1038,57 @@ async function _validateAndUploadAudio(file, uploadFn) {
       `<strong>${name}</strong> — ${msg}`;
   }
 
+  // Returns a Promise that resolves when the upload completes (success or error).
+  // Must return a promise so the caller can await it and uploads stay sequential —
+  // concurrent uploads trip Traefik's rate-limit and cause 502 errors.
   function uploadAudio(file) {
-    const row = addStatusRow(file.name);
-    const formData = new FormData();
-    formData.append('file', file);
-    const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/ota/admin/api/files/audio');
-    if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
+    return new Promise(resolve => {
+      const row = addStatusRow(file.name);
+      const formData = new FormData();
+      formData.append('file', file);
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/ota/admin/api/files/audio');
+      if (authToken) xhr.setRequestHeader('Authorization', `Bearer ${authToken}`);
 
-    prog.style.display = 'block';
-    bar.style.width = '0%';
-
-    xhr.upload.onprogress = e => {
-      if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
-    };
-    // File bytes sent — server is now converting
-    xhr.upload.onload = () => {
-      bar.style.width = '100%';
-      setRowConverting(row, file.name);
-    };
-    xhr.onload = () => {
-      prog.style.display = 'none';
+      prog.style.display = 'block';
       bar.style.width = '0%';
-      if (xhr.status === 200 || xhr.status === 201) {
-        const data = JSON.parse(xhr.responseText);
-        setRowSuccess(row, data);
-        loadAudio();
-      } else if (xhr.status === 401) {
-        setAuthState(false); showAuthDialog();
-        setRowError(row, file.name, 'Not authorized');
-      } else {
-        let msg = `Server error ${xhr.status}`;
-        try { msg = JSON.parse(xhr.responseText).error || msg; } catch (_) {}
-        setRowError(row, file.name, msg);
-      }
-    };
-    xhr.onerror = () => {
-      prog.style.display = 'none';
-      setRowError(row, file.name, 'Network error');
-    };
-    xhr.send(formData);
+
+      xhr.upload.onprogress = e => {
+        if (e.lengthComputable) bar.style.width = Math.round(e.loaded / e.total * 100) + '%';
+      };
+      // File bytes sent — server is now converting (or storing)
+      xhr.upload.onload = () => {
+        bar.style.width = '100%';
+        setRowConverting(row, file.name);
+      };
+      xhr.onload = () => {
+        prog.style.display = 'none';
+        bar.style.width = '0%';
+        if (xhr.status === 200 || xhr.status === 201) {
+          const data = JSON.parse(xhr.responseText);
+          setRowSuccess(row, data);
+          loadAudio();
+        } else if (xhr.status === 401) {
+          setAuthState(false); showAuthDialog();
+          setRowError(row, file.name, 'Not authorized');
+        } else {
+          let msg = `Server error ${xhr.status}`;
+          try { msg = JSON.parse(xhr.responseText).error || msg; } catch (_) {}
+          setRowError(row, file.name, msg);
+        }
+        resolve();
+      };
+      xhr.onerror = () => {
+        prog.style.display = 'none';
+        setRowError(row, file.name, 'Network error');
+        resolve();
+      };
+      xhr.send(formData);
+    });
   }
 
-  // Process files sequentially so rename/replace dialogs appear one at a time.
+  // Process files strictly one at a time: validate → dialog (if needed) → upload → next.
+  // Sequential execution avoids concurrent POSTs that trip Traefik's rate-limit.
   async function handleAudioFiles(files) {
     for (const file of files) {
       await _validateAndUploadAudio(file, uploadAudio);
