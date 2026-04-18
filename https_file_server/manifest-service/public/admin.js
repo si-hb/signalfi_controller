@@ -1725,7 +1725,7 @@ function onDeviceError(d) {
     try {
       const d = JSON.parse(e.data);
       if      (d.type === 'firmware-updated')    loadFirmware();
-      else if (d.type === 'audio-updated')       loadAudio();
+      else if (d.type === 'audio-updated')       { loadAudio(); if (window._scenesRefreshAudio) window._scenesRefreshAudio(); }
       else if (d.type === 'general-updated')     loadFiles();
       else if (d.type === 'device-connect')      onDeviceConnect(d);
       else if (d.type === 'device-progress')     onDeviceProgress(d);
@@ -1743,4 +1743,110 @@ function onDeviceError(d) {
     } catch (_) {}
   };
   es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+})();
+
+// ── Scenes — Pattern panel ─────────────────────────────────────────────────────
+
+(function initScenes() {
+  const elAudio      = document.getElementById('scenes-audio');
+  const elPattern    = document.getElementById('scenes-pattern');
+  const elColor      = document.getElementById('scenes-color');
+  const elBrightness = document.getElementById('scenes-brightness');
+  const elBrightVal  = document.getElementById('scenes-brightness-val');
+  const elVolume     = document.getElementById('scenes-volume');
+  const elVolVal     = document.getElementById('scenes-volume-val');
+  const elRepeat     = document.getElementById('scenes-repeat');
+  const elFollow     = document.getElementById('scenes-follow-audio');
+  const elDuration   = document.getElementById('scenes-duration');
+  const elDurLabel   = document.getElementById('scenes-duration-label');
+  const elPlayBtn    = document.getElementById('scenes-play-btn');
+
+  // Populate audio dropdown from the shared _audioFiles list.
+  // Called on tab switch and whenever audio list reloads.
+  function refreshScenesAudioList() {
+    const prev = elAudio.value;
+    elAudio.innerHTML = '<option value="">— none —</option>';
+    (_audioFiles || []).forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f.name;
+      opt.textContent = f.name;
+      if (f.name === prev) opt.selected = true;
+      elAudio.appendChild(opt);
+    });
+  }
+
+  // Sync the audio list whenever the audio table is refreshed
+  const _origRenderAudioTable = window._renderAudioTableHook;
+  // Hook into SSE audio-updated events already handled by the SSE block;
+  // also expose a callable so the tab-switch can trigger it.
+  window._scenesRefreshAudio = refreshScenesAudioList;
+
+  // Slider live labels
+  elBrightness.addEventListener('input', () => {
+    elBrightVal.textContent = elBrightness.value;
+  });
+  elVolume.addEventListener('input', () => {
+    elVolVal.textContent = elVolume.value + '%';
+  });
+
+  // Follow audio toggle — disable/grey the duration field
+  function applyFollowState() {
+    const follow = elFollow.checked;
+    elDuration.disabled = follow;
+    elDuration.style.opacity = follow ? '0.35' : '';
+    elDurLabel.style.opacity = follow ? '0.35' : '';
+  }
+  elFollow.addEventListener('change', applyFollowState);
+  applyFollowState();
+
+  // Send button
+  elPlayBtn.addEventListener('click', () => {
+    const audioFile = elAudio.value;
+    if (!audioFile) { toast('Select an audio file', 'error'); return; }
+
+    showPushTargetDialog('Send Scene to Devices', 'Send', async ({ broadcast, nodePath, selectedDevices: devs }) => {
+      // Build ply payload
+      const colorHex = elColor.value.replace('#', '');
+      const payload = {
+        act: 'ply',
+        aud: audioFile,
+        pat: parseInt(elPattern.value, 10),
+        clr: colorHex,
+        brt: parseInt(elBrightness.value, 10),
+        vol: parseFloat((parseInt(elVolume.value, 10) / 100).toFixed(2)),
+        rpt: parseInt(elRepeat.value, 10),
+      };
+      if (elFollow.checked) {
+        payload.fol = true;
+      } else {
+        const dur = parseInt(elDuration.value, 10);
+        if (dur > 0) payload.dur = dur;
+      }
+
+      try {
+        const res = await apiFetch('/ota/admin/api/ota/push-command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            payload,
+            broadcast:  broadcast  || undefined,
+            nodePath:   (!broadcast && !devs?.length) ? nodePath : undefined,
+            deviceIds:  devs?.length ? devs : undefined,
+          }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.error || res.statusText);
+        toast(`Scene sent → ${data.topic}`, 'success');
+      } catch (err) {
+        toast(`Scene send failed: ${err.message}`, 'error');
+      }
+    });
+  });
+
+  // Populate on initial tab switch to Scenes
+  document.querySelectorAll('[data-tab]').forEach(a => {
+    a.addEventListener('click', () => {
+      if (a.dataset.tab === 'scenes') refreshScenesAudioList();
+    });
+  });
 })();

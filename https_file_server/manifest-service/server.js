@@ -1625,6 +1625,36 @@ app.post('/ota/admin/api/ota/push-files', (req, res) => {
   }
 });
 
+// ── Push arbitrary MQTT action command ───────────────────────────────────────
+// POST /ota/admin/api/ota/push-command
+// Body: { payload: {...}, nodePath?, broadcast?, deviceIds? }
+// Publishes the payload JSON directly to the resolved MQTT $action topic(s).
+// Used by the Scenes panel to send `ply` commands.
+app.post('/ota/admin/api/ota/push-command', adminAuth, (req, res) => {
+  const { payload, nodePath, broadcast, deviceIds } = req.body || {};
+  if (!payload || typeof payload !== 'object')
+    return res.status(400).json({ error: 'payload object required' });
+  if (!broadcast && !nodePath && (!deviceIds || !deviceIds.length))
+    return res.status(400).json({ error: 'nodePath, broadcast, or deviceIds required' });
+
+  let topics = [];
+  if (broadcast) {
+    topics = [`${MQTT_PREFIX}/$broadcast/$action`];
+  } else if (deviceIds && deviceIds.length) {
+    topics = resolvePublishTargets(deviceIds);
+    if (!topics.length) topics = deviceIds.map(mac => `${MQTT_PREFIX}/${mac}/$action`);
+  } else {
+    topics = [`${MQTT_PREFIX}/$group/${nodePath}/$action`];
+  }
+
+  const jsonPayload = JSON.stringify(payload);
+  for (const topic of topics) mqttPublish(topic, jsonPayload, false);
+
+  const topicSummary = topics.length === 1 ? topics[0] : `${topics.length} topics`;
+  console.log(`[admin] push-command: ${payload.act || '?'} → ${topicSummary}`);
+  res.json({ published: true, topic: topicSummary, topics });
+});
+
 // ── VS Code / CI automated upload endpoint ────────────────────────────────────
 // POST /ota/admin/api/upload
 // Headers: Authorization: Bearer <ADMIN_TOKEN>

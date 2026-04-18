@@ -37,6 +37,7 @@
   <a href="#firmware" data-tab="firmware">Firmware</a>
   <a href="#audio"    data-tab="audio">Audio</a>
   <a href="#files"    data-tab="files">Files</a>
+  <a href="#scenes"   data-tab="scenes">Scenes</a>
   <a href="#reports"  data-tab="reports">Reports</a>
   <button id="btn-terminate-sessions" class="btn btn-warn btn-sm" title="Terminate all active sessions on both servers">Terminate Sessions</button>
   <div id="auth-indicator">
@@ -219,6 +220,79 @@
     </div>
   </section>
 
+
+  <!-- ── Scenes ── -->
+  <section class="section" id="scenes">
+    <div class="section-header">
+      <span class="section-title">Scenes</span>
+    </div>
+    <div class="section-body">
+
+      <div class="scenes-panel">
+        <h3 class="scenes-group-title">Pattern</h3>
+        <div class="scenes-grid">
+
+          <label class="scenes-label">Audio File</label>
+          <select id="scenes-audio" class="scenes-input"></select>
+
+          <label class="scenes-label">Pattern</label>
+          <select id="scenes-pattern" class="scenes-input">
+            <option value="1">1 — Solid</option>
+            <option value="2">2 — Blink</option>
+            <option value="3">3 — Rotate</option>
+            <option value="4">4 — Pulse</option>
+            <option value="5">5 — Flash</option>
+            <option value="6">6 — Wave Out</option>
+            <option value="7">7 — Wave In</option>
+            <option value="8" selected>8 — Audio Level</option>
+            <option value="9">9 — Wave Left</option>
+            <option value="10">10 — Wave Right</option>
+            <option value="11">11 — Wave Up</option>
+            <option value="12">12 — Wave Down</option>
+          </select>
+
+          <label class="scenes-label">Color</label>
+          <input type="color" id="scenes-color" class="scenes-input scenes-color" value="#ffffff">
+
+          <label class="scenes-label">Brightness</label>
+          <div class="scenes-slider-row">
+            <input type="range" id="scenes-brightness" min="0" max="255" value="255" class="scenes-slider">
+            <span class="scenes-slider-val" id="scenes-brightness-val">255</span>
+          </div>
+
+          <label class="scenes-label">Volume</label>
+          <div class="scenes-slider-row">
+            <input type="range" id="scenes-volume" min="0" max="100" value="80" class="scenes-slider">
+            <span class="scenes-slider-val" id="scenes-volume-val">80%</span>
+          </div>
+
+          <label class="scenes-label">Repeat</label>
+          <div class="scenes-repeat-row">
+            <input type="number" id="scenes-repeat" class="scenes-input scenes-num" min="0" max="99" value="1">
+            <span class="scenes-hint">0 = loop forever</span>
+          </div>
+
+          <label class="scenes-label">Follow audio</label>
+          <div class="scenes-follow-row">
+            <label class="toggle-label">
+              <input type="checkbox" id="scenes-follow-audio" class="toggle-input">
+              <span class="toggle-track"></span>
+            </label>
+            <span class="scenes-hint" id="scenes-follow-hint">LEDs stop when audio ends</span>
+          </div>
+
+          <label class="scenes-label" id="scenes-duration-label">Timeout (ms)</label>
+          <input type="number" id="scenes-duration" class="scenes-input scenes-num" min="0" max="3600000" value="10000" placeholder="ms">
+
+        </div><!-- /scenes-grid -->
+
+        <div class="scenes-actions">
+          <button class="btn btn-primary" id="scenes-play-btn">Send to Devices</button>
+        </div>
+      </div>
+
+    </div>
+  </section>
 
   <!-- ── Reports ── -->
   <section class="section" id="reports">
