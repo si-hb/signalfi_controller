@@ -334,13 +334,8 @@ function buildSheet() {
   const followToggle = document.createElement('input');
   followToggle.type = 'checkbox';
   followToggle.id = 'lighting-follow-audio';
-  const followHint = document.createElement('span');
-  followHint.id = 'lighting-follow-audio-hint';
-  followHint.className = 'follow-audio-hint';
-  followHint.textContent = 'LEDs stop when audio ends';
   followSliderRow.appendChild(followLabel);
   followSliderRow.appendChild(followToggle);
-  followSliderRow.appendChild(followHint);
   followRow.appendChild(followSliderRow);
   el.appendChild(followRow);
 

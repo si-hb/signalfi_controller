@@ -207,9 +207,9 @@
   padding-top: 0 !important;
 }
 
-.follow-audio-hint {
-  font-size: 12px;
-  color: var(--text-muted, #888);
+/* Follow audio label doesn't need fixed 80px — let it take natural width */
+.follow-audio-row .slider-row label {
+  width: auto;
 }
 
 /* Timeout slider dimmed when follow-audio is active */
