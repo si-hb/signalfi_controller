@@ -326,17 +326,14 @@ function buildSheet() {
   // ── Follow audio row ──────────────────────────────────────────────────────
   const followRow = document.createElement('div');
   followRow.className = 'timeout-row follow-audio-row';
-  const followSliderRow = document.createElement('div');
-  followSliderRow.className = 'slider-row';
   const followLabel = document.createElement('label');
   followLabel.htmlFor = 'lighting-follow-audio';
   followLabel.textContent = 'Follow audio';
   const followToggle = document.createElement('input');
   followToggle.type = 'checkbox';
   followToggle.id = 'lighting-follow-audio';
-  followSliderRow.appendChild(followLabel);
-  followSliderRow.appendChild(followToggle);
-  followRow.appendChild(followSliderRow);
+  followRow.appendChild(followLabel);
+  followRow.appendChild(followToggle);
   el.appendChild(followRow);
 
   // Footer

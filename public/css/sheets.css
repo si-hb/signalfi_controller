@@ -207,9 +207,19 @@
   padding-top: 0 !important;
 }
 
-/* Follow audio label doesn't need fixed 80px — let it take natural width */
-.follow-audio-row .slider-row label {
-  width: auto;
+/* Follow audio row — label + checkbox inline, left-aligned */
+.follow-audio-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.follow-audio-row label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  flex-shrink: 0;
 }
 
 /* Timeout slider dimmed when follow-audio is active */
