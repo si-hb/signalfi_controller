@@ -14,6 +14,7 @@ const state = {
   brightness: 255,
   pattern: 1,
   timeout: 30,
+  followAudio: false,
 };
 
 export function getLightingState() {
@@ -322,6 +323,28 @@ function buildSheet() {
   timeoutRow.appendChild(timeoutSlider);
   el.appendChild(timeoutRow);
 
+  // ── Follow audio row ──────────────────────────────────────────────────────
+  const followRow = document.createElement('div');
+  followRow.className = 'timeout-row follow-audio-row';
+  const followLabel = document.createElement('div');
+  followLabel.className = 'sheet-section-label';
+  followLabel.textContent = 'Follow audio';
+  const followToggleWrap = document.createElement('div');
+  followToggleWrap.className = 'slider-row follow-audio-toggle-wrap';
+  const followToggle = document.createElement('input');
+  followToggle.type = 'checkbox';
+  followToggle.id = 'lighting-follow-audio';
+  followToggle.className = 'follow-audio-checkbox';
+  const followHint = document.createElement('span');
+  followHint.id = 'lighting-follow-audio-hint';
+  followHint.className = 'follow-audio-hint';
+  followHint.textContent = 'LEDs stop when audio ends';
+  followToggleWrap.appendChild(followToggle);
+  followToggleWrap.appendChild(followHint);
+  followRow.appendChild(followLabel);
+  followRow.appendChild(followToggleWrap);
+  el.appendChild(followRow);
+
   // Footer
   const footer = document.createElement('div');
   footer.className = 'sheet-footer';
@@ -365,8 +388,15 @@ function renderLightingSheet() {
   // Update timeout
   const tRange = document.getElementById('lighting-timeout');
   const tValue = document.getElementById('lighting-timeout-value');
-  if (tRange) tRange.value = state.timeout;
+  if (tRange) {
+    tRange.value = state.timeout;
+    tRange.disabled = state.followAudio;
+  }
   if (tValue) tValue.textContent = state.timeout === 0 ? '∞' : state.timeout + 's';
+
+  // Update follow audio toggle
+  const followToggle = document.getElementById('lighting-follow-audio');
+  if (followToggle) followToggle.checked = state.followAudio;
 }
 
 function wireEvents() {
@@ -515,6 +545,14 @@ function wireEvents() {
     document.getElementById('lighting-timeout-value').textContent = state.timeout === 0 ? '∞' : state.timeout + 's';
   });
 
+  // ── Follow audio ──────────────────────────────────────────────────────────────
+
+  const followToggle = document.getElementById('lighting-follow-audio');
+  followToggle.addEventListener('change', () => {
+    state.followAudio = followToggle.checked;
+    renderLightingSheet();
+  });
+
   // ── Footer ────────────────────────────────────────────────────────────────────
 
   document.getElementById('lighting-announce-btn').addEventListener('click', () => {
@@ -526,6 +564,7 @@ function wireEvents() {
       brightness: state.brightness,
       pattern: state.pattern,
       timeout: state.timeout,
+      followAudio: state.followAudio || undefined,
       audio: sound.selectedFile,
       volume: roundGain(sound.volume),
       loops: sound.loops,

@@ -289,14 +289,16 @@ function handleCommand(config, msg, broadcast) {
     case 'announce': {
       const p = msg.payload || {};
       // Accept both flat fields (from UI) and short-key payload sub-object
+      const followAudio = msg.followAudio ?? p.fol ?? false;
       payload = {
         act: 'ply',
         rpt: msg.loops   ?? p.rpt ?? 0,
         clr: normaliseColour(msg.colour ?? p.clr),
         pat: msg.pattern ?? p.pat ?? 1,
-        dur: (msg.timeout ?? p.dur ?? 10) * 1000,
+        dur: followAudio ? 0 : (msg.timeout ?? p.dur ?? 10) * 1000,
         brt: msg.brightness ?? p.brt ?? 200,
       };
+      if (followAudio) payload.fol = true;
       // Only include vol when explicitly provided — omitting it lets devices use their stored default
       const vol = msg.volume ?? p.vol;
       if (vol != null) payload.vol = Math.round(vol * 1000) / 1000;

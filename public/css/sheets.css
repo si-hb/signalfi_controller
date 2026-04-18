@@ -196,9 +196,33 @@
   margin-right: 4px;
 }
 
-/* Hide timeout when Sound tab is active */
+/* Hide timeout/follow-audio rows when Sound tab is active */
 #sheet-lighting[data-active-tab="sound"] .timeout-row {
   display: none;
+}
+
+/* Follow audio row — no top border, sits flush under timeout row */
+.follow-audio-row {
+  border-top: none !important;
+  padding-top: 0 !important;
+}
+
+.follow-audio-toggle-wrap {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 32px;
+}
+
+.follow-audio-hint {
+  font-size: 12px;
+  color: var(--text-muted, #888);
+}
+
+/* Timeout slider dimmed when follow-audio is active */
+.timeout-row input[type=range]:disabled {
+  opacity: 0.35;
+  pointer-events: none;
 }
 
 /* Timeout row */
