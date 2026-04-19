@@ -4,3 +4,16 @@ data/
 config.json
 .env
 .vscode/settings.json
+
+# Runtime data / logs on deployed servers
+https_file_server/log/
+https_file_server/nodered-data/
+
+# Live Mosquitto password file holds hashed credentials for real users and
+# must never be committed.  pass.txt.example IS tracked.
+https_file_server/config/pass.txt
+
+# NB: signalfi-web.key and server.key ARE tracked intentionally — they belong
+# to a private Signalfi PKI used only by deployed services and let a fresh
+# server come up without re-issuing certs.  Do not untrack without first
+# rotating the cert chain.

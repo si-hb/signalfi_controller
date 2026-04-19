@@ -1,0 +1,17 @@
+# Template for /mosquitto/config/pass.txt (mosquitto password file).
+#
+# Mosquitto stores passwords hashed — this file must be generated via
+# `mosquitto_passwd` and cannot be written by hand.
+#
+# setup.sh generates the real /root/config/pass.txt when bringing up a
+# new server, populated from credentials in .env (MQTT_USERS).  Do NOT
+# commit the generated file: real credentials must not land in git.
+#
+# Example invocation (what setup.sh wraps):
+#
+#   docker run --rm -v "$PWD/config:/mosquitto/config" eclipse-mosquitto:2 \
+#     mosquitto_passwd -b -c /mosquitto/config/pass.txt symphony       '<device-password>'
+#   docker run --rm -v "$PWD/config:/mosquitto/config" eclipse-mosquitto:2 \
+#     mosquitto_passwd -b    /mosquitto/config/pass.txt signalfi-svc   '<service-password>'
+#
+# The first invocation creates the file (-c); subsequent ones append (-b without -c).
