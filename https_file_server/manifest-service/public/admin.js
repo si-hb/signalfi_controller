@@ -58,13 +58,42 @@ function setAuthState(ok) {
   document.getElementById('auth-label').textContent = ok ? 'authenticated' : 'not authenticated';
 }
 
+// Transparent 429 retry with server-hinted Retry-After or capped exponential
+// backoff.  Without this a single upstream throttle during the page-load burst
+// left tabs silently empty until a full browser refresh.
 async function apiFetch(path, opts = {}) {
   const headers = { 'Content-Type': 'application/json', ...(opts.headers || {}) };
   if (authToken) headers['Authorization'] = `Bearer ${authToken}`;
-  const res = await fetch(path, { ...opts, headers });
-  if (res.status === 401) { authToken = ''; sessionStorage.removeItem(STORAGE_KEY); setAuthState(false); showPhoneDialog(); throw new Error('Unauthorized'); }
-  setAuthState(true);
-  return res;
+
+  const backoffMs = [300, 800, 1800]; // up to 3 retries on 429
+  for (let attempt = 0; ; attempt++) {
+    const res = await fetch(path, { ...opts, headers });
+    if (res.status === 401) {
+      authToken = '';
+      sessionStorage.removeItem(STORAGE_KEY);
+      setAuthState(false);
+      showPhoneDialog();
+      throw new Error('Unauthorized');
+    }
+    if (res.status === 429 && attempt < backoffMs.length) {
+      const retryAfter = parseInt(res.headers.get('Retry-After'), 10);
+      const wait = Number.isFinite(retryAfter) ? Math.min(retryAfter * 1000, 5000) : backoffMs[attempt];
+      await new Promise(r => setTimeout(r, wait));
+      continue;
+    }
+    setAuthState(true);
+    // Non-2xx (other than 401 handled above) — throw so callers' catch blocks
+    // fire instead of silently feeding a 4xx/5xx body into res.json().
+    if (!res.ok) {
+      let msg = `HTTP ${res.status}`;
+      try { const b = await res.clone().json(); if (b && b.error) msg = b.error; } catch (_) {}
+      const err = new Error(msg);
+      err.status   = res.status;
+      err.response = res;
+      throw err;
+    }
+    return res;
+  }
 }
 
 function showPhoneDialog() {
@@ -121,7 +150,7 @@ async function submitCode() {
       sessionStorage.setItem(STORAGE_KEY, authToken);
       scheduleExpiry(data.expiresAt);
       hideCodeDialog();
-      loadAll();
+      bootstrap();
     } else if (res.status === 429) {
       hideCodeDialog();
       showPhoneDialog();
@@ -198,7 +227,7 @@ function uploadFile(file, endpoint, progressBar, progressWrap, onDone) {
       toast(`Uploaded ${data.name}`, 'success');
       onDone(data);
     } else if (xhr.status === 401) {
-      setAuthState(false); showAuthDialog();
+      setAuthState(false); showPhoneDialog();
     } else {
       toast(`Upload failed: ${xhr.status}`, 'error');
     }
@@ -460,14 +489,9 @@ function makeFirmwarePushBtn(f) {
             targetModels: targetModels?.length ? targetModels : undefined,
           }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          toast(`Pushed ${f.name} → ${data.topic}`, 'success');
-        } else {
-          const e = await res.json().catch(() => ({}));
-          toast(`Push failed: ${e.error || res.status}`, 'error');
-        }
-      } catch (_) { toast('Push failed', 'error'); }
+        const data = await res.json();
+        toast(`Pushed ${f.name} → ${data.topic}`, 'success');
+      } catch (err) { toast(`Push failed: ${err.message || 'unknown error'}`, 'error'); }
     }, { showBackup: true, showForce: true, showLedProgress: true, defaultTargetModels: defaultModels });
   });
   return [btn];
@@ -485,8 +509,15 @@ async function loadFirmware() {
   try {
     const res = await apiFetch('/ota/admin/api/files/firmware');
     const files = await res.json();
-    renderFileTable('firmware-tbody', files, 5, '/ota/admin/api/files/firmware', loadFirmware, makeFirmwarePushBtn, fmtFirmwareName);
-  } catch (_) {}
+    renderFirmware(files);
+  } catch (err) {
+    if (String(err.message) !== 'Unauthorized') toast(`Firmware: ${err.message}`, 'error');
+  }
+}
+
+function renderFirmware(files) {
+  renderFileTable('firmware-tbody', files, 5, '/ota/admin/api/files/firmware', loadFirmware, makeFirmwarePushBtn, fmtFirmwareName);
+  _tabLoadedAt.firmware = Date.now();
 }
 
 (function () {
@@ -522,14 +553,9 @@ function makeFilePushBtns(f) {
           method: 'POST',
           body: JSON.stringify({ files: [{ op: 'put', id: f.name }], nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined, progress: ledProgress || undefined }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          toast(`Sent ${f.name} → ${data.topic}`, 'success');
-        } else {
-          const e = await res.json().catch(() => ({}));
-          toast(`Send failed: ${e.error || res.status}`, 'error');
-        }
-      } catch (_) { toast('Send failed', 'error'); }
+        const data = await res.json();
+        toast(`Sent ${f.name} → ${data.topic}`, 'success');
+      } catch (err) { toast(`Send failed: ${err.message || 'unknown error'}`, 'error'); }
     }, { showLedProgress: true });
   });
 
@@ -543,14 +569,9 @@ function makeFilePushBtns(f) {
           method: 'POST',
           body: JSON.stringify({ files: [{ op: 'delete', id: f.name }], nodePath, broadcast: broadcast || undefined, deviceIds: devs || undefined }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          toast(`Remove command sent → ${data.topic}`, 'success');
-        } else {
-          const e = await res.json().catch(() => ({}));
-          toast(`Failed: ${e.error || res.status}`, 'error');
-        }
-      } catch (_) { toast('Remove failed', 'error'); }
+        const data = await res.json();
+        toast(`Remove command sent → ${data.topic}`, 'success');
+      } catch (err) { toast(`Remove failed: ${err.message || 'unknown error'}`, 'error'); }
     });
   });
 
@@ -675,14 +696,11 @@ function _startRename(filename, tr) {
         method: 'PATCH',
         body: JSON.stringify({ newName: newBase }),
       });
-      if (r.ok) {
-        toast(`Renamed to ${newName}`, 'success');
-        loadAudio();
-      } else {
-        const e = await r.json().catch(() => ({}));
-        toast(`Rename failed: ${e.error || r.status}`, 'error');
-      }
-    } catch (_) { toast('Rename failed', 'error'); }
+      toast(`Renamed to ${newName}`, 'success');
+      loadAudio();
+    } catch (err) {
+      toast(`Rename failed: ${err.message || 'unknown error'}`, 'error');
+    }
   };
 
   saveBtn.addEventListener('click', doSave);
@@ -771,14 +789,9 @@ function _pushAudioSelected(op) {
             progress: ledProgress || undefined,
           }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          toast(`${verb} command sent (${names.length} file${names.length > 1 ? 's' : ''}) → ${data.topic}`, 'success');
-        } else {
-          const e = await res.json().catch(() => ({}));
-          toast(`${verb} failed: ${e.error || res.status}`, 'error');
-        }
-      } catch (_) { toast(`${verb} failed`, 'error'); }
+        const data = await res.json();
+        toast(`${verb} command sent (${names.length} file${names.length > 1 ? 's' : ''}) → ${data.topic}`, 'success');
+      } catch (err) { toast(`${verb} failed: ${err.message || 'unknown error'}`, 'error'); }
     },
     op === 'put' ? { showLedProgress: true } : {}
   );
@@ -805,14 +818,9 @@ document.getElementById('audio-sync-btn').addEventListener('click', () => {
             progress: ledProgress || undefined,
           }),
         });
-        if (res.ok) {
-          const data = await res.json();
-          toast(`Sync pushed (${_audioFiles.length} files) → ${data.topic}`, 'success');
-        } else {
-          const e = await res.json().catch(() => ({}));
-          toast(`Sync failed: ${e.error || res.status}`, 'error');
-        }
-      } catch (_) { toast('Sync failed', 'error'); }
+        const data = await res.json();
+        toast(`Sync pushed (${_audioFiles.length} files) → ${data.topic}`, 'success');
+      } catch (err) { toast(`Sync failed: ${err.message || 'unknown error'}`, 'error'); }
     },
     { showLedProgress: true }
   );
@@ -823,7 +831,10 @@ async function loadAudio() {
     const res = await apiFetch('/ota/admin/api/files/audio');
     const files = await res.json();
     renderAudioTable(files);
-  } catch (_) {}
+    _tabLoadedAt.audio = Date.now();
+  } catch (err) {
+    if (String(err.message) !== 'Unauthorized') toast(`Audio: ${err.message}`, 'error');
+  }
 }
 
 // ── Audio upload validation dialogs ──────────────────────────────────────────
@@ -1069,7 +1080,7 @@ async function _validateAndUploadAudio(file, uploadFn) {
           setRowSuccess(row, data);
           loadAudio();
         } else if (xhr.status === 401) {
-          setAuthState(false); showAuthDialog();
+          setAuthState(false); showPhoneDialog();
           setRowError(row, file.name, 'Not authorized');
         } else {
           let msg = `Server error ${xhr.status}`;
@@ -1113,8 +1124,15 @@ async function loadFiles() {
   try {
     const res = await apiFetch('/ota/admin/api/files/general');
     const files = await res.json();
-    renderFileTable('files-tbody', files, 5, '/ota/admin/api/files/general', loadFiles, makeFilePushBtns);
-  } catch (_) {}
+    renderGeneralFiles(files);
+  } catch (err) {
+    if (String(err.message) !== 'Unauthorized') toast(`Files: ${err.message}`, 'error');
+  }
+}
+
+function renderGeneralFiles(files) {
+  renderFileTable('files-tbody', files, 5, '/ota/admin/api/files/general', loadFiles, makeFilePushBtns);
+  _tabLoadedAt.files = Date.now();
 }
 
 (function () {
@@ -1145,12 +1163,18 @@ async function loadReportsStats() {
   try {
     const res  = await apiFetch('/ota/admin/api/reports/stats');
     const s    = await res.json();
-    document.getElementById('stat-total').textContent   = s.total ?? '—';
-    document.getElementById('stat-success').textContent = s.success ?? '—';
-    document.getElementById('stat-failed').textContent  = s.failed ?? '—';
-    document.getElementById('stat-devices').textContent = s.devices ?? '—';
-    document.getElementById('stat-last').textContent    = s.last ? new Date(s.last).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
-  } catch (_) {}
+    renderReportsStats(s);
+  } catch (err) {
+    if (String(err.message) !== 'Unauthorized') toast(`Report stats: ${err.message}`, 'error');
+  }
+}
+
+function renderReportsStats(s) {
+  document.getElementById('stat-total').textContent   = s.total ?? '—';
+  document.getElementById('stat-success').textContent = s.success ?? '—';
+  document.getElementById('stat-failed').textContent  = s.failed ?? '—';
+  document.getElementById('stat-devices').textContent = s.devices ?? '—';
+  document.getElementById('stat-last').textContent    = s.last ? new Date(s.last).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit' }) : '—';
 }
 
 async function loadReports() {
@@ -1160,14 +1184,21 @@ async function loadReports() {
     if (reportsFilterDevice) params.set('device', reportsFilterDevice);
     const res  = await apiFetch(`/ota/admin/api/reports?${params}`);
     const data = await res.json();
-    reportsTotal = data.total || 0;
-    renderReports(data.entries || []);
-    const start = reportsPage * reportsLimit + 1;
-    const end   = Math.min(start + reportsLimit - 1, reportsTotal);
-    document.getElementById('reports-info').textContent = reportsTotal ? `${start}–${end} of ${reportsTotal}` : 'No reports yet';
-    document.getElementById('reports-prev').disabled = reportsPage === 0;
-    document.getElementById('reports-next').disabled = end >= reportsTotal;
-  } catch (_) {}
+    renderReportsPage(data);
+  } catch (err) {
+    if (String(err.message) !== 'Unauthorized') toast(`Reports: ${err.message}`, 'error');
+  }
+}
+
+function renderReportsPage(data) {
+  reportsTotal = data.total || 0;
+  renderReports(data.entries || []);
+  const start = reportsPage * reportsLimit + 1;
+  const end   = Math.min(start + reportsLimit - 1, reportsTotal);
+  document.getElementById('reports-info').textContent = reportsTotal ? `${start}–${end} of ${reportsTotal}` : 'No reports yet';
+  document.getElementById('reports-prev').disabled = reportsPage === 0;
+  document.getElementById('reports-next').disabled = end >= reportsTotal;
+  _tabLoadedAt.reports = Date.now();
 }
 
 function reportStatusBadge(status) {
@@ -1361,16 +1392,29 @@ document.getElementById('reports-export-btn').addEventListener('click', () => {
 });
 
 // ── Device count ──────────────────────────────────────────────────────────────
+// Count is derived from SSE device-state events + bootstrap's initial list.
+// No polling — the 30s interval used to hammer the admin host and contribute
+// to the rate-limit tripping during burst loads.
 
-async function updateDeviceCount() {
-  try {
-    const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-    const res = await fetch('/ota/admin/api/devices/count', { headers });
-    if (!res.ok) return;
-    const { online } = await res.json();
-    document.getElementById('device-count-label').textContent = `${online} online`;
-    document.getElementById('device-count-dot').className = `device-count-dot${online > 0 ? ' ok' : ''}`;
-  } catch (_) {}
+const _onlineDeviceIds = new Set();
+
+function renderDeviceCount() {
+  const n = _onlineDeviceIds.size;
+  document.getElementById('device-count-label').textContent = `${n} online`;
+  document.getElementById('device-count-dot').className = `device-count-dot${n > 0 ? ' ok' : ''}`;
+}
+
+function seedDeviceCount(list) {
+  _onlineDeviceIds.clear();
+  for (const d of list || []) if (d.id) _onlineDeviceIds.add(d.id);
+  renderDeviceCount();
+}
+
+function bumpDeviceCount(id, online) {
+  if (!id) return;
+  if (online === false) _onlineDeviceIds.delete(id);
+  else                  _onlineDeviceIds.add(id);
+  renderDeviceCount();
 }
 
 // ── Devices tab ───────────────────────────────────────────────────────────────
@@ -1453,8 +1497,10 @@ async function loadDevices() {
     _renderDevices(list);
     _syncSelectAll();
     _updateSelectionBadges();
-    updateDeviceCount();
-  } catch (_) {}
+    seedDeviceCount(list);
+  } catch (err) {
+    if (String(err.message) !== 'Unauthorized') toast(`Devices: ${err.message}`, 'error');
+  }
 }
 
 // Insert a single device row from SSE data — used when a new device appears without
@@ -1495,6 +1541,7 @@ function _insertDeviceRow(d) {
 // Never calls loadDevices() — inserting rows directly avoids request-rate cascades
 // when many devices respond to the broadcast at once.
 function onDeviceState(d) {
+  bumpDeviceCount(d.id, d.online);
   const existing = document.querySelector(`#devices-tbody tr[data-dev-id="${d.id}"]`);
   if (existing) {
     if (d.online === false) {
@@ -1542,6 +1589,19 @@ document.getElementById('devices-refresh-btn')?.addEventListener('click', loadDe
 
 const TAB_IDS = ['devices', 'firmware', 'audio', 'files', 'reports'];
 
+// Per-tab freshness timestamps — each loadX sets these, showTab() uses them to
+// skip redundant fetches when toggling between tabs quickly.
+const _tabLoadedAt = {};
+const TAB_TTL_MS   = 5000;
+
+const _tabLoaders = {
+  devices:  loadDevices,
+  firmware: loadFirmware,
+  audio:    loadAudio,
+  files:    loadFiles,
+  reports:  () => { loadReports(); loadReportsStats(); },
+};
+
 function showTab(id) {
   TAB_IDS.forEach(t => {
     const section = document.getElementById(t);
@@ -1549,43 +1609,51 @@ function showTab(id) {
   });
   document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === id));
-  if (id === 'devices') loadDevices();
-  else if (id === 'audio') loadAudio();
+  // Always re-fetch on tab show, unless the tab was loaded in the last TAB_TTL_MS.
+  // Previous behaviour skipped re-fetch on firmware/files/reports entirely, which
+  // meant any initial load failure left those tabs silently empty forever.
+  const loader = _tabLoaders[id];
+  if (!loader) return;
+  const lastLoaded = _tabLoadedAt[id] || 0;
+  if (Date.now() - lastLoaded >= TAB_TTL_MS) loader();
 }
 
 document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
   a.addEventListener('click', e => { e.preventDefault(); showTab(a.dataset.tab); }));
 
-showTab('firmware');
+// ── Initial load — one request, hydrate every tab ─────────────────────────────
+// Replaces the previous 7-request burst at page load that tripped the per-IP
+// rate limit on every browser refresh.
 
-// ── Initial load ──────────────────────────────────────────────────────────────
-
-function loadAll() {
-  loadFirmware();
-  loadAudio();
-  loadFiles();
-  loadReports();
-  loadReportsStats();
+async function bootstrap() {
+  try {
+    const res  = await apiFetch(`/ota/admin/api/bootstrap?reportsLimit=${reportsLimit}`);
+    const data = await res.json();
+    if (data.firmware)     { renderFirmware(data.firmware); }
+    if (data.audio)        { renderAudioTable(data.audio); _tabLoadedAt.audio = Date.now(); }
+    if (data.general)      { renderGeneralFiles(data.general); }
+    if (data.reports)      { renderReportsPage(data.reports); }
+    if (data.reportsStats) { renderReportsStats(data.reportsStats); }
+    if (data.devices)      { _renderDevices(data.devices); _syncSelectAll(); _updateSelectionBadges(); _tabLoadedAt.devices = Date.now(); }
+    if (data.deviceCount)  { seedDeviceCount(data.devices || []); }
+    return true;
+  } catch (err) {
+    if (String(err.message) === 'Unauthorized') return false;
+    toast(`Load failed: ${err.message}`, 'error');
+    return false;
+  }
 }
 
 async function init() {
-  updateDeviceCount();
-  setInterval(updateDeviceCount, 30000);
-
-  if (authToken) {
-    try {
-      const res = await fetch('/ota/admin/api/files/firmware', {
-        headers: { 'Authorization': `Bearer ${authToken}` },
-      });
-      if (res.status === 401) { setAuthState(false); showAuthDialog(); return; }
-      setAuthState(true);
-      loadAll();
-    } catch (_) { setAuthState(false); showAuthDialog(); }
-  } else {
-    const res = await fetch('/ota/admin/api/files/firmware').catch(() => null);
-    if (!res || res.status === 401) { showAuthDialog(); }
-    else { setAuthState(true); loadAll(); }
+  showTab('firmware');
+  if (!authToken) {
+    // Probe without a token — if the server lets /bootstrap through anonymously
+    // (it does not, requires admin auth), the dialog is shown either way.
+    showPhoneDialog();
+    return;
   }
+  const ok = await bootstrap();
+  if (!ok && !authToken) showPhoneDialog();
 }
 
 init();
@@ -1718,9 +1786,11 @@ function onDeviceError(d) {
 
 // ── SSE — live file-update notifications ──────────────────────────────────────
 
+let _sseBackoff = 1000;
 (function connectSSE() {
   const url = '/ota/admin/api/events' + (authToken ? `?t=${encodeURIComponent(authToken)}` : '');
   const es  = new EventSource(url);
+  es.onopen = () => { _sseBackoff = 1000; }; // reset on successful connect
   es.onmessage = (e) => {
     try {
       const d = JSON.parse(e.data);
@@ -1742,5 +1812,9 @@ function onDeviceError(d) {
       }, 300); // slight delay so the DELETE response reaches the browser first
     } catch (_) {}
   };
-  es.onerror = () => { es.close(); setTimeout(connectSSE, 5000); };
+  es.onerror = () => {
+    es.close();
+    setTimeout(connectSSE, _sseBackoff);
+    _sseBackoff = Math.min(_sseBackoff * 2, 15000);
+  };
 })();
