@@ -154,8 +154,11 @@ services:
   # HTTPS UPGRADE: uncomment the -https router labels and add middlewares=redirect-https
   #                to the -http router label (see header comment above)
   signalfi-manifest:
+    # Absolute context — this compose file lives at /root/ on the remote, but
+    # the manifest-service source tracks with the main repo at
+    # /opt/signalfi_controller/https_file_server/.  deploy.sh pins that path.
     build:
-      context: ./manifest-service
+      context: /opt/signalfi_controller/https_file_server/manifest-service
     container_name: signalfi-manifest
     restart: unless-stopped
     expose:
