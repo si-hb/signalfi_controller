@@ -378,7 +378,7 @@ function safeFilename(filename) {
     && filename.length > 0;
 }
 
-function listDir(dir, ext = null) {
+function listDirRaw(dir, ext = null) {
   try {
     if (!fs.existsSync(dir)) return [];
     return fs.readdirSync(dir)
@@ -390,6 +390,26 @@ function listDir(dir, ext = null) {
       })
       .sort((a, b) => b.mtime - a.mtime);
   } catch (_) { return []; }
+}
+
+// ── listDir cache ────────────────────────────────────────────────────────────
+// Admin UI burst-loads file lists on every page visit; repeated stat() calls on
+// 100+ audio files add up.  Cache per (dir,ext) for 10s and invalidate on any
+// write (upload/delete/rename) to the same directory via invalidateDirCache().
+const DIR_CACHE_TTL_MS = 10_000;
+const dirCache = new Map(); // key → { ts, value }
+function listDir(dir, ext = null) {
+  const key = `${dir}|${ext || ''}`;
+  const hit = dirCache.get(key);
+  if (hit && Date.now() - hit.ts < DIR_CACHE_TTL_MS) return hit.value;
+  const value = listDirRaw(dir, ext);
+  dirCache.set(key, { ts: Date.now(), value });
+  return value;
+}
+function invalidateDirCache(dir) {
+  for (const key of dirCache.keys()) {
+    if (key.startsWith(dir + '|')) dirCache.delete(key);
+  }
 }
 
 // ── Config file watcher → MQTT push ──────────────────────────────────────────
@@ -696,11 +716,11 @@ app.get('/ota/admin/api/devices/count', (_req, res) => {
   res.json({ online, total: deviceLastSeen.size });
 });
 
-app.get('/ota/admin/api/devices', adminAuth, (req, res) => {
+function listDevices() {
   const cutoff = Date.now() - DEVICE_TIMEOUT_MS;
   const list = [];
   for (const [id, ts] of deviceLastSeen.entries()) {
-    if (ts <= cutoff) continue; // only include devices that are online
+    if (ts <= cutoff) continue;
     const info = deviceInfo.get(id) || {};
     list.push({
       id,
@@ -713,27 +733,66 @@ app.get('/ota/admin/api/devices', adminAuth, (req, res) => {
     });
   }
   list.sort((a, b) => b.lastSeen - a.lastSeen);
-  res.json(list);
+  return list;
+}
+
+app.get('/ota/admin/api/devices', adminAuth, (_req, res) => {
+  res.json(listDevices());
+});
+
+// Single-shot aggregate for the admin UI's initial page load.  Replaces the
+// six parallel requests that init() used to fire (firmware, audio, general,
+// reports, reports/stats, devices) — which tripped the per-IP rate limit on
+// refresh and left the UI with silently-empty tabs when any one failed.
+app.get('/ota/admin/api/bootstrap', adminAuth, (req, res) => {
+  const reportsLimit = Math.min(200, Math.max(1, parseInt(req.query.reportsLimit || '50', 10)));
+  try {
+    const rep = readReportsCached();
+    const onlineCount = listDevices().length;
+    res.json({
+      firmware: listFirmware(),
+      audio:    listDir(AUDIO_ROOT, '.wav'),
+      general:  listDir(FILES_ROOT),
+      devices:  listDevices(),
+      deviceCount: { online: onlineCount, total: deviceLastSeen.size },
+      reports:  { total: rep.combined.length, page: 0, limit: reportsLimit, entries: rep.combined.slice(0, reportsLimit) },
+      reportsStats: rep.stats,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // ── Admin API — file listings ─────────────────────────────────────────────────
 
-app.get('/ota/admin/api/files/firmware', (_req, res) => {
-  const files = listDir(FIRMWARE_ROOT, '.hex').map(f => {
-    const metaPath = path.join(FIRMWARE_ROOT, f.name + '.meta.json');
+// Per-file CRC/SHA cache keyed by path+size+mtime so unchanged files don't get
+// re-hashed on every listing (firmware endpoint used to re-read + SHA every
+// .hex on every request, which was expensive on the burst path).
+const fileHashCache = new Map(); // path → { size, mtime, crc32, sha256 }
+function hashesFor(fp, size, mtime) {
+  const hit = fileHashCache.get(fp);
+  if (hit && hit.size === size && hit.mtime === mtime) return hit;
+  const entry = { size, mtime, crc32: fileCrc32(fp), sha256: fileSha256(fp) };
+  fileHashCache.set(fp, entry);
+  return entry;
+}
+
+function listFirmware() {
+  return listDir(FIRMWARE_ROOT, '.hex').map(f => {
+    const fp       = path.join(FIRMWARE_ROOT, f.name);
+    const metaPath = fp + '.meta.json';
     let targetModels = [];
     if (fs.existsSync(metaPath)) {
       try { targetModels = JSON.parse(fs.readFileSync(metaPath, 'utf8')).targetModels || []; }
       catch (_) {}
     }
-    return {
-      ...f,
-      crc32:        fileCrc32(path.join(FIRMWARE_ROOT, f.name)),
-      sha256:       fileSha256(path.join(FIRMWARE_ROOT, f.name)),
-      targetModels,
-    };
+    const h = hashesFor(fp, f.size, f.mtime);
+    return { ...f, crc32: h.crc32, sha256: h.sha256, targetModels };
   });
-  res.json(files);
+}
+
+app.get('/ota/admin/api/files/firmware', (_req, res) => {
+  res.json(listFirmware());
 });
 
 // ── Audio filename sanitization ───────────────────────────────────────────────
@@ -891,6 +950,7 @@ app.post('/ota/admin/api/files/firmware', firmwareUpload.single('file'), (req, r
   }
 
   console.log(`[admin] firmware uploaded: ${req.file.originalname} (${req.file.size} B, crc32: ${crc32}, targetModels: ${JSON.stringify(targetModels)})`);
+  invalidateDirCache(FIRMWARE_ROOT);
   sseEmit('firmware-updated', { name: req.file.originalname, size: req.file.size, crc32, targetModels });
   res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256, targetModels });
 });
@@ -924,6 +984,7 @@ app.post('/ota/admin/api/files/audio', audioUpload.single('file'), async (req, r
     const sha256 = fileSha256(outPath);
     const size   = fs.statSync(outPath).size;
     console.log(`[admin] audio uploaded: ${outName} (${size} B, crc32: ${crc32})`);
+    invalidateDirCache(AUDIO_ROOT);
     sseEmit('audio-updated', { name: outName });
     return res.json({ name: outName, size, crc32, sha256, converted: false });
   }
@@ -963,6 +1024,7 @@ app.post('/ota/admin/api/files/audio', audioUpload.single('file'), async (req, r
   const sha256 = fileSha256(outPath);
   const size   = fs.statSync(outPath).size;
   console.log(`[admin] audio converted: "${origName}" → ${outName} (${size} B)`);
+  invalidateDirCache(AUDIO_ROOT);
   sseEmit('audio-updated', { name: outName });
   return res.json({ name: outName, size, crc32, sha256, converted: true, originalName: origName });
 });
@@ -972,6 +1034,7 @@ app.post('/ota/admin/api/files/general', generalUpload.single('file'), (req, res
   const crc32  = fileCrc32(req.file.path);
   const sha256 = fileSha256(req.file.path);
   console.log(`[admin] general file uploaded: ${req.file.originalname} (${req.file.size} B)`);
+  invalidateDirCache(FILES_ROOT);
   sseEmit('general-updated', { name: req.file.originalname });
   res.json({ name: req.file.originalname, size: req.file.size, crc32, sha256 });
 });
@@ -986,6 +1049,7 @@ function makeDeleteRoute(root) {
     if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
     try {
       fs.unlinkSync(fp);
+      invalidateDirCache(root);
       console.log(`[admin] deleted: ${fp}`);
       res.json({ deleted: filename });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1009,6 +1073,7 @@ app.patch('/ota/admin/api/files/audio/:filename', adminAuth, (req, res) => {
   if (fs.existsSync(newPath)) return res.status(409).json({ error: `"${newName}" already exists` });
   try {
     fs.renameSync(oldPath, newPath);
+    invalidateDirCache(AUDIO_ROOT);
     console.log(`[admin] audio renamed: "${oldName}" → "${newName}"`);
     sseEmit('audio-updated', { name: newName, renamed: true, oldName });
     res.json({ name: newName });
@@ -1022,6 +1087,7 @@ app.delete('/ota/admin/api/manifests/:modelId', (req, res) => {
   if (!fs.existsSync(fp)) return res.status(404).json({ error: 'not found' });
   try {
     fs.unlinkSync(fp);
+    invalidateDirCache(MODELS_DIR);
     console.log(`[admin] manifest deleted: ${modelId}`);
     res.json({ deleted: modelId });
   } catch (err) { res.status(500).json({ error: err.message }); }
@@ -1700,10 +1766,58 @@ app.post('/ota/admin/api/upload', adminAuth, firmwareUpload.single('file'), (req
 
 // ── Report helpers ────────────────────────────────────────────────────────────
 
+// Parsed updates.log cached in-process; invalidated on every write.  Without
+// this every /reports and /reports/stats call full-scans + JSON.parses the
+// entire log, which is both slow and amplifies any request burst.
+let reportsCache = null; // { parsedAt, entries, combined, stats }
+function invalidateReportsCache() { reportsCache = null; }
+
+function readReportsCached() {
+  if (reportsCache) return reportsCache;
+  const logPath = path.join(REPORTS_ROOT, 'updates.log');
+  const entries = fs.existsSync(logPath)
+    ? fs.readFileSync(logPath, 'utf8').split('\n').filter(l => l.trim())
+        .map(l => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean)
+    : [];
+
+  const pushMap       = new Map();
+  const devicesByPush = new Map();
+  const legacy        = [];
+  for (const e of entries) {
+    if (e.type === 'push') pushMap.set(e.pushId, { ...e, devices: [] });
+    else if (e.type === 'device') {
+      if (e.pushId) {
+        if (!devicesByPush.has(e.pushId)) devicesByPush.set(e.pushId, []);
+        devicesByPush.get(e.pushId).push(e);
+      } else legacy.push(e);
+    } else legacy.push(e);
+  }
+  for (const [pushId, devices] of devicesByPush) {
+    if (pushMap.has(pushId)) pushMap.get(pushId).devices = devices;
+    else legacy.push(...devices);
+  }
+  const combined = [...pushMap.values(), ...legacy]
+    .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+  const pushes  = entries.filter(e => e.type === 'push');
+  const devEvts = entries.filter(e => e.type === 'device' || !e.type);
+  const stats = {
+    total:   pushes.length || devEvts.length,
+    success: devEvts.filter(e => e.status === 'applied').length,
+    failed:  devEvts.filter(e => e.status === 'failed').length,
+    devices: new Set(devEvts.map(e => e.deviceId).filter(Boolean)).size,
+    last:    entries.length ? entries[entries.length - 1].timestamp : null,
+  };
+
+  reportsCache = { parsedAt: Date.now(), entries, combined, stats };
+  return reportsCache;
+}
+
 function writeReport(entry) {
   try {
     fs.mkdirSync(REPORTS_ROOT, { recursive: true });
     fs.appendFileSync(path.join(REPORTS_ROOT, 'updates.log'), JSON.stringify(entry) + '\n');
+    invalidateReportsCache();
     sseEmit('report-created', { entry });
   } catch (err) {
     console.error(`[report] failed to write log: ${err.message}`);
@@ -1717,44 +1831,8 @@ app.get('/ota/admin/api/reports', (req, res) => {
   const limit        = Math.min(200, Math.max(1, parseInt(req.query.limit || '50', 10)));
   const filterStatus = (req.query.status || '').trim().toLowerCase();
   const filterDevice = (req.query.device || '').trim().toLowerCase();
-  const logPath      = path.join(REPORTS_ROOT, 'updates.log');
   try {
-    if (!fs.existsSync(logPath)) return res.json({ total: 0, page, limit, entries: [] });
-
-    const rawEntries = fs.readFileSync(logPath, 'utf8')
-      .split('\n').filter(l => l.trim())
-      .map(l => { try { return JSON.parse(l); } catch (_) { return null; } }).filter(Boolean);
-
-    // Group device completions into their push events
-    const pushMap       = new Map(); // pushId → enriched push entry
-    const devicesByPush = new Map(); // pushId → [device entries]
-    const legacy        = [];        // old-format entries (no type field)
-
-    for (const e of rawEntries) {
-      if (e.type === 'push') {
-        pushMap.set(e.pushId, { ...e, devices: [] });
-      } else if (e.type === 'device') {
-        if (e.pushId) {
-          if (!devicesByPush.has(e.pushId)) devicesByPush.set(e.pushId, []);
-          devicesByPush.get(e.pushId).push(e);
-        } else {
-          legacy.push(e);
-        }
-      } else {
-        legacy.push(e); // legacy format (no type)
-      }
-    }
-
-    for (const [pushId, devices] of devicesByPush) {
-      if (pushMap.has(pushId)) pushMap.get(pushId).devices = devices;
-      else legacy.push(...devices); // orphaned — parent push rolled off
-    }
-
-    // Sort newest first
-    let combined = [...pushMap.values(), ...legacy]
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
-
-    // Filters
+    let combined = readReportsCached().combined;
     if (filterStatus) {
       combined = combined.filter(e => {
         if (e.type === 'push') {
@@ -1775,26 +1853,14 @@ app.get('/ota/admin/api/reports', (req, res) => {
         return (e.deviceId || '').toLowerCase().includes(filterDevice);
       });
     }
-
     const total = combined.length;
     res.json({ total, page, limit, entries: combined.slice(page * limit, page * limit + limit) });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.get('/ota/admin/api/reports/stats', (req, res) => {
-  const logPath = path.join(REPORTS_ROOT, 'updates.log');
+app.get('/ota/admin/api/reports/stats', (_req, res) => {
   try {
-    if (!fs.existsSync(logPath)) return res.json({ total: 0, success: 0, failed: 0, devices: 0, last: null });
-    const entries = fs.readFileSync(logPath, 'utf8').split('\n').filter(l => l.trim())
-      .map(l => { try { return JSON.parse(l); } catch { return null; } }).filter(Boolean);
-    const pushes  = entries.filter(e => e.type === 'push');
-    const devEvts = entries.filter(e => e.type === 'device' || !e.type);
-    const deviceIds = new Set(devEvts.map(e => e.deviceId).filter(Boolean));
-    const success = devEvts.filter(e => e.status === 'applied').length;
-    const failed  = devEvts.filter(e => e.status === 'failed').length;
-    const total   = pushes.length || devEvts.length; // prefer push count
-    const last    = entries.length ? entries[entries.length - 1].timestamp : null;
-    res.json({ total, success, failed, devices: deviceIds.size, last });
+    res.json(readReportsCached().stats);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

@@ -210,20 +210,33 @@ services:
       - "traefik.http.routers.signalfi-manifest-https.priority=10"
       # Admin subdomain — Let's Encrypt cert for human browser access.
       # server.js root redirect (/ → /ota/admin) means the panel is at https://admin.apis.symphonyinteractive.ca
-      # Rate-limit: 5 req/s avg, burst 10 — throttles bearer token brute-force attempts.
       # HTTP redirects to HTTPS so tokens are never sent in plaintext.
-      - "traefik.http.middlewares.admin-ratelimit.ratelimit.average=30"
-      - "traefik.http.middlewares.admin-ratelimit.ratelimit.burst=60"
-      - "traefik.http.middlewares.admin-ratelimit.ratelimit.period=1s"
+      #
+      # Rate limit is scoped to the auth endpoints only (phone-code request + verify)
+      # to throttle brute-force attempts.  A single browser page load fires 10+ parallel
+      # requests between static assets, SSE reconnects, and data fetches — a host-wide
+      # limit trips on normal use, leaves tabs silently empty, and forces re-auth loops.
+      - "traefik.http.middlewares.admin-auth-ratelimit.ratelimit.average=5"
+      - "traefik.http.middlewares.admin-auth-ratelimit.ratelimit.burst=10"
+      - "traefik.http.middlewares.admin-auth-ratelimit.ratelimit.period=1s"
+      # HTTP → HTTPS redirect (all admin paths)
       - "traefik.http.routers.signalfi-admin-http.rule=Host(`admin.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.signalfi-admin-http.entrypoints=web"
       - "traefik.http.routers.signalfi-admin-http.middlewares=redirect-https@docker"
       - "traefik.http.routers.signalfi-admin-http.service=signalfi-manifest"
+      # HTTPS: rate-limited router for /ota/admin/auth/* (higher priority wins)
+      - "traefik.http.routers.signalfi-admin-auth-https.rule=Host(`admin.apis.symphonyinteractive.ca`) && PathPrefix(`/ota/admin/auth`)"
+      - "traefik.http.routers.signalfi-admin-auth-https.entrypoints=websecure"
+      - "traefik.http.routers.signalfi-admin-auth-https.tls.certresolver=letsencrypt"
+      - "traefik.http.routers.signalfi-admin-auth-https.middlewares=admin-auth-ratelimit"
+      - "traefik.http.routers.signalfi-admin-auth-https.service=signalfi-manifest"
+      - "traefik.http.routers.signalfi-admin-auth-https.priority=20"
+      # HTTPS: unlimited router for the rest of the admin host (assets, API, SSE)
       - "traefik.http.routers.signalfi-admin-https.rule=Host(`admin.apis.symphonyinteractive.ca`)"
       - "traefik.http.routers.signalfi-admin-https.entrypoints=websecure"
       - "traefik.http.routers.signalfi-admin-https.tls.certresolver=letsencrypt"
-      - "traefik.http.routers.signalfi-admin-https.middlewares=admin-ratelimit"
       - "traefik.http.routers.signalfi-admin-https.service=signalfi-manifest"
+      - "traefik.http.routers.signalfi-admin-https.priority=10"
 
   # ── OTA File Server (nginx) ───────────────────────────────────────────────
   # Kept in the stack but removed from Traefik routing.
