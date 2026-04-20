@@ -21,21 +21,22 @@ function scheduleExpiry(expiresAt) {
   }, ms);
 }
 
-// On load: validate any stored token; show phone dialog if missing or expired.
+// On load: hit /auth/check with whatever we've got (including nothing).  The
+// server replies 200 when either (a) it's in DISABLE_OTP=true mode, (b) a
+// static ADMIN_TOKEN matches, or (c) the session token is still valid.
+// Only fall back to the phone dialog when the server explicitly 401s.
 (async () => {
-  if (!authToken) { showPhoneDialog(); return; }
   try {
-    const res = await fetch('/ota/admin/auth/check', {
-      headers: { 'Authorization': `Bearer ${authToken}` },
-    });
+    const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
+    const res = await fetch('/ota/admin/auth/check', { headers });
     if (res.ok) {
       const data = await res.json().catch(() => ({}));
-      scheduleExpiry(data.expiresAt);
-    } else {
-      authToken = '';
-      sessionStorage.removeItem(STORAGE_KEY);
-      showPhoneDialog();
+      if (!data.otpDisabled && data.expiresAt) scheduleExpiry(data.expiresAt);
+      return;
     }
+    authToken = '';
+    sessionStorage.removeItem(STORAGE_KEY);
+    showPhoneDialog();
   } catch (_) { showPhoneDialog(); }
 })();
 

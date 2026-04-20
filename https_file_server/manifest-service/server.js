@@ -603,6 +603,11 @@ app.post('/ota/admin/auth/verify', (req, res) => {
 
 // GET /ota/admin/auth/check  — lightweight session validity probe
 app.get('/ota/admin/auth/check', (req, res) => {
+  // Air-gap deployments set DISABLE_OTP=true; the admin UI trusts this
+  // response to skip the phone dialog on page load.
+  if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') {
+    return res.json({ valid: true, expiresAt: null, otpDisabled: true });
+  }
   const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
   const bearer = match ? match[1] : '';
   if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) return res.json({ valid: true, expiresAt: null });
