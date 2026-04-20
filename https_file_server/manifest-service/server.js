@@ -650,6 +650,12 @@ app.delete('/ota/admin/auth/sessions', (req, res) => {
 // ── Admin auth middleware ─────────────────────────────────────────────────────
 
 function adminAuth(req, res, next) {
+  // Air-gap escape hatch: deployments without SMS connectivity set
+  // DISABLE_OTP=true to bypass phone-code auth entirely.  Static
+  // ADMIN_TOKEN still works if set.  Never ship a production image with
+  // this flag — it exists so offline installs can use the admin UI.
+  if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') return next();
+
   // Dev mode: no auth configured at all
   if (!ADMIN_TOKEN && !NODERED_AUTH_URL) return next();
 

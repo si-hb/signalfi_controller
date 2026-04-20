@@ -89,6 +89,11 @@ setInterval(() => {
 // ---------------------------------------------------------------------------
 function createAuthMiddleware(config) {
   return (req, res, next) => {
+    // Air-gap escape hatch: deployments without SMS connectivity set
+    // DISABLE_OTP=true to bypass phone-code auth entirely.  Static
+    // ADMIN_TOKEN still works if set.  Never ship a production image with
+    // this flag — it exists so offline installs can use the admin UI.
+    if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') return next();
     if (!config.auth.token && !config.auth.noderedAuthUrl) return next();
 
     // Allow health checks from localhost without auth
@@ -116,6 +121,7 @@ function createAuthMiddleware(config) {
 
 // Same check used by WebSocket verifyClient
 function isValidToken(config, bearer) {
+  if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') return true;
   if (!config.auth.token && !config.auth.noderedAuthUrl) return true;
   if (config.auth.token && bearer === config.auth.token) return true;
   const session = sessionStore.get(bearer);

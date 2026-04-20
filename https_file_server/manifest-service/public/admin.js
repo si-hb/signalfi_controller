@@ -1646,12 +1646,11 @@ async function bootstrap() {
 
 async function init() {
   showTab('firmware');
-  if (!authToken) {
-    // Probe without a token — if the server lets /bootstrap through anonymously
-    // (it does not, requires admin auth), the dialog is shown either way.
-    showPhoneDialog();
-    return;
-  }
+  // Always probe bootstrap first — a DISABLE_OTP=true server accepts
+  // unauthenticated requests, in which case the phone dialog never needs
+  // to appear.  If the server rejects the probe with 401, apiFetch's
+  // 401 handler takes care of showing the dialog, and bootstrap() returns
+  // false, so we don't need to re-trigger it here.
   const ok = await bootstrap();
   if (!ok && !authToken) showPhoneDialog();
 }
