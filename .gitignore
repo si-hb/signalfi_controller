@@ -9,6 +9,12 @@ config.json
 https_file_server/log/
 https_file_server/nodered-data/
 
+# Rendered (non-template) airgap configs produced by setup.sh on the target
+https_file_server/airgap/*.rendered
+
+# Bundle output from deploy.sh airgap-build --package
+.bundles/
+
 # Live Mosquitto password file holds hashed credentials for real users and
 # must never be committed.  pass.txt.example IS tracked.
 https_file_server/config/pass.txt

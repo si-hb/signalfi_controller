@@ -1,0 +1,18 @@
+# Traefik dynamic TLS configuration — air-gap combined fullchain.
+#
+# This file supersedes tls.yml when the air-gap overlay is active.  setup.sh
+# --airgap renames tls.yml → tls.yml.prod-disabled and installs this one as
+# tls.yml so the file provider picks it up without changing Traefik config.
+#
+# The fullchain holds TWO SANs in one certificate:
+#   apis.symphonyinteractive.ca
+#   admin.apis.symphonyinteractive.ca
+#
+# Traefik matches incoming SNI to the right SAN automatically — one cert,
+# both hostnames.  Devices already trust the Signalfi Root CA (baked into
+# firmware), so there's no separate trust setup.
+
+tls:
+  certificates:
+    - certFile: /certs/signalfi-web-airgap.fullchain.pem
+      keyFile:  /certs/signalfi-web-airgap.key

@@ -1,0 +1,6 @@
+# Signalfi air-gap — dnsmasq fragment (Mode B).
+# Add to the customer's dnsmasq.conf (or a file under /etc/dnsmasq.d/).
+
+address=/apis.symphonyinteractive.ca/${SIGNALFI_SERVER_IP}
+address=/admin.apis.symphonyinteractive.ca/${SIGNALFI_SERVER_IP}
+address=/pool.ntp.org/${CUSTOMER_NTP_SERVER_IP}

@@ -1,0 +1,12 @@
+# Signalfi air-gap — Unbound fragment (Mode B).
+# Add to the server: section of the customer's unbound.conf.
+
+server:
+    local-zone: "apis.symphonyinteractive.ca." redirect
+    local-data: "apis.symphonyinteractive.ca. 300 IN A ${SIGNALFI_SERVER_IP}"
+
+    local-zone: "admin.apis.symphonyinteractive.ca." redirect
+    local-data: "admin.apis.symphonyinteractive.ca. 300 IN A ${SIGNALFI_SERVER_IP}"
+
+    local-zone: "pool.ntp.org." redirect
+    local-data: "pool.ntp.org. 300 IN A ${CUSTOMER_NTP_SERVER_IP}"
