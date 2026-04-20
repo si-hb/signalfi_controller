@@ -1,15 +1,14 @@
 #!/usr/bin/env bash
 # Signalfi deploy script
-# Usage: ./deploy.sh [web|manifest|app|infra|stack|setup|airgap-build|airgap] ["commit message"]
+# Usage: ./deploy.sh [web|manifest|app|infra|stack|setup] ["commit message"]
 #
-#   web            — rebuild signalfi-web on the existing server
-#   manifest       — sync infra configs, rebuild signalfi-manifest
-#   app            — web + manifest
-#   infra          — sync all infra configs + bring up the /root stack
-#   setup          — first-time init on a NEW remote server (git clone + setup.sh)
-#   stack          — full rebuild on a new remote server (setup + infra + app)
-#   airgap-build   — local build of all airgap images [--package to emit a bundle tarball]
-#   airgap         — local bringup of the airgap stack (no SSH; runs on the CM4)
+#   web       — rebuild signalfi-web on the existing server
+#   manifest  — sync infra configs, rebuild signalfi-manifest
+#   app       — web + manifest
+#   infra     — sync all infra configs + bring up the /root stack (traefik,
+#               mosquitto, node-red, signalfi-manifest, signalfi-files, sftpgo)
+#   setup     — first-time init on a NEW server (git clone + run setup.sh)
+#   stack     — full rebuild on a new server (setup + infra + app)
 #
 # Environment (new-server targets):
 #   REMOTE_TARGET       hostname of the new server
@@ -191,119 +190,6 @@ deploy_stack() {
     log "Stack deployed on $REMOTE_TARGET_HOST."
 }
 
-# ── Air-gap targets — local only, no SSH ─────────────────────────────────────
-#
-# These run on the CM4 itself.  The runtime is driven by CONTAINER_RUNTIME in
-# .env (auto-detects if unset).  Versioning in the bundle filename comes from
-# `git describe --always --dirty` so every bundle is traceable back to a commit.
-
-airgap_runtime() {
-    # Resolves the container runtime the same way setup.sh does.
-    if [[ -n "${CONTAINER_RUNTIME:-}" ]]; then
-        echo "$CONTAINER_RUNTIME"
-    elif command -v docker >/dev/null 2>&1; then
-        echo docker
-    elif command -v podman >/dev/null 2>&1; then
-        echo podman
-    else
-        die "Neither docker nor podman is installed"
-    fi
-}
-
-airgap_compose() {
-    local rt; rt=$(airgap_runtime)
-    "$rt" compose \
-        -f "$SCRIPT_DIR/https_file_server/docker-compose.yml" \
-        -f "$SCRIPT_DIR/https_file_server/docker-compose.airgap.yml" \
-        "$@"
-}
-
-deploy_airgap_build() {
-    local package=0
-    for arg in "$@"; do
-        case "$arg" in
-            --package) package=1 ;;
-        esac
-    done
-
-    local rt; rt=$(airgap_runtime)
-    log "Building air-gap stack with $rt"
-
-    # Load .env so AIRGAP_NETWORK_MODE is known when picking the profile to
-    # build.  `served` has more images to build than `byo` (dnsmasq-chrony).
-    if [[ -f "$SCRIPT_DIR/.env" ]]; then
-        # shellcheck disable=SC1091
-        set -a; source "$SCRIPT_DIR/.env"; set +a
-    fi
-    local profile_args=()
-    if [[ "${AIRGAP_NETWORK_MODE:-}" == "served" ]]; then
-        profile_args=(--profile served)
-    fi
-
-    airgap_compose "${profile_args[@]}" pull --ignore-buildable || true
-    airgap_compose "${profile_args[@]}" build --pull
-
-    if [[ $package -eq 1 ]]; then
-        local version; version=$(cd "$SCRIPT_DIR" && git describe --always --dirty 2>/dev/null || date +%Y%m%d)
-        local bundle_dir="$SCRIPT_DIR/.bundles/signalfi-airgap-bundle-$version"
-        local bundle_tar="$SCRIPT_DIR/.bundles/signalfi-airgap-bundle-$version.tar.gz"
-
-        log "Packaging bundle → $bundle_tar"
-        rm -rf "$bundle_dir"
-        install -d -m 755 "$bundle_dir/images" "$bundle_dir/repo" "$bundle_dir/tools" "$bundle_dir/docs"
-
-        # Save every image the airgap stack references.
-        local images
-        images=$(airgap_compose "${profile_args[@]}" config --images | sort -u | tr '\n' ' ')
-        # shellcheck disable=SC2086
-        log "  saving images: $images"
-        # shellcheck disable=SC2086
-        "$rt" save -o "$bundle_dir/images/signalfi-airgap-images.tar" $images
-
-        # Repo snapshot — git archive respects .gitignore.
-        (cd "$SCRIPT_DIR" && git archive --format=tar HEAD | tar -x -C "$bundle_dir/repo")
-
-        # Render the customer README against current .env values.
-        if [[ -f "$SCRIPT_DIR/docs/airgap/CUSTOMER_README.template.md" ]]; then
-            # shellcheck disable=SC2016
-            envsubst '$AIRGAP_NETWORK_MODE $AIRGAP_HOST_IP $AIRGAP_SUBNET $AIRGAP_DHCP_RANGE $AIRGAP_DEVICE_INTERFACE $SIGNALFI_SERVER_IP' \
-                < "$SCRIPT_DIR/docs/airgap/CUSTOMER_README.template.md" \
-                > "$bundle_dir/docs/CUSTOMER_README.md"
-        fi
-        # Smoketest + snippets ship inside the bundle so customers can verify
-        # without needing anything else from the repo.
-        cp -r "$SCRIPT_DIR/docs/airgap/snippets"      "$bundle_dir/docs/" 2>/dev/null || true
-        cp    "$SCRIPT_DIR/tools/signalfi-smoketest.sh" "$bundle_dir/tools/" 2>/dev/null || true
-
-        (cd "$SCRIPT_DIR/.bundles" && tar czf "$(basename "$bundle_tar")" "$(basename "$bundle_dir")")
-        log "Bundle: $bundle_tar"
-    fi
-
-    log "airgap-build done."
-}
-
-deploy_airgap() {
-    # Local bringup — expects setup.sh --airgap to have already run and the
-    # rendered dnsmasq/chrony configs to be in place for served mode.
-    if [[ -f "$SCRIPT_DIR/.env" ]]; then
-        # shellcheck disable=SC1091
-        set -a; source "$SCRIPT_DIR/.env"; set +a
-    fi
-    : "${AIRGAP_NETWORK_MODE:?.env must set AIRGAP_NETWORK_MODE (served | byo)}"
-
-    local profile_args=()
-    [[ "$AIRGAP_NETWORK_MODE" == "served" ]] && profile_args=(--profile served)
-
-    log "Bringing up air-gap stack ($AIRGAP_NETWORK_MODE)"
-    airgap_compose "${profile_args[@]}" up -d
-
-    # App stack (signalfi-web) comes up from its own compose file at repo root.
-    local rt; rt=$(airgap_runtime)
-    (cd "$SCRIPT_DIR" && "$rt" compose up -d --build)
-
-    log "Air-gap stack is up."
-}
-
 # ── Entry point ──────────────────────────────────────────────────────────────
 
 TARGET="${1:-}"
@@ -322,12 +208,8 @@ Existing server ($REMOTE_HOST):
 New server deployment (set REMOTE_TARGET=hostname first):
   5) First-time setup only (clone + setup.sh)
   6) Full stack deploy (setup + infra + app)
-
-Local air-gap (runs on the CM4 itself):
-  7) Build air-gap images       (add --package for a distributable tarball)
-  8) Bring up the air-gap stack
 MENU
-    read -r -p "Choice [1-8]: " choice
+    read -r -p "Choice [1-6]: " choice
     case "$choice" in
         1) TARGET="web" ;;
         2) TARGET="manifest" ;;
@@ -335,22 +217,18 @@ MENU
         4) TARGET="infra" ;;
         5) TARGET="setup" ;;
         6) TARGET="stack" ;;
-        7) TARGET="airgap-build" ;;
-        8) TARGET="airgap" ;;
         *) echo "Cancelled." && exit 0 ;;
     esac
 fi
 
 case "$TARGET" in
-    web)           deploy_web ;;
-    manifest)      deploy_manifest ;;
-    app)           deploy_app ;;
-    infra)         deploy_infra ;;
-    setup)         deploy_setup ;;
-    stack)         deploy_stack ;;
-    airgap-build)  shift; deploy_airgap_build "$@" ;;
-    airgap)        deploy_airgap ;;
-    *) die "Unknown target: $TARGET.  Use: web | manifest | app | infra | setup | stack | airgap-build | airgap" ;;
+    web)      deploy_web ;;
+    manifest) deploy_manifest ;;
+    app)      deploy_app ;;
+    infra)    deploy_infra ;;
+    setup)    deploy_setup ;;
+    stack)    deploy_stack ;;
+    *) die "Unknown target: $TARGET.  Use: web | manifest | app | infra | setup | stack" ;;
 esac
 
 log "Done."

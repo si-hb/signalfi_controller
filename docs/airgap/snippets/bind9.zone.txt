@@ -1,8 +1,0 @@
-; Signalfi air-gap — BIND9 zone fragment (Mode B).
-; Add to the appropriate zone file on the customer's internal resolver.
-; TTL chosen short so testing doesn't stall on cached negative answers.
-
-$TTL 300
-apis.symphonyinteractive.ca.         IN  A  ${SIGNALFI_SERVER_IP}
-admin.apis.symphonyinteractive.ca.   IN  A  ${SIGNALFI_SERVER_IP}
-pool.ntp.org.                        IN  A  ${CUSTOMER_NTP_SERVER_IP}
