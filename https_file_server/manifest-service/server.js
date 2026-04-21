@@ -197,12 +197,18 @@ function connectMqtt() {
           const cleaned = cleanNodePath(rawNode);
           if (cleaned) node = cleaned;
         }
+        // temp (°C) reported by the firmware's on-chip sensor; published
+        // on every $state so it tracks changes without extra topics.
+        // Accept both `temp` (canonical) and a few common aliases; null
+        // when unknown so the admin UI can display '—'.
+        const incomingTemp = payload.temp ?? payload.temperature ?? payload.tempC;
         const updated = {
           ip:        payload.ip  || prev.ip,
           version:   payload.ver || payload.version || payload.firmwareVersion || prev.version,
           node,
           model:     (incomingModel !== undefined && incomingModel !== '') ? incomingModel : prev.model,
           lastState: payload.sta || payload.status || prev.lastState,
+          temp:      (typeof incomingTemp === 'number') ? incomingTemp : prev.temp,
         };
         deviceInfo.set(deviceId, updated);
         // Push live update to admin panel devices tab
@@ -212,6 +218,7 @@ function connectMqtt() {
           version: updated.version,
           node:    updated.node,
           model:   updated.model,
+          temp:    updated.temp,
           online:  true,
         });
         // Device went idle → the last tracked download for this device is complete
@@ -739,6 +746,7 @@ function listDevices() {
       version: info.version || null,
       node:    info.node    || null,
       model:   info.model   || null,
+      temp:    (typeof info.temp === 'number') ? info.temp : null,
       online:  true,
       lastSeen: ts,
     });

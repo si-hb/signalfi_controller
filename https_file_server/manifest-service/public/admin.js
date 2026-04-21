@@ -1435,6 +1435,19 @@ function _updateSelectionBadges() {
   if (countEl) countEl.textContent = `${n} selected`;
 }
 
+function _formatDeviceTemp(temp) {
+  // Render inline next to the status dot.  Null / undefined → em-dash in
+  // muted text so rows never collapse width.  Values colour-coded: green
+  // under 60 °C, amber 60–75, red above 75 (Teensy 4.1 thermal limits).
+  if (typeof temp !== 'number' || !isFinite(temp)) {
+    return '<span class="device-temp device-temp--na" title="no temperature reported">—</span>';
+  }
+  const cls = temp >= 75 ? 'device-temp--hot'
+            : temp >= 60 ? 'device-temp--warm'
+            : 'device-temp--ok';
+  return `<span class="device-temp ${cls}" title="CPU temperature">${temp.toFixed(1)}°C</span>`;
+}
+
 function _renderDevices(list) {
   const tbody  = document.getElementById('devices-tbody');
   if (!tbody) return;
@@ -1454,6 +1467,7 @@ function _renderDevices(list) {
     const dot     = dev.online
       ? '<span class="device-dot device-dot--online" title="Online"></span>'
       : '<span class="device-dot device-dot--offline" title="Offline"></span>';
+    const temp    = _formatDeviceTemp(dev.temp);
     const nodeStr = sanitizeNode(dev.node);
     const node    = nodeStr || '<span class="text-muted">—</span>';
     const model   = dev.model   ? `<span class="model-badge">${dev.model}</span>` : '<span class="text-muted">—</span>';
@@ -1461,7 +1475,7 @@ function _renderDevices(list) {
 
     tr.innerHTML = `
       <td class="col-check"><input type="checkbox" class="device-check"${checked}></td>
-      <td>${dot}</td>
+      <td class="device-status">${dot}${temp}</td>
       <td class="device-model">${model}</td>
       <td class="device-version">${version}</td>
       <td class="device-mac">${dev.id}</td>
@@ -1516,13 +1530,14 @@ function _insertDeviceRow(d) {
   const tr = document.createElement('tr');
   tr.dataset.devId = d.id;
   const dot     = '<span class="device-dot device-dot--online" title="Online"></span>';
+  const temp    = _formatDeviceTemp(d.temp);
   const model   = d.model   ? `<span class="model-badge">${d.model}</span>` : '<span class="text-muted">—</span>';
   const version = d.version || '<span class="text-muted">—</span>';
   const nodeStr = sanitizeNode(d.node);
   const node    = nodeStr    || '<span class="text-muted">—</span>';
   tr.innerHTML = `
     <td class="col-check"><input type="checkbox" class="device-check"></td>
-    <td>${dot}</td>
+    <td class="device-status">${dot}${temp}</td>
     <td class="device-model">${model}</td>
     <td class="device-version">${version}</td>
     <td class="device-mac">${d.id}</td>
@@ -1555,7 +1570,10 @@ function onDeviceState(d) {
     // Update in-place — preserves checkbox state
     const dot     = '<span class="device-dot device-dot--online" title="Online"></span>';
     const dotCell = existing.cells[1];
-    if (dotCell) dotCell.innerHTML = dot;
+    // Cell layout: [check, status+temp, model, version, mac, ip, node].
+    // Rewrite the status cell so the temp inside also refreshes on each
+    // $state; d.temp may be undefined if the firmware hasn't yet reported.
+    if (dotCell) dotCell.innerHTML = `${dot}${_formatDeviceTemp(d.temp)}`;
     if (existing.cells[2] && d.model)   existing.cells[2].innerHTML   = `<span class="model-badge">${d.model}</span>`;
     if (existing.cells[3] && d.version) existing.cells[3].textContent = d.version;
     if (existing.cells[5] && d.ip)      existing.cells[5].textContent = d.ip;
