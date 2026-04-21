@@ -755,8 +755,40 @@ function listDevices() {
   return list;
 }
 
-app.get('/ota/admin/api/devices', adminAuth, (_req, res) => {
-  res.json(listDevices());
+app.get('/ota/admin/api/devices', adminAuth, (req, res) => {
+  // `?refresh=1` → broadcast {act:"get"} on MQTT, wait ~1.5s for devices
+  // to respond with $state (which updates deviceLastSeen via the usual
+  // incoming-message handler), evict anything that didn't answer, then
+  // return the fresh list.  Without ?refresh, return the cached view —
+  // keeps the default behaviour cheap for SSE-driven polling.
+  //
+  // This is the Refresh-button path: the old version just re-queried the
+  // cache and produced no visible change if devices were in a post-OTA
+  // transition, leaving "reload the browser" as the only way to recover.
+  const refresh = req.query.refresh === '1';
+  if (!refresh || !mqttClient || !mqttClient.connected) {
+    return res.json(listDevices());
+  }
+
+  const broadcastAt = Date.now();
+  mqttClient.publish(
+    `${MQTT_PREFIX}/$broadcast/$action`,
+    JSON.stringify({ act: 'get' }),
+    { qos: 0, retain: false },
+  );
+
+  setTimeout(() => {
+    // Evict devices that didn't respond within the window.  This
+    // matches the sweep logic on SSE connect, applied synchronously
+    // here so the returned list already reflects who's actually alive.
+    for (const [id, ts] of deviceLastSeen.entries()) {
+      if (ts < broadcastAt) {
+        deviceLastSeen.delete(id);
+        sseEmit('device-state', { id, online: false });
+      }
+    }
+    res.json(listDevices());
+  }, 1500);
 });
 
 // Single-shot aggregate for the admin UI's initial page load.  Replaces the

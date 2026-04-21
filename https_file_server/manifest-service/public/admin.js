@@ -1503,11 +1503,17 @@ function _syncSelectAll() {
   sa.checked       = all.length > 0 && chked.length === all.length;
 }
 
-async function loadDevices() {
+async function loadDevices({ broadcast = false } = {}) {
+  // broadcast=true → append ?refresh=1 so the server broadcasts {act:"get"}
+  // on MQTT, waits for device $state replies, evicts anything that didn't
+  // answer, and then returns a fresh list.  Used by the Refresh button —
+  // without the broadcast, a stale cache would come back unchanged (e.g.
+  // after an OTA push when devices are still rebooting).
+  const path = broadcast
+    ? '/ota/admin/api/devices?refresh=1'
+    : '/ota/admin/api/devices';
   try {
-    // GET /devices also triggers a {act:"get"} broadcast — devices respond via MQTT,
-    // which emits device-state SSE events that update the table as they arrive.
-    const res  = await apiFetch('/ota/admin/api/devices');
+    const res  = await apiFetch(path);
     const list = await res.json();
     _renderDevices(list);
     _syncSelectAll();
@@ -1602,7 +1608,21 @@ document.getElementById('devices-select-all')?.addEventListener('change', e => {
   _updateSelectionBadges();
 });
 
-document.getElementById('devices-refresh-btn')?.addEventListener('click', loadDevices);
+document.getElementById('devices-refresh-btn')?.addEventListener('click', async (e) => {
+  // Refresh with broadcast — takes ~1.5s for devices to respond, so disable
+  // the button and show progress text.  Without this the click looks like a
+  // no-op when the server has a stale view after an OTA push.
+  const btn = e.currentTarget;
+  const prev = btn.textContent;
+  btn.disabled    = true;
+  btn.textContent = 'Refreshing…';
+  try {
+    await loadDevices({ broadcast: true });
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = prev;
+  }
+});
 
 // ── Tab navigation ────────────────────────────────────────────────────────────
 
