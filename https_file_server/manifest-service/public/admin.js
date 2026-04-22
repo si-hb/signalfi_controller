@@ -230,7 +230,14 @@ function uploadFile(file, endpoint, progressBar, progressWrap, onDone) {
     } else if (xhr.status === 401) {
       setAuthState(false); showPhoneDialog();
     } else {
-      toast(`Upload failed: ${xhr.status}`, 'error');
+      // Server-side validation failures (e.g. wrong-target firmware) return
+      // a JSON body with `error` — surface that instead of a bare status.
+      let msg = `Upload failed: ${xhr.status}`;
+      try {
+        const body = JSON.parse(xhr.responseText);
+        if (body && body.error) msg = `Upload rejected: ${body.error}`;
+      } catch (_) {}
+      toast(msg, 'error');
     }
   };
   xhr.onerror = () => { progressWrap.style.display = 'none'; toast('Upload error', 'error'); };

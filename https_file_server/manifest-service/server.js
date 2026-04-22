@@ -378,6 +378,80 @@ function fileCrc32(filePath) {
   catch (_) { return null; }
 }
 
+// Mirror of FlasherX's check_flash_id(): every Teensy firmware carries an
+// embedded ASCII target ID ("fw_teensy41" for T4.1).  FlasherX refuses to
+// flash a buffer that doesn't contain the matching ID, which catches cases
+// like uploading a T4.0 or Teensy-3.x hex to a T4.1 fleet.  We reproduce
+// the same check server-side so the admin UI rejects wrong-target uploads
+// before they ever reach a device — mismatches at flash time brick nothing
+// (FlasherX bails out), but devices still waste a download cycle and the
+// manifest advertises a file that will never activate.
+//
+// See FlasherX FlashTxx.h for the full ID list; FlashTxx.c:87-94 for the
+// reference implementation — a linear byte-scan for the target string.
+const FLASHER_TARGET_IDS = {
+  fw_teensy35: 'Teensy 3.5',
+  fw_teensy36: 'Teensy 3.6',
+  fw_teensy40: 'Teensy 4.0',
+  fw_teensy41: 'Teensy 4.1',
+  fw_teensyMM: 'Teensy MicroMod',
+};
+const REQUIRED_FLASHER_TARGET = 'fw_teensy41';
+
+// Parse an Intel HEX file into one concatenated Buffer of its data-record
+// payloads (record type 0x00).  Addresses are ignored — FlasherX's check is
+// a substring search, so we only need the raw bytes.  Returns null on I/O
+// or format errors; callers treat null the same as "target not found".
+function intelHexDataBytes(filePath) {
+  try {
+    const text = fs.readFileSync(filePath, 'utf8');
+    const chunks = [];
+    for (const rawLine of text.split(/\r?\n/)) {
+      const line = rawLine.trim();
+      // Minimum record: `:LLAAAATT<checksum>` = 11 chars with zero data
+      if (!line.startsWith(':') || line.length < 11) continue;
+      const count = parseInt(line.slice(1, 3), 16);
+      const type  = parseInt(line.slice(7, 9), 16);
+      if (!Number.isFinite(count) || !Number.isFinite(type)) continue;
+      if (type !== 0x00) continue;
+      const dataHex = line.slice(9, 9 + count * 2);
+      if (dataHex.length !== count * 2) continue;
+      chunks.push(Buffer.from(dataHex, 'hex'));
+    }
+    return Buffer.concat(chunks);
+  } catch (_) { return null; }
+}
+
+// Inspect a .hex upload and report which FlasherX target it was built for.
+// Returns { ok: true, target } if it matches REQUIRED_FLASHER_TARGET, or
+// { ok: false, reason, foundTarget? } otherwise.  foundTarget is set when
+// we identified a non-matching target (e.g. accidental Teensy 4.0 upload)
+// so the UI can give a specific error instead of "not recognised".
+function verifyFirmwareTarget(filePath) {
+  const data = intelHexDataBytes(filePath);
+  if (!data || data.length === 0) {
+    return { ok: false, reason: 'not a valid Intel HEX file (no data records found)' };
+  }
+  let foundTarget = null;
+  for (const id of Object.keys(FLASHER_TARGET_IDS)) {
+    if (data.indexOf(id) >= 0) { foundTarget = id; break; }
+  }
+  if (foundTarget === REQUIRED_FLASHER_TARGET) {
+    return { ok: true, target: foundTarget };
+  }
+  if (foundTarget) {
+    return {
+      ok: false,
+      foundTarget,
+      reason: `firmware targets ${FLASHER_TARGET_IDS[foundTarget]} — ${FLASHER_TARGET_IDS[REQUIRED_FLASHER_TARGET]} required`,
+    };
+  }
+  return {
+    ok: false,
+    reason: `no FlasherX target ID found — firmware must be built with FlasherX linked in (looking for "${REQUIRED_FLASHER_TARGET}")`,
+  };
+}
+
 function safeFilename(filename) {
   return typeof filename === 'string'
     && !filename.includes('/')
@@ -973,6 +1047,17 @@ function sseEmit(type, payload) {
 
 app.post('/ota/admin/api/files/firmware', firmwareUpload.single('file'), (req, res) => {
   if (!req.file) return res.status(400).json({ error: 'no .hex file received' });
+
+  // Reject non-Teensy-4.1 hex files before writing sidecars or notifying
+  // the UI.  Multer has already written the upload to disk; unlink on
+  // rejection so we don't pollute FIRMWARE_ROOT with invalid builds.
+  const tgt = verifyFirmwareTarget(req.file.path);
+  if (!tgt.ok) {
+    try { fs.unlinkSync(req.file.path); } catch (_) {}
+    console.warn(`[admin] firmware upload rejected: ${req.file.originalname} — ${tgt.reason}`);
+    return res.status(400).json({ error: tgt.reason, foundTarget: tgt.foundTarget || null });
+  }
+
   const crc32  = fileCrc32(req.file.path);
   const sha256 = fileSha256(req.file.path);
 
