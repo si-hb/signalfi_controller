@@ -292,6 +292,39 @@ function handleCommand(config, msg, broadcast) {
   let payload;
 
   switch (cmd) {
+    // announcePreset — node-red (and other in-stack publishers) send
+    // { cmd: 'announcePreset', preset: 'Chime3 Blue', destination, target,
+    //   syncOffset } over the scout/$server/cmd MQTT topic.  We look up
+    // the preset in in-memory state (populated at startup from
+    // data/presets.json) and hand off to the announce path so the wire
+    // format matches what the UI's "Live Announce on Tap" produces.
+    case 'announcePreset': {
+      const presetName = typeof msg.preset === 'string' ? msg.preset : '';
+      if (!presetName) {
+        console.warn(`[${ts()}] [CMD] announcePreset: missing "preset" name`);
+        return;
+      }
+      const preset = state.getPresets().find(p => p.name === presetName);
+      if (!preset) {
+        const known = state.getPresets().map(p => p.name).join(', ') || '(none loaded)';
+        console.warn(`[${ts()}] [CMD] announcePreset: unknown preset "${presetName}" — known: ${known}`);
+        return;
+      }
+      return handleCommand(config, {
+        cmd:         'announce',
+        destination: msg.destination,
+        target:      msg.target,
+        colour:      '#' + preset.clr,
+        brightness:  preset.brt,
+        pattern:     preset.pat,
+        timeout:     preset.dur,
+        audio:       preset.aud || null,
+        loops:       preset.rpt,
+        volume:      preset.vol,
+        syncOffset:  msg.syncOffset ?? 0,
+      }, broadcast);
+    }
+
     case 'announce': {
       const p = msg.payload || {};
       // Accept both flat fields (from UI) and short-key payload sub-object
@@ -682,9 +715,36 @@ async function main() {
     }
   }
 
+  // ---- Server-command handler for scout/$server/cmd ----
+  // Node-red (and other in-stack publishers) send JSON commands on that
+  // topic; we funnel them through the same handleCommand() path the
+  // WebSocket UI uses, so there's one execution pipeline for all
+  // command-originated MQTT traffic.  All drops log and return — never
+  // throw, since this runs inside the mqtt message callback.
+  function onMqttServerCommand(payload) {
+    if (!payload || typeof payload !== 'object' || typeof payload.cmd !== 'string') {
+      console.warn(`[${ts()}] [MQTT] $server/cmd: dropped — payload must be an object with a string "cmd" field`);
+      return;
+    }
+    console.log(`[${ts()}] [MQTT] $server/cmd: ${JSON.stringify(payload).slice(0, 200)}`);
+    if (_logStore) {
+      const entry = _logStore.add({
+        ts: Date.now(), direction: 'rx', category: 'mqtt',
+        topic: `${config.mqtt.topicPrefix}/$server/cmd`,
+        payload: JSON.stringify(payload),
+      });
+      if (_broadcastFn) _broadcastFn({ type: 'logEntry', entry });
+    }
+    try {
+      handleCommand(config, payload, broadcast);
+    } catch (err) {
+      console.error(`[${ts()}] [MQTT] $server/cmd handler error:`, err.message);
+    }
+  }
+
   // ---- Connect MQTT (non-fatal if broker is unreachable) ----
   try {
-    mqttModule.connect(config.mqtt, onMqttMessage, onMqttStatus);
+    mqttModule.connect(config.mqtt, onMqttMessage, onMqttStatus, onMqttServerCommand);
   } catch (err) {
     console.error(`[${ts()}] [MQTT] Failed to initiate connection:`, err.message);
     // Server continues running — MQTT will retry automatically

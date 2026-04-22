@@ -13,11 +13,18 @@ let _publish  = null;
 /**
  * Connect to MQTT broker.
  *
- * @param {object}   config     - MQTT config block from loadConfig()
- * @param {function} onMessage  - Called as onMessage(mac, topic, parsedPayload)
- * @param {function} onStatus   - Called as onStatus('connected'|'reconnecting'|'disconnected')
+ * @param {object}   config            - MQTT config block from loadConfig()
+ * @param {function} onMessage         - Called as onMessage(mac, topic, parsedPayload)
+ * @param {function} onStatus          - Called as onStatus('connected'|'reconnecting'|'disconnected')
+ * @param {function} [onServerCommand] - Optional. Called as onServerCommand(parsedPayload)
+ *                                       when a message arrives on ${prefix}/$server/cmd —
+ *                                       the bridge node-red (and other server-side
+ *                                       publishers) use to inject commands that then flow
+ *                                       through the same handleCommand() pipeline as the
+ *                                       WebSocket UI. No MAC is passed because these
+ *                                       messages aren't tied to a single device.
  */
-function connect(config, onMessage, onStatus) {
+function connect(config, onMessage, onStatus, onServerCommand) {
   const prefix = config.topicPrefix || 'scout';
 
   // Build connect options
@@ -56,15 +63,19 @@ function connect(config, onMessage, onStatus) {
     console.log(`[${ts()}] [MQTT] Connected to ${brokerUrl}`);
     onStatus('connected');
 
-    // Subscribe to state and message topics
-    const stateTopic = `${prefix}/+/$state`;
-    const msgTopic   = `${prefix}/+/$msg`;
+    // Subscribe to state and message topics, plus the server-command topic
+    // used by node-red (and any other in-stack publisher) to inject commands
+    // into handleCommand().  $server is a reserved literal like $broadcast
+    // and $group — MAC-based device topics can never collide with it.
+    const stateTopic  = `${prefix}/+/$state`;
+    const msgTopic    = `${prefix}/+/$msg`;
+    const serverTopic = `${prefix}/$server/cmd`;
 
-    client.subscribe([stateTopic, msgTopic], { qos: 0 }, (err) => {
+    client.subscribe([stateTopic, msgTopic, serverTopic], { qos: 0 }, (err) => {
       if (err) {
         console.error(`[${ts()}] [MQTT] Subscribe error:`, err.message);
       } else {
-        console.log(`[${ts()}] [MQTT] Subscribed to ${stateTopic} and ${msgTopic}`);
+        console.log(`[${ts()}] [MQTT] Subscribed to ${stateTopic}, ${msgTopic}, ${serverTopic}`);
       }
     });
 
@@ -115,8 +126,17 @@ function connect(config, onMessage, onStatus) {
     // Extract MAC from topic: scout/<MAC>/$state  or  scout/<MAC>/$msg
     const segments = topic.split('/');
     if (segments.length < 3) return;
-    const mac = segments[1];
 
+    // Server-command topic: scout/$server/cmd — hand off to the dedicated
+    // callback instead of the MAC-based onMessage path.  These messages
+    // aren't tied to a single device; they carry a command intended for
+    // handleCommand() (e.g. node-red triggering an announcePreset).
+    if (segments[1] === '$server' && segments[2] === 'cmd') {
+      if (typeof onServerCommand === 'function') onServerCommand(payload);
+      return;
+    }
+
+    const mac = segments[1];
     onMessage(mac, topic, payload);
   });
 
