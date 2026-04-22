@@ -1454,7 +1454,7 @@ function _renderDevices(list) {
   tbody.innerHTML = '';
 
   if (!list || list.length === 0) {
-    tbody.innerHTML = '<tr class="empty-row"><td colspan="7">No devices seen yet</td></tr>';
+    tbody.innerHTML = '<tr class="empty-row"><td colspan="8">No devices seen yet</td></tr>';
     return;
   }
 
@@ -1475,11 +1475,12 @@ function _renderDevices(list) {
 
     tr.innerHTML = `
       <td class="col-check"><input type="checkbox" class="device-check"${checked}></td>
-      <td class="device-status">${dot}${temp}</td>
+      <td class="device-status">${dot}</td>
       <td class="device-model">${model}</td>
       <td class="device-version">${version}</td>
       <td class="device-mac">${dev.id}</td>
       <td class="device-ip">${dev.ip || '—'}</td>
+      <td class="device-cpu">${temp}</td>
       <td class="device-node">${node}</td>
     `;
 
@@ -1543,11 +1544,12 @@ function _insertDeviceRow(d) {
   const node    = nodeStr    || '<span class="text-muted">—</span>';
   tr.innerHTML = `
     <td class="col-check"><input type="checkbox" class="device-check"></td>
-    <td class="device-status">${dot}${temp}</td>
+    <td class="device-status">${dot}</td>
     <td class="device-model">${model}</td>
     <td class="device-version">${version}</td>
     <td class="device-mac">${d.id}</td>
     <td class="device-ip">${d.ip || '—'}</td>
+    <td class="device-cpu">${temp}</td>
     <td class="device-node">${node}</td>
   `;
   tr.querySelector('.device-check').addEventListener('change', e => {
@@ -1573,18 +1575,19 @@ function onDeviceState(d) {
       _updateSelectionBadges();
       return;
     }
-    // Update in-place — preserves checkbox state
+    // Update in-place — preserves checkbox state.
+    // Cell layout: [check, status, model, version, mac, ip, cpu, node].
     const dot     = '<span class="device-dot device-dot--online" title="Online"></span>';
     const dotCell = existing.cells[1];
-    // Cell layout: [check, status+temp, model, version, mac, ip, node].
-    // Rewrite the status cell so the temp inside also refreshes on each
-    // $state; d.temp may be undefined if the firmware hasn't yet reported.
-    if (dotCell) dotCell.innerHTML = `${dot}${_formatDeviceTemp(d.temp)}`;
+    if (dotCell) dotCell.innerHTML = dot;
     if (existing.cells[2] && d.model)   existing.cells[2].innerHTML   = `<span class="model-badge">${d.model}</span>`;
     if (existing.cells[3] && d.version) existing.cells[3].textContent = d.version;
     if (existing.cells[5] && d.ip)      existing.cells[5].textContent = d.ip;
+    // Always rewrite the cpu cell so temp refreshes on each $state; d.temp
+    // may be undefined if the firmware hasn't yet reported.
+    if (existing.cells[6]) existing.cells[6].innerHTML = _formatDeviceTemp(d.temp);
     const cleanNode = sanitizeNode(d.node);
-    if (existing.cells[6] && cleanNode) existing.cells[6].textContent = cleanNode;
+    if (existing.cells[7] && cleanNode) existing.cells[7].textContent = cleanNode;
     existing.className = '';
   } else {
     if (d.online === false) return; // evicted device not in table — nothing to do
