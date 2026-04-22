@@ -141,13 +141,14 @@ function connect(config, onMessage, onStatus, onServerCommand) {
   });
 
   // Expose a bound publish helper
-  _publish = (topic, payloadObj) => {
+  _publish = (topic, payloadObj, opts = {}) => {
     if (!client || !client.connected) {
       console.warn(`[${ts()}] [MQTT] Cannot publish — not connected (topic: ${topic})`);
       return;
     }
     const raw = typeof payloadObj === 'string' ? payloadObj : JSON.stringify(payloadObj);
-    client.publish(topic, raw, { qos: 0 }, (err) => {
+    const publishOpts = { qos: 0, retain: !!opts.retain };
+    client.publish(topic, raw, publishOpts, (err) => {
       if (err) {
         console.error(`[${ts()}] [MQTT] Publish error on ${topic}:`, err.message);
       }
@@ -160,14 +161,16 @@ function connect(config, onMessage, onStatus, onServerCommand) {
  *
  * @param {string}        topic
  * @param {object|string} payload
+ * @param {object}        [opts]        - optional publish options
+ * @param {boolean}       [opts.retain] - set retain flag on the broker
  */
-function publish(topic, payload) {
+function publish(topic, payload, opts) {
   if (!_publish) {
     const ts = new Date().toISOString();
     console.warn(`[${ts}] [MQTT] publish() called before connect()`);
     return;
   }
-  _publish(topic, payload);
+  _publish(topic, payload, opts);
 }
 
 /**

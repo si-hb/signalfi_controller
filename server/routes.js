@@ -65,6 +65,10 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     const updated = state.addPreset(preset);
     persistence.savePresets(dataDir, updated);
     broadcast({ type: 'state', ...state.getState(), mqttOnline: true });
+    // Republish the retained scout/$server/presets so node-red (and any
+    // other subscriber) sees the change without polling.  Matching call
+    // in DELETE below; canonical helper lives in server.js (publishPresets).
+    mqttModule.publish(`${config.mqtt.topicPrefix}/$server/presets`, updated, { retain: true });
     res.json({ presets: updated });
   });
 
@@ -76,6 +80,7 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     const updated = state.deletePreset(name);
     persistence.savePresets(dataDir, updated);
     broadcast({ type: 'state', ...state.getState(), mqttOnline: true });
+    mqttModule.publish(`${config.mqtt.topicPrefix}/$server/presets`, updated, { retain: true });
     res.json({ presets: updated });
   });
 

@@ -712,7 +712,22 @@ async function main() {
 
     if (mqttOnline) {
       scheduledFullStateBroadcast();
+      // Seed the retained scout/$server/presets topic so any subscriber
+      // (including a node-red that reconnected before us) picks up the
+      // current list immediately.
+      publishPresets();
     }
+  }
+
+  // Publish the full preset list as a retained message so any subscriber
+  // (primarily node-red) can see the current presets just by subscribing
+  // to scout/$server/presets — no request needed.  Retained means new
+  // subscribers get the latest value immediately on subscribe.  Called
+  // when MQTT connects, on explicit getPresets commands, and from the
+  // preset POST/DELETE routes (see routes.js).
+  function publishPresets() {
+    const prefix = config.mqtt.topicPrefix;
+    mqttModule.publish(`${prefix}/$server/presets`, state.getPresets(), { retain: true });
   }
 
   // ---- Server-command handler for scout/$server/cmd ----
@@ -734,6 +749,16 @@ async function main() {
         payload: JSON.stringify(payload),
       });
       if (_broadcastFn) _broadcastFn({ type: 'logEntry', entry });
+    }
+    // getPresets — republish the retained scout/$server/presets list.
+    // Handled here (not inside handleCommand) because publishPresets lives
+    // in the mqtt-connection scope.  Also spares the device-facing
+    // buildTopics() / publishToTopics() machinery that handleCommand
+    // runs before its switch — a retained-topic publish shouldn't be
+    // gated on destination/target resolution.
+    if (payload.cmd === 'getPresets') {
+      publishPresets();
+      return;
     }
     try {
       handleCommand(config, payload, broadcast);
