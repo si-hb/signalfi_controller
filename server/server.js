@@ -310,6 +310,14 @@ function handleCommand(config, msg, broadcast) {
         console.warn(`[${ts()}] [CMD] announcePreset: unknown preset "${presetName}" — known: ${known}`);
         return;
       }
+      // useDeviceVol=true → omit volume from the announce payload so the
+      // firmware's `vol != null` guard (see case 'announce' below) drops
+      // the vol key from the outgoing ply.  Devices treat an absent vol
+      // as "use my stored default" — matches the firmware convention
+      // where every preset field is optional and the device fills in
+      // what's missing.  Defaults to false to preserve the pre-existing
+      // behaviour of forcing the preset's vol onto every device.
+      const useDeviceVol = msg.useDeviceVol === true;
       return handleCommand(config, {
         cmd:         'announce',
         destination: msg.destination,
@@ -320,7 +328,7 @@ function handleCommand(config, msg, broadcast) {
         timeout:     preset.dur,
         audio:       preset.aud || null,
         loops:       preset.rpt,
-        volume:      preset.vol,
+        volume:      useDeviceVol ? undefined : preset.vol,
         syncOffset:  msg.syncOffset ?? 0,
       }, broadcast);
     }
