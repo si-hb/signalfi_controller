@@ -236,13 +236,31 @@ function buildSettingsView() {
   });
 
   const storeBtn = document.createElement('button');
-  storeBtn.className = 'btn-primary cmd-btn';
+  storeBtn.className = 'btn-primary btn-danger cmd-btn';
   storeBtn.id = 'store-volume-btn';
   storeBtn.style.marginTop = '8px';
   storeBtn.textContent = 'Set Default Volume';
 
+  // Inline confirm row — same pattern as the Reboot Device button in the
+  // device sheet.  Writing the stored default volume is a persistent
+  // change that takes effect on every future ply with no vol key, so a
+  // second tap is required to avoid accidents.
+  const storeConfirm = document.createElement('div');
+  storeConfirm.id = 'store-volume-confirm';
+  storeConfirm.className = 'confirm-row';
+  storeConfirm.hidden = true;
+  const storeYes = document.createElement('button');
+  storeYes.className = 'btn-primary btn-danger';
+  storeYes.textContent = 'Yes, Set Default Volume';
+  const storeNo = document.createElement('button');
+  storeNo.className = 'btn-secondary';
+  storeNo.textContent = 'Cancel';
+  storeConfirm.appendChild(storeYes);
+  storeConfirm.appendChild(storeNo);
+
   storeCard.appendChild(radioGroup);
   storeCard.appendChild(storeBtn);
+  storeCard.appendChild(storeConfirm);
   view.appendChild(storeCard);
 
   // ── Set Node Target ───────────────────────────────────────────────────────
@@ -613,8 +631,14 @@ function wireSettingsEvents() {
     updateStoreSection();
   });
 
-  // Store volume button
+  // Store volume button — two-step confirm: first tap reveals the inline
+  // confirm row, second tap (on "Yes, Set Default Volume") fires the
+  // actual command.  Cancel hides the row.
   document.getElementById('store-volume-btn').addEventListener('click', () => {
+    const confirm = document.getElementById('store-volume-confirm');
+    confirm.hidden = !confirm.hidden;
+  });
+  document.getElementById('store-volume-confirm').querySelector('.btn-danger').addEventListener('click', () => {
     let dest;
     if (storeTarget === 'all') {
       dest = { destination: 'broadcast', target: null };
@@ -623,7 +647,11 @@ function wireSettingsEvents() {
     }
     const volume = (window.appState && window.appState.defaultVolume) ?? 0.8;
     sendCommand({ cmd: 'storeVolume', volume: roundGain(volume), ...dest });
+    document.getElementById('store-volume-confirm').hidden = true;
     showToast('Storing volume…');
+  });
+  document.getElementById('store-volume-confirm').querySelector('.btn-secondary').addEventListener('click', () => {
+    document.getElementById('store-volume-confirm').hidden = true;
   });
 
   // Set node

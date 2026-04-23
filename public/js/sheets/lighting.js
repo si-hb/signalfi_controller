@@ -3,7 +3,7 @@
  */
 
 import { sendCommand } from '../ws.js';
-import { getDestination, closeSheet, openSheet } from '../app.js';
+import { getDestination, closeSheet, openSheet, showToast } from '../app.js';
 import { roundGain, sliderToGain, sliderToDb, dbToSlider, throttle } from '../utils.js';
 import { getSoundState, setSoundState, renderSoundSheet } from './sound.js';
 import { getSyncOffset } from '../views/settings.js';
@@ -264,6 +264,32 @@ function buildSheet() {
   volSliderRow.appendChild(volDbUnit);
   volumeSection.appendChild(volumeLabel);
   volumeSection.appendChild(volSliderRow);
+
+  // Set-default-volume button — stores the current slider volume as the
+  // device's persistent default (the value used when a ply arrives with
+  // no vol key, e.g. announcePreset with useDeviceVol:true).  Mirrors
+  // the Settings page button and uses the same inline two-step confirm
+  // to prevent accidentally overwriting device defaults mid-scene.
+  const storeVolBtn = document.createElement('button');
+  storeVolBtn.id = 'sound-store-volume-btn';
+  storeVolBtn.className = 'btn-primary btn-danger cmd-btn';
+  storeVolBtn.style.marginTop = '8px';
+  storeVolBtn.textContent = 'Set Default Volume';
+  const storeVolConfirm = document.createElement('div');
+  storeVolConfirm.id = 'sound-store-volume-confirm';
+  storeVolConfirm.className = 'confirm-row';
+  storeVolConfirm.hidden = true;
+  const storeVolYes = document.createElement('button');
+  storeVolYes.className = 'btn-primary btn-danger';
+  storeVolYes.textContent = 'Yes, Set Default Volume';
+  const storeVolNo = document.createElement('button');
+  storeVolNo.className = 'btn-secondary';
+  storeVolNo.textContent = 'Cancel';
+  storeVolConfirm.appendChild(storeVolYes);
+  storeVolConfirm.appendChild(storeVolNo);
+  volumeSection.appendChild(storeVolBtn);
+  volumeSection.appendChild(storeVolConfirm);
+
   soundBody.appendChild(volumeSection);
 
   // Loops stepper
@@ -527,6 +553,23 @@ function wireEvents() {
   sVolDbInput.addEventListener('keydown', (e) => {
     if (e.key === 'Enter') sVolDbInput.blur();
     else if (e.key === 'Escape') { renderSoundSheet(); sVolDbInput.blur(); }
+  });
+
+  // Set Default Volume — same storeVolume command as the Settings page,
+  // scoped to the scene's current destination.  Two-step confirm to
+  // match the Settings page and the reboot button pattern.
+  document.getElementById('sound-store-volume-btn').addEventListener('click', () => {
+    const confirm = document.getElementById('sound-store-volume-confirm');
+    confirm.hidden = !confirm.hidden;
+  });
+  document.getElementById('sound-store-volume-confirm').querySelector('.btn-danger').addEventListener('click', () => {
+    const snd = getSoundState();
+    sendCommand({ cmd: 'storeVolume', volume: roundGain(snd.volume), ...getDestination() });
+    document.getElementById('sound-store-volume-confirm').hidden = true;
+    showToast('Storing volume…');
+  });
+  document.getElementById('sound-store-volume-confirm').querySelector('.btn-secondary').addEventListener('click', () => {
+    document.getElementById('sound-store-volume-confirm').hidden = true;
   });
 
   // ── Timeout ───────────────────────────────────────────────────────────────────
