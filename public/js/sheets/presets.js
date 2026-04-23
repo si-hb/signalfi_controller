@@ -15,6 +15,13 @@ const PATTERN_NAMES = ['Off','Solid','Blink','Rotate','Pulse','Flash','Wave Out'
 let liveMode = false;
 let recallMode = false;
 let currentPresetName = null;
+// Use Device Volume — when true, live-announce of a preset omits the
+// vol field so each device falls back to its stored default volume
+// (paired with the firmware fix that re-reads ScoutConfig.volume when
+// a ply arrives without a vol key).  Defaults on so the toggle opts
+// into preset-embedded volume rather than surprising the operator with
+// a scene that blasts at a long-forgotten slider position.
+let useDeviceVolume = true;
 
 function buildSheet() {
   const el = document.getElementById('sheet-presets');
@@ -45,6 +52,32 @@ function buildSheet() {
 
   const body = document.createElement('div');
   body.className = 'sheet-body';
+
+  // Use Device Volume toggle — sits at the very top so its effect is
+  // visible before the operator taps anything.  Mirrors the toggle-row
+  // markup used elsewhere in the sheet (Live Announce on Tap below).
+  const useDevVolSection = document.createElement('div');
+  useDevVolSection.className = 'sheet-section';
+  useDevVolSection.id = 'preset-usedevvol-section';
+  const useDevVolRow = document.createElement('div');
+  useDevVolRow.className = 'toggle-row';
+  const useDevVolLabel = document.createElement('span');
+  useDevVolLabel.className = 'toggle-label';
+  useDevVolLabel.textContent = 'Use Device Volume';
+  const useDevVolWrap = document.createElement('label');
+  useDevVolWrap.className = 'toggle';
+  const useDevVolInput = document.createElement('input');
+  useDevVolInput.type = 'checkbox';
+  useDevVolInput.id = 'preset-usedevvol-toggle';
+  useDevVolInput.checked = useDeviceVolume;
+  const useDevVolSlider = document.createElement('span');
+  useDevVolSlider.className = 'toggle-slider';
+  useDevVolWrap.appendChild(useDevVolInput);
+  useDevVolWrap.appendChild(useDevVolSlider);
+  useDevVolRow.appendChild(useDevVolLabel);
+  useDevVolRow.appendChild(useDevVolWrap);
+  useDevVolSection.appendChild(useDevVolRow);
+  body.appendChild(useDevVolSection);
 
   // Scene summary
   const summarySection = document.createElement('div');
@@ -295,6 +328,11 @@ function wireEvents() {
     liveMode = e.target.checked;
   });
 
+  // Use Device Volume toggle
+  document.getElementById('preset-usedevvol-toggle').addEventListener('change', (e) => {
+    useDeviceVolume = e.target.checked;
+  });
+
   // Stop button
   document.getElementById('preset-stop-btn').addEventListener('click', () => {
     sendCommand({ cmd: 'stop', ...getDestination() });
@@ -378,7 +416,7 @@ function wireEvents() {
 
     if (liveMode) {
       const dest = getDestination();
-      sendCommand({
+      const announceMsg = {
         cmd: 'announce',
         colour: '#' + preset.clr,
         brightness: preset.brt,
@@ -388,7 +426,14 @@ function wireEvents() {
         loops: preset.rpt,
         syncOffset: getSyncOffset(),
         ...dest,
-      });
+      };
+      // Toggle OFF → include the preset's stored volume in the ply.
+      // Toggle ON  → omit volume so the firmware falls back to each
+      // device's ScoutConfig.volume (the persistent stored default).
+      if (!useDeviceVolume && preset.vol !== undefined) {
+        announceMsg.volume = preset.vol;
+      }
+      sendCommand(announceMsg);
     } else {
       showToast('Preset loaded', 'success');
     }
