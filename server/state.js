@@ -230,27 +230,36 @@ function getPresets()  { return [...presets];  }
 function getSettings() { return { ...settings }; }
 
 /**
- * Like getNodes(), but only counts scouts whose status is non-empty and
- * not 'offline' — i.e. devices that have actually reported in and aren't
- * marked offline.  Used by the scout/$server/nodes MQTT bridge so that
- * node-red only sees node groups that currently have at least one
- * reachable member.  A scout with status='rebooting' is counted (it's a
- * transient state; the device is coming back).
+ * Returns the unique parent-node paths of all online devices.
+ *
+ * Each device's `node` field is the *full* path to that device
+ * (e.g. "symphony/signalfi/dut/black_ns").  The parent is everything
+ * before the last slash — the logical group the device lives in.
+ * This helper collapses device-level leaves into their parents and
+ * dedupes across the fleet, so a node-red subscriber sees only the
+ * set of groups that currently have at least one reachable member.
+ *
+ * Devices with empty node paths, or paths without a slash (no parent),
+ * are skipped — there's no meaningful group to target.  A scout with
+ * status='rebooting' is treated as online (transient; coming back).
+ *
+ * Shape: [{ path, members, busy, index }], sorted alphabetically.
+ *   members = count of distinct devices whose parent is this path
+ *   busy    = count of those devices currently announcing
  */
 function getOnlineNodes() {
-  const pathMap = new Map(); // path -> { members:Set, busy:number }
+  const pathMap = new Map(); // parent path -> { members:Set, busy:number }
   for (const scout of scouts) {
     if (!scout.status || scout.status === 'offline') continue;
     const nodePath = (scout.node || '').replace(/^\/+/, '').replace(/\/+$/, '');
     if (!nodePath) continue;
-    const segments = nodePath.split('/');
-    for (let i = 1; i <= segments.length; i++) {
-      const prefix = segments.slice(0, i).join('/');
-      let entry = pathMap.get(prefix);
-      if (!entry) { entry = { members: new Set(), busy: 0 }; pathMap.set(prefix, entry); }
-      entry.members.add(scout.mac);
-      if (scout.status === 'announce') entry.busy++;
-    }
+    const lastSlash = nodePath.lastIndexOf('/');
+    if (lastSlash <= 0) continue; // no parent (e.g. "foo" alone)
+    const parent = nodePath.slice(0, lastSlash);
+    let entry = pathMap.get(parent);
+    if (!entry) { entry = { members: new Set(), busy: 0 }; pathMap.set(parent, entry); }
+    entry.members.add(scout.mac);
+    if (scout.status === 'announce') entry.busy++;
   }
   const out = [];
   for (const [path, { members, busy }] of pathMap.entries()) {
