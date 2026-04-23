@@ -239,7 +239,7 @@ function buildSettingsView() {
   storeBtn.className = 'btn-primary btn-danger cmd-btn';
   storeBtn.id = 'store-volume-btn';
   storeBtn.style.marginTop = '8px';
-  storeBtn.textContent = 'Set Default Volume';
+  storeBtn.textContent = 'Set As Device Default Volume';
 
   // Inline confirm row — same pattern as the Reboot Device button in the
   // device sheet.  Writing the stored default volume is a persistent

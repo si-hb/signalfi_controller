@@ -274,7 +274,7 @@ function buildSheet() {
   storeVolBtn.id = 'sound-store-volume-btn';
   storeVolBtn.className = 'btn-primary btn-danger cmd-btn';
   storeVolBtn.style.marginTop = '8px';
-  storeVolBtn.textContent = 'Set Default Volume';
+  storeVolBtn.textContent = 'Set As Device Default Volume';
   const storeVolConfirm = document.createElement('div');
   storeVolConfirm.id = 'sound-store-volume-confirm';
   storeVolConfirm.className = 'confirm-row';
