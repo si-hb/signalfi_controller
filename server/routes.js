@@ -91,6 +91,10 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     const updatedNodes = state.resetNodes();
     persistence.saveNodes(dataDir, updatedNodes);
     broadcast({ type: 'nodeUpdate', nodes: updatedNodes });
+    // Mirror to MQTT subscribers (node-red, …) via the retained
+    // scout/$server/nodes topic — canonical publisher lives in
+    // server.js (publishNodes).
+    mqttModule.publish(`${config.mqtt.topicPrefix}/$server/nodes`, state.getOnlineNodes(), { retain: true });
     res.json({ nodes: updatedNodes });
   });
 
@@ -110,6 +114,9 @@ function createRouter(config, state, persistence, broadcast, logStore) {
     persistence.saveScouts(dataDir, state.getScouts());
     persistence.saveNodes(dataDir, state.getNodes());
     broadcast({ type: 'state', ...state.getState() });
+    // Flushing offline scouts can remove node entries — republish the
+    // retained online-node tree so MQTT subscribers stay in sync.
+    mqttModule.publish(`${config.mqtt.topicPrefix}/$server/nodes`, state.getOnlineNodes(), { retain: true });
 
     res.json({ removed: removedMacs });
   });

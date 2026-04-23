@@ -229,6 +229,38 @@ function getNodes()    { return [...nodes];    }
 function getPresets()  { return [...presets];  }
 function getSettings() { return { ...settings }; }
 
+/**
+ * Like getNodes(), but only counts scouts whose status is non-empty and
+ * not 'offline' — i.e. devices that have actually reported in and aren't
+ * marked offline.  Used by the scout/$server/nodes MQTT bridge so that
+ * node-red only sees node groups that currently have at least one
+ * reachable member.  A scout with status='rebooting' is counted (it's a
+ * transient state; the device is coming back).
+ */
+function getOnlineNodes() {
+  const pathMap = new Map(); // path -> { members:Set, busy:number }
+  for (const scout of scouts) {
+    if (!scout.status || scout.status === 'offline') continue;
+    const nodePath = (scout.node || '').replace(/^\/+/, '').replace(/\/+$/, '');
+    if (!nodePath) continue;
+    const segments = nodePath.split('/');
+    for (let i = 1; i <= segments.length; i++) {
+      const prefix = segments.slice(0, i).join('/');
+      let entry = pathMap.get(prefix);
+      if (!entry) { entry = { members: new Set(), busy: 0 }; pathMap.set(prefix, entry); }
+      entry.members.add(scout.mac);
+      if (scout.status === 'announce') entry.busy++;
+    }
+  }
+  const out = [];
+  for (const [path, { members, busy }] of pathMap.entries()) {
+    out.push({ path, members: members.size, busy, index: 0 });
+  }
+  out.sort((a, b) => a.path.localeCompare(b.path));
+  out.forEach((n, i) => { n.index = i; });
+  return out;
+}
+
 // ---------------------------------------------------------------------------
 // Exports — write access
 // ---------------------------------------------------------------------------
@@ -294,6 +326,7 @@ module.exports = {
   getState,
   getScouts,
   getNodes,
+  getOnlineNodes,
   getPresets,
   getSettings,
   setSettings,

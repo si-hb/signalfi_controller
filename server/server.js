@@ -694,6 +694,9 @@ async function main() {
       }
       if (delta.nodeUpdate) {
         broadcast({ type: 'nodeUpdate', nodes: delta.nodeUpdate.nodes });
+        // Node list changed (new device, path change, offline transition)
+        // — republish the retained online-only tree for MQTT subscribers.
+        publishNodes();
       }
 
       // Schedule a debounced full-state broadcast
@@ -720,10 +723,11 @@ async function main() {
 
     if (mqttOnline) {
       scheduledFullStateBroadcast();
-      // Seed the retained scout/$server/presets topic so any subscriber
-      // (including a node-red that reconnected before us) picks up the
-      // current list immediately.
+      // Seed the retained scout/$server/presets + /nodes topics so any
+      // subscriber (including a node-red that reconnected before us)
+      // picks up the current lists immediately.
       publishPresets();
+      publishNodes();
     }
   }
 
@@ -736,6 +740,18 @@ async function main() {
   function publishPresets() {
     const prefix = config.mqtt.topicPrefix;
     mqttModule.publish(`${prefix}/$server/presets`, state.getPresets(), { retain: true });
+  }
+
+  // Same pattern as publishPresets but for the node tree.  The list
+  // published here is filtered to nodes whose members are not offline
+  // (see state.getOnlineNodes) — so node-red targeting ends up with only
+  // groups that currently have a reachable device, matching what a user
+  // would see in the UI's active-devices view.  Retained so new
+  // subscribers (including node-red after a flow redeploy) get the
+  // current list immediately.
+  function publishNodes() {
+    const prefix = config.mqtt.topicPrefix;
+    mqttModule.publish(`${prefix}/$server/nodes`, state.getOnlineNodes(), { retain: true });
   }
 
   // ---- Server-command handler for scout/$server/cmd ----
@@ -766,6 +782,10 @@ async function main() {
     // gated on destination/target resolution.
     if (payload.cmd === 'getPresets') {
       publishPresets();
+      return;
+    }
+    if (payload.cmd === 'getNodes') {
+      publishNodes();
       return;
     }
     try {
