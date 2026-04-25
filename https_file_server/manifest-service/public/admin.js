@@ -2,49 +2,94 @@
 
 // ── Auth ──────────────────────────────────────────────────────────────────────
 
-localStorage.removeItem('signalfi-admin-token'); // remove legacy bearer token key
-localStorage.removeItem('signalfi-admin-session'); // remove any persisted session
+localStorage.removeItem('signalfi-admin-token'); // legacy
+localStorage.removeItem('signalfi-admin-session'); // legacy
 const STORAGE_KEY  = 'signalfi-admin-session';
+const PERMS_KEY    = 'signalfi-admin-perms';     // sessionStorage key for cached permissions
 let authToken    = sessionStorage.getItem(STORAGE_KEY) || '';
-let _pendingPhone  = '';
-let _expireTimer   = null;
+let authUser     = null;     // { username, permissions, mustChangePassword }
+let _expireTimer = null;
 
 function scheduleExpiry(expiresAt) {
   if (_expireTimer) clearTimeout(_expireTimer);
   if (!expiresAt) return;
   const ms = expiresAt - Date.now();
-  if (ms <= 0) { showPhoneDialog(); return; }
+  if (ms <= 0) { showLoginDialog(); return; }
   _expireTimer = setTimeout(() => {
-    authToken = '';
-    sessionStorage.removeItem(STORAGE_KEY);
-    showPhoneDialog();
+    clearAuth();
+    showLoginDialog();
   }, ms);
 }
 
-// On load: hit /auth/check with whatever we've got (including nothing).  The
-// server replies 200 when either (a) it's in DISABLE_OTP=true mode, (b) a
-// static ADMIN_TOKEN matches, or (c) the session token is still valid.
-// Only fall back to the phone dialog when the server explicitly 401s.
-(async () => {
+function clearAuth() {
+  authToken = '';
+  authUser  = null;
+  sessionStorage.removeItem(STORAGE_KEY);
+  sessionStorage.removeItem(PERMS_KEY);
+  if (_expireTimer) { clearTimeout(_expireTimer); _expireTimer = null; }
+}
+
+function applyAuthSession({ token, expiresAt, username, permissions, mustChangePassword }) {
+  if (token) {
+    authToken = token;
+    sessionStorage.setItem(STORAGE_KEY, token);
+  }
+  authUser = { username, permissions: permissions || {}, mustChangePassword: !!mustChangePassword };
+  sessionStorage.setItem(PERMS_KEY, JSON.stringify(authUser));
+  scheduleExpiry(expiresAt);
+  setAuthState(true);
+  applyPermissionGating();
+}
+
+function applyPermissionGating() {
+  const isAdmin = !!(authUser && authUser.permissions && authUser.permissions.administrator);
+  const usersLink = document.getElementById('nav-users-link');
+  if (usersLink) usersLink.style.display = isAdmin ? '' : 'none';
+  const termBtn = document.getElementById('btn-terminate-sessions');
+  if (termBtn) termBtn.style.display = isAdmin ? '' : 'none';
+}
+
+function setAuthState(ok) {
+  document.getElementById('auth-dot').className    = ok ? 'ok' : 'fail';
+  const label = document.getElementById('auth-label');
+  if (label) {
+    label.textContent = ok && authUser ? authUser.username : (ok ? 'authenticated' : 'not authenticated');
+  }
+}
+
+// Restore cached permissions immediately so admin-only UI can render
+// before /ota/auth/check returns.
+(() => {
   try {
-    const headers = authToken ? { 'Authorization': `Bearer ${authToken}` } : {};
-    const res = await fetch('/ota/admin/auth/check', { headers });
+    const cached = JSON.parse(sessionStorage.getItem(PERMS_KEY) || 'null');
+    if (cached && cached.permissions) { authUser = cached; applyPermissionGating(); }
+  } catch (_) {}
+})();
+
+// On load: hit /ota/auth/check.  Three outcomes:
+//   200 + mustChangePassword:true → force change-password dialog
+//   200 + ok                      → bootstrap the app
+//   401 / network error           → login dialog
+(async () => {
+  if (!authToken) { showLoginDialog(); return; }
+  try {
+    const res = await fetch('/ota/auth/check', { headers: { 'Authorization': `Bearer ${authToken}` } });
     if (res.ok) {
-      const data = await res.json().catch(() => ({}));
-      if (!data.otpDisabled && data.expiresAt) scheduleExpiry(data.expiresAt);
-      return;
+      const data = await res.json();
+      applyAuthSession({ ...data, token: authToken });
+      if (data.mustChangePassword) { showChangePasswordDialog({ forced: true }); return; }
+      return; // bootstrap fires from elsewhere
     }
-    authToken = '';
-    sessionStorage.removeItem(STORAGE_KEY);
-    showPhoneDialog();
-  } catch (_) { showPhoneDialog(); }
+    clearAuth();
+    showLoginDialog();
+  } catch (_) { clearAuth(); showLoginDialog(); }
 })();
 
 document.getElementById('btn-terminate-sessions').addEventListener('click', async () => {
   const btn = document.getElementById('btn-terminate-sessions');
   btn.disabled = true; btn.textContent = 'Terminating…';
   try {
-    const res  = await apiFetch('/ota/admin/auth/sessions', { method: 'DELETE' });
+    const res  = await apiFetch('/ota/auth/sessions', { method: 'DELETE' });
     const data = await res.json();
     toast(`All sessions terminated (${data.cleared} cleared)`, 'success');
   } catch (e) {
@@ -54,10 +99,13 @@ document.getElementById('btn-terminate-sessions').addEventListener('click', asyn
   }
 });
 
-function setAuthState(ok) {
-  document.getElementById('auth-dot').className    = ok ? 'ok' : 'fail';
-  document.getElementById('auth-label').textContent = ok ? 'authenticated' : 'not authenticated';
-}
+document.getElementById('btn-logout').addEventListener('click', async () => {
+  try { await apiFetch('/ota/auth/logout', { method: 'POST' }); } catch (_) {}
+  clearAuth();
+  setAuthState(false);
+  applyPermissionGating();
+  showLoginDialog();
+});
 
 // Transparent 429 retry with server-hinted Retry-After or capped exponential
 // backoff.  Without this a single upstream throttle during the page-load burst
@@ -73,7 +121,7 @@ async function apiFetch(path, opts = {}) {
       authToken = '';
       sessionStorage.removeItem(STORAGE_KEY);
       setAuthState(false);
-      showPhoneDialog();
+      showLoginDialog();
       throw new Error('Unauthorized');
     }
     if (res.status === 429 && attempt < backoffMs.length) {
@@ -97,79 +145,117 @@ async function apiFetch(path, opts = {}) {
   }
 }
 
-function showPhoneDialog() {
-  document.getElementById('auth-dialog').classList.remove('hidden');
-  document.getElementById('auth-code-dialog').classList.add('hidden');
-  document.getElementById('auth-phone').focus();
-}
-function hidePhoneDialog() { document.getElementById('auth-dialog').classList.add('hidden'); }
-function showCodeDialog()  {
-  document.getElementById('auth-code-dialog').classList.remove('hidden');
-  document.getElementById('auth-code').value = '';
-  document.getElementById('auth-code').focus();
-}
-function hideCodeDialog()  { document.getElementById('auth-code-dialog').classList.add('hidden'); }
+// ── Login + change-password dialogs ─────────────────────────────────────────
 
-// Step 1 — phone entry
-async function submitPhone() {
-  const phone = document.getElementById('auth-phone').value.trim();
-  if (!phone) return;
-  const btn = document.getElementById('auth-phone-submit');
-  btn.disabled = true; btn.textContent = 'Sending…';
+let _pendingCurrentPw = ''; // carry from login → change-password when forced
+
+function showLoginDialog() {
+  document.getElementById('auth-login-dialog').classList.remove('hidden');
+  document.getElementById('auth-changepw-dialog').classList.add('hidden');
+  document.getElementById('auth-login-error').classList.add('hidden');
+  document.getElementById('auth-login-password').value = '';
+  document.getElementById('auth-login-username').focus();
+}
+function hideLoginDialog() {
+  document.getElementById('auth-login-dialog').classList.add('hidden');
+}
+
+function showChangePasswordDialog({ forced = false } = {}) {
+  hideLoginDialog();
+  const dlg = document.getElementById('auth-changepw-dialog');
+  dlg.classList.remove('hidden');
+  document.getElementById('auth-changepw-current').value = _pendingCurrentPw || '';
+  document.getElementById('auth-changepw-new').value     = '';
+  document.getElementById('auth-changepw-confirm').value = '';
+  document.getElementById('auth-changepw-error').classList.add('hidden');
+  // Forced change can't be dismissed by clicking outside; prevent
+  // accidental access by ensuring the current-password field is filled.
+  document.getElementById('auth-changepw-current').readOnly = !!forced && !!_pendingCurrentPw;
+  document.getElementById('auth-changepw-new').focus();
+}
+function hideChangePasswordDialog() {
+  document.getElementById('auth-changepw-dialog').classList.add('hidden');
+  _pendingCurrentPw = '';
+}
+
+function showAuthError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (msg) { el.textContent = msg; el.classList.remove('hidden'); }
+  else      { el.classList.add('hidden'); }
+}
+
+async function submitLogin() {
+  const username = document.getElementById('auth-login-username').value.trim();
+  const password = document.getElementById('auth-login-password').value;
+  if (!username || !password) return;
+  const btn = document.getElementById('auth-login-submit');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  showAuthError('auth-login-error', '');
   try {
-    const res  = await fetch('/ota/admin/auth/request', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone }),
+    const res  = await fetch('/ota/auth/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username, password }),
     });
-    const data = await res.json();
-    if (data.accepted) {
-      _pendingPhone = phone;
-      hidePhoneDialog();
-      showCodeDialog();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.token) {
+      applyAuthSession(data);
+      hideLoginDialog();
+      if (data.mustChangePassword) {
+        // Stash the just-typed password so the change-password dialog can
+        // pre-fill the current-password field for a smoother forced-change.
+        _pendingCurrentPw = password;
+        showChangePasswordDialog({ forced: true });
+        return;
+      }
+      bootstrap();
+    } else if (res.status === 423) {
+      showAuthError('auth-login-error', data.message || 'Account temporarily locked.');
+    } else {
+      showAuthError('auth-login-error', data.error || 'Invalid credentials');
     }
-    // Not accepted: silent — no error shown, no feedback. Bots get nothing to key on.
-  } catch (_) { /* network error — also silent */ }
-  finally { btn.disabled = false; btn.textContent = 'Send Code'; }
+  } catch (_) { showAuthError('auth-login-error', 'Sign-in failed'); }
+  finally { btn.disabled = false; btn.textContent = 'Sign In'; }
 }
-document.getElementById('auth-phone-submit').addEventListener('click', submitPhone);
-document.getElementById('auth-phone').addEventListener('keydown', e => { if (e.key === 'Enter') submitPhone(); });
+document.getElementById('auth-login-submit').addEventListener('click', submitLogin);
+document.getElementById('auth-login-username').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('auth-login-password').focus(); });
+document.getElementById('auth-login-password').addEventListener('keydown', e => { if (e.key === 'Enter') submitLogin(); });
 
-// Step 2 — code entry
-async function submitCode() {
-  const code = document.getElementById('auth-code').value.trim();
-  if (code.length !== 6) return;
-  const btn = document.getElementById('auth-code-submit');
-  btn.disabled = true; btn.textContent = 'Verifying…';
+async function submitChangePassword() {
+  const currentPassword = document.getElementById('auth-changepw-current').value;
+  const newPassword     = document.getElementById('auth-changepw-new').value;
+  const confirm         = document.getElementById('auth-changepw-confirm').value;
+  if (!currentPassword || !newPassword) return;
+  if (newPassword !== confirm) {
+    showAuthError('auth-changepw-error', 'New passwords do not match');
+    return;
+  }
+  const btn = document.getElementById('auth-changepw-submit');
+  btn.disabled = true; btn.textContent = 'Changing…';
+  showAuthError('auth-changepw-error', '');
   try {
-    const res = await fetch('/ota/admin/auth/verify', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: _pendingPhone, code }),
+    const res  = await apiFetch('/ota/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify({ currentPassword, newPassword }),
     });
     if (res.ok) {
-      const data = await res.json();
-      authToken = data.token;
-      sessionStorage.setItem(STORAGE_KEY, authToken);
-      scheduleExpiry(data.expiresAt);
-      hideCodeDialog();
+      hideChangePasswordDialog();
+      // Refresh session info — mustChangePassword should now be false
+      const checkRes = await apiFetch('/ota/auth/check');
+      if (checkRes.ok) {
+        const data = await checkRes.json();
+        applyAuthSession({ ...data, token: authToken });
+      }
+      toast('Password changed', 'success');
       bootstrap();
-    } else if (res.status === 429) {
-      hideCodeDialog();
-      showPhoneDialog();
-      toast('Too many attempts — request a new code', 'error');
-    } else {
-      document.getElementById('auth-code').value = '';
-      document.getElementById('auth-code').focus();
-      toast('Incorrect code', 'error');
     }
-  } catch (_) { toast('Verification failed', 'error'); }
-  finally { btn.disabled = false; btn.textContent = 'Verify'; }
+  } catch (e) {
+    showAuthError('auth-changepw-error', e.message || 'Change failed');
+  } finally { btn.disabled = false; btn.textContent = 'Change Password'; }
 }
-document.getElementById('auth-code-submit').addEventListener('click', submitCode);
-document.getElementById('auth-code').addEventListener('keydown', e => { if (e.key === 'Enter') submitCode(); });
-// Auto-submit on 6th digit
-document.getElementById('auth-code').addEventListener('input', e => {
-  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
-  if (e.target.value.length === 6) submitCode();
+document.getElementById('auth-changepw-submit').addEventListener('click', submitChangePassword);
+['auth-changepw-current', 'auth-changepw-new', 'auth-changepw-confirm'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') submitChangePassword(); });
 });
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
@@ -228,7 +314,7 @@ function uploadFile(file, endpoint, progressBar, progressWrap, onDone) {
       toast(`Uploaded ${data.name}`, 'success');
       onDone(data);
     } else if (xhr.status === 401) {
-      setAuthState(false); showPhoneDialog();
+      setAuthState(false); showLoginDialog();
     } else {
       // Server-side validation failures (e.g. wrong-target firmware) return
       // a JSON body with `error` — surface that instead of a bare status.
@@ -1088,7 +1174,7 @@ async function _validateAndUploadAudio(file, uploadFn) {
           setRowSuccess(row, data);
           loadAudio();
         } else if (xhr.status === 401) {
-          setAuthState(false); showPhoneDialog();
+          setAuthState(false); showLoginDialog();
           setRowError(row, file.name, 'Not authorized');
         } else {
           let msg = `Server error ${xhr.status}`;
@@ -1634,9 +1720,111 @@ document.getElementById('devices-refresh-btn')?.addEventListener('click', async 
   }
 });
 
+// ── Users management view (administrator-only) ──────────────────────────────
+
+let _userEditing = null;
+
+function showUserDialog(user) {
+  _userEditing = user ? user.username : null;
+  document.getElementById('user-edit-title').textContent = user ? `Edit ${user.username}` : 'Add User';
+  document.getElementById('user-edit-username').value = user ? user.username : '';
+  document.getElementById('user-edit-username').readOnly = !!user;
+  document.getElementById('user-edit-password').value = '';
+  const perms = (user && user.permissions) || {};
+  document.getElementById('user-edit-administrator').checked  = !!perms.administrator;
+  document.getElementById('user-edit-webAccess').checked      = !!perms.webAccess;
+  document.getElementById('user-edit-manifestAccess').checked = !!perms.manifestAccess;
+  showAuthError('user-edit-error', '');
+  document.getElementById('user-edit-dialog').classList.remove('hidden');
+}
+function hideUserDialog() {
+  document.getElementById('user-edit-dialog').classList.add('hidden');
+  _userEditing = null;
+}
+
+document.getElementById('users-create-btn').addEventListener('click', () => showUserDialog(null));
+document.getElementById('user-edit-cancel').addEventListener('click', hideUserDialog);
+document.getElementById('user-edit-save').addEventListener('click', async () => {
+  const username    = document.getElementById('user-edit-username').value.trim();
+  const password    = document.getElementById('user-edit-password').value;
+  const permissions = {
+    administrator:  document.getElementById('user-edit-administrator').checked,
+    webAccess:      document.getElementById('user-edit-webAccess').checked,
+    manifestAccess: document.getElementById('user-edit-manifestAccess').checked,
+  };
+  showAuthError('user-edit-error', '');
+  try {
+    if (_userEditing) {
+      const body = { permissions };
+      if (password) body.password = password;
+      const res = await apiFetch(`/ota/auth/users/${encodeURIComponent(_userEditing)}`, { method: 'PATCH', body: JSON.stringify(body) });
+      const data = await res.json();
+      if (data.ok) { hideUserDialog(); loadUsers(); toast('User updated', 'success'); }
+    } else {
+      if (!password) { showAuthError('user-edit-error', 'Password required for new user'); return; }
+      const res = await apiFetch('/ota/auth/users', { method: 'POST', body: JSON.stringify({ username, password, permissions }) });
+      const data = await res.json();
+      if (data.ok) { hideUserDialog(); loadUsers(); toast('User created', 'success'); }
+    }
+  } catch (e) {
+    showAuthError('user-edit-error', e.message || 'Save failed');
+  }
+});
+
+async function loadUsers() {
+  const tbody = document.getElementById('users-tbody');
+  if (!tbody) return;
+  try {
+    const res  = await apiFetch('/ota/auth/users');
+    const data = await res.json();
+    tbody.innerHTML = '';
+    if (!data.users || data.users.length === 0) {
+      tbody.innerHTML = '<tr class="empty-row"><td colspan="6">No users</td></tr>';
+      return;
+    }
+    for (const u of data.users) {
+      const tr = document.createElement('tr');
+      const last = u.lastLoginAt ? new Date(u.lastLoginAt).toLocaleString() : '—';
+      const flag = (b) => b ? '✓' : '';
+      tr.innerHTML = `
+        <td class="device-mac">${u.username}${u.mustChangePassword ? ' <span class="text-muted">(must change)</span>' : ''}</td>
+        <td>${flag(u.permissions.administrator)}</td>
+        <td>${flag(u.permissions.webAccess)}</td>
+        <td>${flag(u.permissions.manifestAccess)}</td>
+        <td>${last}</td>
+        <td>
+          <button class="btn btn-secondary btn-sm" data-action="edit"   data-user="${u.username}">Edit</button>
+          <button class="btn btn-warn btn-sm"      data-action="delete" data-user="${u.username}">Delete</button>
+        </td>
+      `;
+      tbody.appendChild(tr);
+    }
+    tbody.onclick = async (e) => {
+      const btn = e.target.closest('button[data-action]');
+      if (!btn) return;
+      const username = btn.dataset.user;
+      const user = data.users.find(x => x.username === username);
+      if (btn.dataset.action === 'edit') {
+        showUserDialog(user);
+      } else if (btn.dataset.action === 'delete') {
+        if (!confirm(`Delete user "${username}"? Their sessions will be invalidated.`)) return;
+        try {
+          await apiFetch(`/ota/auth/users/${encodeURIComponent(username)}`, { method: 'DELETE' });
+          loadUsers();
+          toast(`User ${username} deleted`, 'success');
+        } catch (err) {
+          toast(err.message || 'Delete failed', 'error');
+        }
+      }
+    };
+  } catch (e) {
+    tbody.innerHTML = `<tr class="empty-row"><td colspan="6">Failed to load: ${e.message}</td></tr>`;
+  }
+}
+
 // ── Tab navigation ────────────────────────────────────────────────────────────
 
-const TAB_IDS = ['devices', 'firmware', 'audio', 'files', 'reports'];
+const TAB_IDS = ['devices', 'firmware', 'audio', 'files', 'reports', 'users'];
 
 // Per-tab freshness timestamps — each loadX sets these, showTab() uses them to
 // skip redundant fetches when toggling between tabs quickly.
@@ -1649,6 +1837,7 @@ const _tabLoaders = {
   audio:    loadAudio,
   files:    loadFiles,
   reports:  () => { loadReports(); loadReportsStats(); },
+  users:    loadUsers,
 };
 
 function showTab(id) {
@@ -1701,7 +1890,7 @@ async function init() {
   // 401 handler takes care of showing the dialog, and bootstrap() returns
   // false, so we don't need to re-trigger it here.
   const ok = await bootstrap();
-  if (!ok && !authToken) showPhoneDialog();
+  if (!ok && !authToken) showLoginDialog();
 }
 
 init();
@@ -1856,7 +2045,7 @@ let _sseBackoff = 1000;
         authToken = '';
         sessionStorage.removeItem(STORAGE_KEY);
         if (_expireTimer) { clearTimeout(_expireTimer); _expireTimer = null; }
-        showPhoneDialog();
+        showLoginDialog();
       }, 300); // slight delay so the DELETE response reaches the browser first
     } catch (_) {}
   };

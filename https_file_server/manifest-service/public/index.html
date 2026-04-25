@@ -10,23 +10,28 @@
 </head>
 <body>
 
-<!-- Auth step 1: phone entry -->
-<div id="auth-dialog" class="hidden">
+<!-- Login dialog -->
+<div id="auth-login-dialog" class="hidden">
   <div class="auth-box">
-    <h2>Admin Access</h2>
-    <p>Enter your mobile number to receive a verification code.</p>
-    <input type="tel" id="auth-phone" placeholder="+1 604 555 0100" autocomplete="tel">
-    <button class="btn btn-primary" id="auth-phone-submit">Send Code</button>
+    <h2>Sign In</h2>
+    <p>Enter your username and password.</p>
+    <input type="text" id="auth-login-username" placeholder="username" autocomplete="username" autocapitalize="off" spellcheck="false">
+    <input type="password" id="auth-login-password" placeholder="password" autocomplete="current-password">
+    <p id="auth-login-error" class="auth-error hidden"></p>
+    <button class="btn btn-primary" id="auth-login-submit">Sign In</button>
   </div>
 </div>
 
-<!-- Auth step 2: code entry — only shown if phone is accepted -->
-<div id="auth-code-dialog" class="hidden">
+<!-- Forced password change dialog (mustChangePassword=true on the session) -->
+<div id="auth-changepw-dialog" class="hidden">
   <div class="auth-box">
-    <h2>Enter Code</h2>
-    <p>A 6-digit code was sent to your phone.</p>
-    <input type="text" id="auth-code" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
-    <button class="btn btn-primary" id="auth-code-submit">Verify</button>
+    <h2>Change Password</h2>
+    <p>Your account requires a new password before you can continue.</p>
+    <input type="password" id="auth-changepw-current" placeholder="current password" autocomplete="current-password">
+    <input type="password" id="auth-changepw-new"     placeholder="new password (min 8 chars)" autocomplete="new-password">
+    <input type="password" id="auth-changepw-confirm" placeholder="confirm new password" autocomplete="new-password">
+    <p id="auth-changepw-error" class="auth-error hidden"></p>
+    <button class="btn btn-primary" id="auth-changepw-submit">Change Password</button>
   </div>
 </div>
 
@@ -38,10 +43,12 @@
   <a href="#audio"    data-tab="audio">Audio</a>
   <a href="#files"    data-tab="files">Files</a>
   <a href="#reports"  data-tab="reports">Reports</a>
+  <a href="#users"    data-tab="users" id="nav-users-link">Users</a>
   <button id="btn-terminate-sessions" class="btn btn-warn btn-sm" title="Terminate all active sessions on both servers">Terminate Sessions</button>
+  <button id="btn-logout" class="btn btn-secondary btn-sm" title="Sign out of this browser session">Sign Out</button>
   <div id="auth-indicator">
     <div id="auth-dot"></div>
-    <span id="auth-label">not authenticated</span>
+    <span id="auth-label" title="signed in as">not authenticated</span>
   </div>
   <div id="device-count-badge" class="device-count">
     <div id="device-count-dot" class="device-count-dot"></div>
@@ -272,7 +279,49 @@
     </div>
   </section>
 
+  <!-- ── Users (administrator-only) ── -->
+  <section class="section" id="users" hidden>
+    <div class="section-header">
+      <span class="section-title">Users</span>
+      <button class="btn btn-primary btn-sm" id="users-create-btn">Add User</button>
+    </div>
+    <div class="section-body">
+      <table class="file-table" id="users-table">
+        <thead>
+          <tr>
+            <th>Username</th>
+            <th>Administrator</th>
+            <th>Web</th>
+            <th>Manifest</th>
+            <th>Last Login</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody id="users-tbody">
+          <tr class="empty-row"><td colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
 </div><!-- /page -->
+
+<!-- Add/edit user dialog (administrator-only) -->
+<div id="user-edit-dialog" class="hidden">
+  <div class="auth-box">
+    <h2 id="user-edit-title">Add User</h2>
+    <input type="text"     id="user-edit-username" placeholder="username" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <input type="password" id="user-edit-password" placeholder="password (leave blank to keep)" autocomplete="new-password">
+    <label class="user-perm"><input type="checkbox" id="user-edit-administrator">  Administrator</label>
+    <label class="user-perm"><input type="checkbox" id="user-edit-webAccess">      Web access</label>
+    <label class="user-perm"><input type="checkbox" id="user-edit-manifestAccess"> Admin access</label>
+    <p id="user-edit-error" class="auth-error hidden"></p>
+    <div class="user-edit-buttons">
+      <button class="btn btn-secondary" id="user-edit-cancel">Cancel</button>
+      <button class="btn btn-primary"   id="user-edit-save">Save</button>
+    </div>
+  </div>
+</div>
 
 <!-- Toast container -->
 <div id="toast-container"></div>

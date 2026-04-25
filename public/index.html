@@ -18,23 +18,38 @@
   <link rel="stylesheet" href="/css/status.css">
 </head>
 <body>
-  <!-- Auth step 1: phone entry -->
-  <div id="auth-phone-dialog" class="auth-overlay hidden">
+  <!-- Login dialog -->
+  <div id="auth-login-dialog" class="auth-overlay hidden">
     <div class="auth-box">
       <h2>SignalFi Control</h2>
-      <p>Enter your mobile number to receive a verification code.</p>
-      <input type="tel" id="auth-phone" placeholder="+1 604 555 0100" autocomplete="tel">
-      <button class="auth-btn" id="auth-phone-submit">Send Code</button>
+      <p>Sign in to continue.</p>
+      <input type="text"     id="auth-login-username" placeholder="username" autocomplete="username" autocapitalize="off" spellcheck="false">
+      <input type="password" id="auth-login-password" placeholder="password" autocomplete="current-password">
+      <p id="auth-login-error" class="auth-error hidden"></p>
+      <button class="auth-btn" id="auth-login-submit">Sign In</button>
     </div>
   </div>
 
-  <!-- Auth step 2: code entry -->
-  <div id="auth-code-dialog" class="auth-overlay hidden">
+  <!-- Forced password change dialog -->
+  <div id="auth-changepw-dialog" class="auth-overlay hidden">
     <div class="auth-box">
-      <h2>Enter Code</h2>
-      <p>A 6-digit code was sent to your phone.</p>
-      <input type="text" id="auth-code" placeholder="000000" maxlength="6" autocomplete="one-time-code" inputmode="numeric">
-      <button class="auth-btn" id="auth-code-submit">Verify</button>
+      <h2>Change Password</h2>
+      <p>Your account requires a new password before you can continue.</p>
+      <input type="password" id="auth-changepw-current" placeholder="current password" autocomplete="current-password">
+      <input type="password" id="auth-changepw-new"     placeholder="new password (min 8 chars)" autocomplete="new-password">
+      <input type="password" id="auth-changepw-confirm" placeholder="confirm new password" autocomplete="new-password">
+      <p id="auth-changepw-error" class="auth-error hidden"></p>
+      <button class="auth-btn" id="auth-changepw-submit">Change Password</button>
+    </div>
+  </div>
+
+  <!-- Access-denied screen — shown to authenticated users without webAccess -->
+  <div id="auth-denied-dialog" class="auth-overlay hidden">
+    <div class="auth-box">
+      <h2>Access Denied</h2>
+      <p>Your account does not have permission to use SignalFi Control.</p>
+      <p>Ask an administrator to grant the <em>Web access</em> permission, then sign in again.</p>
+      <button class="auth-btn" id="auth-denied-signout">Sign Out</button>
     </div>
   </div>
 

@@ -22,8 +22,8 @@ const FILES_ROOT        = process.env.FILES_ROOT        || '/opt/signalfi/files/
 const FILES_BASE_URL    = process.env.FILES_BASE_URL    || 'http://apis.symphonyinteractive.ca';
 const FILES_PATH_PREFIX = process.env.FILES_PATH_PREFIX || '/ota/v1';
 const ADMIN_TOKEN       = process.env.ADMIN_TOKEN       || '';
-const NODERED_AUTH_URL  = process.env.NODERED_AUTH_URL  || '';
 const CONTROL_SERVER_URL = process.env.CONTROL_SERVER_URL || '';
+const AIRGAP_BOOTSTRAP_RESET = process.env.AIRGAP_BOOTSTRAP_RESET === 'true' || process.env.AIRGAP_BOOTSTRAP_RESET === '1';
 const MQTT_BROKER       = process.env.MQTT_BROKER_URL   || 'mqtt://signalfi-svc:OtaService2024!@mosquitto:1883';
 const MQTT_PREFIX       = process.env.MQTT_TOPIC_PREFIX || 'scout';
 const DEVICE_MODEL      = process.env.DEVICE_MODEL      || 'SSH-100';
@@ -49,9 +49,9 @@ console.log(`[manifest] reports root:   ${REPORTS_ROOT}`);
 console.log(`[manifest] config root:    ${CONFIG_ROOT}`);
 console.log(`[manifest] mqtt broker:    ${MQTT_BROKER}`);
 console.log(`[manifest] mqtt prefix:    ${MQTT_PREFIX}`);
-console.log(`[manifest] admin token:    ${ADMIN_TOKEN ? 'set' : 'unset'}`);
-console.log(`[manifest] nodered auth:   ${NODERED_AUTH_URL || 'UNSET — SMS auth disabled'}`);
-if (!ADMIN_TOKEN && !NODERED_AUTH_URL) console.warn('[manifest] WARNING: no auth configured — admin API is open');
+console.log(`[manifest] admin token:    ${ADMIN_TOKEN ? 'set (DEPRECATED — migrate to per-user accounts)' : 'unset'}`);
+console.log(`[manifest] control srv:    ${CONTROL_SERVER_URL || 'unset'}`);
+if (AIRGAP_BOOTSTRAP_RESET) console.warn('[manifest] AIRGAP_BOOTSTRAP_RESET=true — users.json will be reset to admin/admin on startup');
 
 // ── CRC32 (IEEE 802.3 / standard, inline — no extra dependency) ───────────────
 
@@ -592,170 +592,203 @@ function validateToken(token) {
 }
 
 
-// ── OTP / SMS auth ────────────────────────────────────────────────────────────
+// ── Account-based auth ────────────────────────────────────────────────────────
+//
+// Manifest is the auth authority for the entire stack.  Users live in
+// /opt/signalfi/auth/users.json (auth/userStore.js); sessions live
+// in-memory (auth/middleware.js).  signalfi-web validates tokens by
+// calling /ota/auth/check over the docker network.
 
-const OTP_TTL_MS       = 5  * 60 * 1000;   // OTP expires after 5 min
-const SESSION_TTL_MS   = 365 * 24 * 60 * 60 * 1000; // effectively permanent (browser sessionStorage clears on refresh)
-const OTP_MAX_ATTEMPTS = 5;
+const userStore = require('./auth/userStore');
+const authMw    = require('./auth/middleware');
 
-const otpStore     = new Map(); // normPhone → {code, expiresAt, attempts}
-const sessionStore = new Map(); // token     → {phone, expiresAt}
+userStore.bootstrapIfNeeded({ forceReset: AIRGAP_BOOTSTRAP_RESET });
 
-function normPhone(p) { return p.replace(/\D/g, ''); }
-function genOtp()     { return String(Math.floor(100000 + Math.random() * 900000)); }
-function genSession() { return crypto.randomBytes(32).toString('hex'); }
+// Token extraction that also honours `?t=` for browser <audio src>
+// elements (browsers can't set Authorization on media src URLs).
+function bearerFromReq(req) {
+  const fromHeader = authMw.bearerOf(req);
+  if (fromHeader) return fromHeader;
+  return (typeof req.query?.t === 'string' && req.query.t) || null;
+}
 
-// Prune expired entries once a minute
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of otpStore)     if (v.expiresAt < now) otpStore.delete(k);
-  for (const [k, v] of sessionStore) if (v.expiresAt < now) sessionStore.delete(k);
-}, 60_000);
+// requireAuth: bearer must resolve to a live session or to the
+// deprecated ADMIN_TOKEN.  Attaches req.user.
+function requireAuth(req, res, next) {
+  const bearer = bearerFromReq(req);
+  if (!bearer) return res.status(401).json({ error: 'auth required' });
+  if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) {
+    if (!global.__warnedAdminToken) {
+      console.warn(`[auth] DEPRECATED: ADMIN_TOKEN bearer used. Migrate to a per-user account; ADMIN_TOKEN will be removed in the next release.`);
+      global.__warnedAdminToken = true;
+    }
+    req.user = { username: '__admin_token__', permissions: { administrator: true, webAccess: true, manifestAccess: true }, mustChangePassword: false };
+    req.isAdminToken = true;
+    return next();
+  }
+  const sess = authMw.getSession(bearer);
+  if (!sess) return res.status(401).json({ error: 'invalid token' });
+  req.user  = sess;
+  req.token = bearer;
+  return next();
+}
 
-// POST /ota/admin/auth/request  {phone}
-// Generates OTP, posts {phone, code} to Node-RED for whitelist check + SMS delivery.
-// Returns {accepted:true} only if Node-RED confirms the number is allowed.
-// Silent {accepted:false} for unknown numbers — no distinguishing error body.
-app.post('/ota/admin/auth/request', async (req, res) => {
-  const raw   = String(req.body?.phone || '').trim();
-  const phone = normPhone(raw);
-  if (phone.length < 7 || phone.length > 15) return res.json({ accepted: false });
+function requireAdministrator(req, res, next) {
+  if (!req.user || !req.user.permissions || !req.user.permissions.administrator) {
+    return res.status(403).json({ error: 'requires administrator' });
+  }
+  return next();
+}
 
-  if (!NODERED_AUTH_URL) {
-    console.warn('[auth] NODERED_AUTH_URL not set — cannot deliver OTP');
-    return res.json({ accepted: false });
+// ── /ota/auth/* — login, session, account management ─────────────────────────
+
+// POST /ota/auth/login {username, password}
+app.post('/ota/auth/login', (req, res) => {
+  const username = String(req.body?.username || '').trim();
+  const password = String(req.body?.password || '');
+  if (!username || !password) return res.status(400).json({ error: 'username and password required' });
+
+  if (authMw.isLockedOut(username)) {
+    return res.status(423).json({ error: 'locked', message: 'Too many failed attempts; try again in 15 minutes' });
   }
 
-  const code = genOtp();
-  otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
+  const u = userStore.getUser(username);
+  if (!u || !userStore.verifyPassword(u, password)) {
+    authMw.recordFailedLogin(username);
+    return res.status(401).json({ error: 'invalid credentials' });
+  }
+  authMw.clearFailedLogins(username);
+
+  const { token, expiresAt } = authMw.createSession(username);
+  userStore.recordLogin(username);
+  console.log(`[auth] login ok: ${username} (expires ${new Date(expiresAt).toISOString()})`);
+
+  return res.json({
+    token,
+    expiresAt,
+    username,
+    permissions:        userStore.normalizePermissions(u.permissions),
+    mustChangePassword: !!u.mustChangePassword,
+  });
+});
+
+// POST /ota/auth/change-password {currentPassword, newPassword}
+app.post('/ota/auth/change-password', requireAuth, (req, res) => {
+  if (req.isAdminToken) return res.status(400).json({ error: 'cannot change ADMIN_TOKEN password' });
+  const currentPassword = String(req.body?.currentPassword || '');
+  const newPassword     = String(req.body?.newPassword     || '');
+
+  const u = userStore.getUser(req.user.username);
+  if (!u || !userStore.verifyPassword(u, currentPassword)) {
+    return res.status(401).json({ error: 'current password incorrect' });
+  }
+  const policyErr = userStore.passwordPolicyError(req.user.username, newPassword);
+  if (policyErr) return res.status(400).json({ error: policyErr });
 
   try {
-    const nr = await fetch(NODERED_AUTH_URL, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ phone: raw, code, origin: 'signalfi-admin' }),
-      signal:  AbortSignal.timeout(8000),
-    });
-    console.log(`[auth] Node-RED response: ${nr.status}`);
-    if (nr.ok) {
-      const body = await nr.json().catch(() => ({}));
-      const ttl  = Number(body.ttl) || 0;
-      if (ttl > 0 && otpStore.has(phone)) otpStore.get(phone).sessionTtl = ttl * 1000;
-      console.log(`[auth] OTP sent to ${raw}${ttl ? ` (session TTL ${ttl}s)` : ''}`);
-      return res.json({ accepted: true });
-    }
-    otpStore.delete(phone);
-    return res.json({ accepted: false });
+    userStore.updateUser(req.user.username, { password: newPassword });
   } catch (err) {
-    console.error('[auth] Node-RED request failed:', err.message);
-    otpStore.delete(phone);
-    return res.json({ accepted: false });
+    return res.status(400).json({ error: err.message });
   }
+  console.log(`[auth] password changed for ${req.user.username}`);
+  return res.json({ ok: true });
 });
 
-// POST /ota/admin/auth/verify  {phone, code}
-// Validates OTP. On success, issues an 8-hour session token.
-app.post('/ota/admin/auth/verify', (req, res) => {
-  const raw   = String(req.body?.phone || '').trim();
-  const phone = normPhone(raw);
-  const code  = String(req.body?.code  || '').trim();
-
-  const entry = otpStore.get(phone);
-  if (!entry || entry.expiresAt < Date.now()) {
-    return res.status(401).json({ error: 'expired' });
+// POST /ota/auth/logout — invalidate this token
+app.post('/ota/auth/logout', requireAuth, (req, res) => {
+  if (req.token) {
+    authMw.destroySession(req.token);
+    authMw.forwardLogoutToWeb(req.token).catch(() => {});
   }
-
-  entry.attempts++;
-  if (entry.attempts > OTP_MAX_ATTEMPTS) {
-    otpStore.delete(phone);
-    return res.status(429).json({ error: 'too many attempts' });
-  }
-
-  if (entry.code !== code) return res.status(401).json({ error: 'invalid' });
-
-  const ttlMs     = entry.sessionTtl || SESSION_TTL_MS;
-  const expiresAt = Date.now() + ttlMs;
-  otpStore.delete(phone);
-  const token = genSession();
-  sessionStore.set(token, { phone: raw, expiresAt });
-  console.log(`[auth] session issued for ${raw} (expires ${new Date(expiresAt).toISOString()})`);
-  return res.json({ token, expiresAt });
+  return res.json({ ok: true });
 });
 
-// GET /ota/admin/auth/check  — lightweight session validity probe
-app.get('/ota/admin/auth/check', (req, res) => {
-  // Air-gap deployments set DISABLE_OTP=true; the admin UI trusts this
-  // response to skip the phone dialog on page load.
-  if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') {
-    return res.json({ valid: true, expiresAt: null, otpDisabled: true });
-  }
-  const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
-  const bearer = match ? match[1] : '';
-  if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) return res.json({ valid: true, expiresAt: null });
-  const session = sessionStore.get(bearer);
-  if (session && session.expiresAt > Date.now()) return res.json({ valid: true, expiresAt: session.expiresAt });
-  return res.status(401).json({ valid: false });
+// GET /ota/auth/check — bearer-only validity probe; web's authClient calls
+// this on every uncached request to validate cross-service tokens.
+app.get('/ota/auth/check', requireAuth, (req, res) => {
+  return res.json({
+    valid:              true,
+    username:           req.user.username,
+    permissions:        req.user.permissions,
+    expiresAt:          req.user.expiresAt || null,
+    mustChangePassword: !!req.user.mustChangePassword,
+  });
 });
 
-// DELETE /ota/admin/auth/sessions  — terminate all sessions on both services
-app.delete('/ota/admin/auth/sessions', (req, res) => {
-  // Requires adminAuth inline (middleware not yet mounted at this point)
-  if (ADMIN_TOKEN) {
-    const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
-    const bearer = match ? match[1] : '';
-    if (bearer !== ADMIN_TOKEN) {
-      const session = sessionStore.get(bearer);
-      if (!session || session.expiresAt <= Date.now()) {
-        return res.status(401).json({ error: 'Unauthorized' });
-      }
-    }
-  }
-
-  const count = sessionStore.size;
-  sessionStore.clear();
-  console.log(`[auth] all sessions terminated (${count} cleared)`);
-
-  // Push session-terminated to all connected admin SSE clients
+// DELETE /ota/auth/sessions — admin: clear every session everywhere
+app.delete('/ota/auth/sessions', requireAuth, requireAdministrator, (req, res) => {
+  const count = authMw.destroyAllSessions();
+  console.log(`[auth] all sessions terminated by ${req.user.username} (${count} cleared)`);
   sseEmit('session-terminated', {});
-
-  // Also clear control server sessions and push WS notification there
-  if (CONTROL_SERVER_URL) {
-    fetch(`${CONTROL_SERVER_URL}/auth/sessions`, {
-      method: 'DELETE',
-      signal: AbortSignal.timeout(5000),
-    }).then(r => {
-      console.log(`[auth] control server sessions cleared (${r.status})`);
-    }).catch(err => {
-      console.error('[auth] failed to clear control server sessions:', err.message);
-    });
-  }
-
-  res.json({ cleared: count });
+  authMw.forwardLogoutToWeb(null, { all: true }).catch(() => {});
+  return res.json({ cleared: count });
 });
 
-// ── Admin auth middleware ─────────────────────────────────────────────────────
+// ── Users CRUD (administrator-only) ──────────────────────────────────────────
 
+app.get('/ota/auth/users', requireAuth, requireAdministrator, (_req, res) => {
+  return res.json({ users: userStore.listUsers() });
+});
+
+app.post('/ota/auth/users', requireAuth, requireAdministrator, (req, res) => {
+  const { username, password, permissions } = req.body || {};
+  try {
+    userStore.createUser({ username, password, permissions, mustChangePassword: false });
+    console.log(`[auth] user created: ${username} by ${req.user.username}`);
+    return res.status(201).json({ ok: true, user: userStore.listUsers().find(u => u.username === username) });
+  } catch (err) {
+    const status = err.code === 'exists' ? 409
+                 : err.code === 'invalid-username' || err.code === 'weak' ? 400 : 500;
+    return res.status(status).json({ error: err.message, code: err.code });
+  }
+});
+
+app.patch('/ota/auth/users/:username', requireAuth, requireAdministrator, (req, res) => {
+  const target = req.params.username;
+  const { password, permissions } = req.body || {};
+  try {
+    userStore.updateUser(target, { password, permissions });
+    if (password) authMw.destroySessionsForUser(target);
+    console.log(`[auth] user updated: ${target} by ${req.user.username} (password=${!!password}, perms=${!!permissions})`);
+    return res.json({ ok: true, user: userStore.listUsers().find(u => u.username === target) });
+  } catch (err) {
+    const status = err.code === 'not-found' ? 404
+                 : err.code === 'last-admin' ? 409
+                 : err.code === 'weak' ? 400 : 500;
+    return res.status(status).json({ error: err.message, code: err.code });
+  }
+});
+
+app.delete('/ota/auth/users/:username', requireAuth, requireAdministrator, (req, res) => {
+  const target = req.params.username;
+  try {
+    userStore.deleteUser(target);
+    authMw.destroySessionsForUser(target);
+    console.log(`[auth] user deleted: ${target} by ${req.user.username}`);
+    return res.json({ ok: true });
+  } catch (err) {
+    const status = err.code === 'not-found' ? 404
+                 : err.code === 'last-admin' ? 409 : 500;
+    return res.status(status).json({ error: err.message, code: err.code });
+  }
+});
+
+// ── Admin-API guard ───────────────────────────────────────────────────────────
+
+// adminAuth: bearer + manifestAccess + (mustChangePassword === false).
+// Used by `app.use('/ota/admin/api', adminAuth)` below.  Synthetic
+// admin-token sessions bypass the password-change gate (they're for
+// scripts).
 function adminAuth(req, res, next) {
-  // Air-gap escape hatch: deployments without SMS connectivity set
-  // DISABLE_OTP=true to bypass phone-code auth entirely.  Static
-  // ADMIN_TOKEN still works if set.  Never ship a production image with
-  // this flag — it exists so offline installs can use the admin UI.
-  if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') return next();
-
-  // Dev mode: no auth configured at all
-  if (!ADMIN_TOKEN && !NODERED_AUTH_URL) return next();
-
-  const match  = (req.headers['authorization'] || '').match(/^Bearer\s+(.+)$/);
-  const bearer = match ? match[1] : (req.query.t || '');
-
-  // Legacy / programmatic: static ADMIN_TOKEN (also accepts ?t= for audio src)
-  if (ADMIN_TOKEN && bearer === ADMIN_TOKEN) return next();
-
-  // SMS-issued session token
-  const session = sessionStore.get(bearer);
-  if (session && session.expiresAt > Date.now()) return next();
-
-  return res.status(401).json({ error: 'Unauthorized' });
+  return requireAuth(req, res, () => {
+    if (!req.isAdminToken && req.user.mustChangePassword) {
+      return res.status(403).json({ error: 'password-change-required' });
+    }
+    if (!req.user.permissions || !req.user.permissions.manifestAccess) {
+      return res.status(403).json({ error: 'requires manifestAccess' });
+    }
+    return next();
+  });
 }
 
 // ── Admin static UI ───────────────────────────────────────────────────────────

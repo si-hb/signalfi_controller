@@ -645,8 +645,9 @@ body {
 .token-table tr:last-child td { border-bottom: none; }
 
 /* ── Auth dialog ── */
-#auth-dialog,
-#auth-code-dialog {
+#auth-login-dialog,
+#auth-changepw-dialog,
+#user-edit-dialog {
   position: fixed;
   inset: 0;
   background: rgba(0,0,0,0.75);
@@ -656,8 +657,35 @@ body {
   z-index: 200;
 }
 
-#auth-dialog.hidden,
-#auth-code-dialog.hidden { display: none; }
+#auth-login-dialog.hidden,
+#auth-changepw-dialog.hidden,
+#user-edit-dialog.hidden { display: none; }
+
+/* Inline error message slot inside auth dialogs */
+.auth-error {
+  color: var(--danger);
+  font-size: 12px;
+  margin: 0;
+  padding: 6px 0;
+}
+.auth-error.hidden { display: none; }
+
+/* User-edit dialog permission rows + button row */
+.user-perm {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.user-perm input[type="checkbox"] { width: auto; margin: 0; }
+.user-edit-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
 
 .auth-box {
   background: var(--bg-panel);
@@ -685,14 +713,7 @@ body {
 }
 
 .auth-box input:focus { border-color: var(--accent-bright); }
-
-#auth-code {
-  font-family: var(--font-mono);
-  font-size: 26px;
-  letter-spacing: 0.25em;
-  text-align: center;
-  padding: 12px;
-}
+.auth-box input[readonly] { opacity: 0.7; }
 
 /* ── Toast ── */
 #toast-container {

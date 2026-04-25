@@ -56,76 +56,83 @@ function loadConfig() {
       audioDir: process.env.AUDIO_DIR || fileConfig.paths?.audioDir || './audio',
     },
     auth: {
-      token:        process.env.AUTH_TOKEN        || fileConfig.auth?.token        || '',
-      noderedAuthUrl: process.env.NODERED_AUTH_URL || fileConfig.auth?.noderedAuthUrl || '',
+      token: process.env.AUTH_TOKEN || fileConfig.auth?.token || '',
     },
   };
 }
 
 // ---------------------------------------------------------------------------
-// OTP / SMS auth store (in-memory, per process lifetime)
+// Authentication — delegate to signalfi-manifest via authClient
 // ---------------------------------------------------------------------------
-const crypto = require('crypto');
+//
+// Web doesn't store user records.  authClient.checkToken() asks manifest
+// to validate the bearer (with a 60-second cache).  Permission gate
+// here is webAccess; manifest owns the user database and permission
+// flags themselves.  AUTH_TOKEN (deprecated) is honoured as a static
+// bearer for one release so existing scripts keep working — tracked
+// inside authClient via the manifest-side ADMIN_TOKEN forwarder.
 
-const OTP_TTL_MS       = 5  * 60 * 1000;
-const SESSION_TTL_MS   = 365 * 24 * 60 * 60 * 1000; // permanent — browser sessionStorage clears on refresh
-const OTP_MAX_ATTEMPTS = 5;
+const authClient = require('./authClient');
 
-const otpStore     = new Map(); // normPhone → { code, expiresAt, attempts }
-const sessionStore = new Map(); // token     → { phone, expiresAt }
+const AUTH_TOKEN = process.env.AUTH_TOKEN || '';
+let warnedAuthToken = false;
 
-function normPhone(p) { return p.replace(/\D/g, ''); }
-function genOtp()     { return String(Math.floor(100000 + Math.random() * 900000)); }
-function genSession() { return crypto.randomBytes(32).toString('hex'); }
+// Returns { valid, status, permissions, username, mustChangePassword }.
+// Falls through to a cache-aware manifest validation; static AUTH_TOKEN
+// (deprecated) is treated as a synthetic webAccess+admin session.
+async function validateBearer(bearer) {
+  if (!bearer) return { valid: false, status: 401 };
+  if (AUTH_TOKEN && bearer === AUTH_TOKEN) {
+    if (!warnedAuthToken) {
+      console.warn(`[${ts()}] [AUTH] DEPRECATED: AUTH_TOKEN bearer used. Migrate to a per-user account; AUTH_TOKEN will be removed in the next release.`);
+      warnedAuthToken = true;
+    }
+    return {
+      valid: true,
+      username: '__auth_token__',
+      permissions: { administrator: true, webAccess: true, manifestAccess: true },
+      mustChangePassword: false,
+      isAuthToken: true,
+    };
+  }
+  return authClient.checkToken(bearer);
+}
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, v] of otpStore)     if (v.expiresAt < now) otpStore.delete(k);
-  for (const [k, v] of sessionStore) if (v.expiresAt < now) sessionStore.delete(k);
-}, 60_000);
-
-// ---------------------------------------------------------------------------
-// Authentication middleware — Bearer token or SMS session
-// ---------------------------------------------------------------------------
-function createAuthMiddleware(config) {
-  return (req, res, next) => {
-    // Air-gap escape hatch: deployments without SMS connectivity set
-    // DISABLE_OTP=true to bypass phone-code auth entirely.  Static
-    // ADMIN_TOKEN still works if set.  Never ship a production image with
-    // this flag — it exists so offline installs can use the admin UI.
-    if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') return next();
-    if (!config.auth.token && !config.auth.noderedAuthUrl) return next();
-
+// Express middleware factory — same shape the routes previously expected.
+function createAuthMiddleware() {
+  return async (req, res, next) => {
     // Allow health checks from localhost without auth
     const ip = req.ip || req.connection.remoteAddress;
     if ((ip === '127.0.0.1' || ip === '::1' || ip === 'localhost') && req.path === '/state') {
       return next();
     }
-
     const authHeader = req.headers.authorization || '';
     const match = authHeader.match(/^Bearer\s+(.+)$/);
     const bearer = match ? match[1] : (req.query.token || '');
-
-    // Legacy static token
-    if (config.auth.token && bearer === config.auth.token) return next();
-
-    // SMS session token
-    const session = sessionStore.get(bearer);
-    if (session && session.expiresAt > Date.now()) return next();
-
-    const now = new Date().toISOString();
-    console.warn(`[${now}] [AUTH] Unauthorized access attempt to ${req.method} ${req.path}`);
-    return res.status(401).json({ error: 'Unauthorized' });
+    const result = await validateBearer(bearer);
+    if (!result.valid) {
+      if (result.upstreamError) return res.status(503).json({ error: 'auth service unreachable' });
+      console.warn(`[${ts()}] [AUTH] Unauthorized ${req.method} ${req.path}`);
+      return res.status(401).json({ error: 'Unauthorized' });
+    }
+    if (!result.isAuthToken && result.mustChangePassword) {
+      return res.status(403).json({ error: 'password-change-required' });
+    }
+    if (!result.permissions || !result.permissions.webAccess) {
+      return res.status(403).json({ error: 'requires webAccess' });
+    }
+    req.user  = result;
+    req.token = bearer;
+    return next();
   };
 }
 
-// Same check used by WebSocket verifyClient
-function isValidToken(config, bearer) {
-  if (process.env.DISABLE_OTP === 'true' || process.env.DISABLE_OTP === '1') return true;
-  if (!config.auth.token && !config.auth.noderedAuthUrl) return true;
-  if (config.auth.token && bearer === config.auth.token) return true;
-  const session = sessionStore.get(bearer);
-  return !!(session && session.expiresAt > Date.now());
+// Used by WebSocket verifyClient — async-friendly.  Returns a boolean.
+async function isValidToken(_config, bearer) {
+  const r = await validateBearer(bearer);
+  if (!r.valid) return false;
+  if (!r.isAuthToken && r.mustChangePassword) return false;
+  return !!(r.permissions && r.permissions.webAccess);
 }
 
 // ---------------------------------------------------------------------------
@@ -466,7 +473,7 @@ async function main() {
   const httpServer = http.createServer(app);
 
   // ---- WebSocket server with auth verification ----
-  function verifyClient(info, callback) {
+  async function verifyClient(info, callback) {
     let bearer = '';
     const authHeader = info.req.headers.authorization || '';
     const match = authHeader.match(/^Bearer\s+(.+)$/);
@@ -475,7 +482,12 @@ async function main() {
       const url = new URL(info.req.url, `http://${info.req.headers.host || 'localhost'}`);
       bearer = url.searchParams.get('token') || '';
     }
-    if (isValidToken(config, bearer)) return callback(true);
+    try {
+      const ok = await isValidToken(config, bearer);
+      if (ok) return callback(true);
+    } catch (err) {
+      console.error(`[${ts()}] [AUTH] WS verifyClient threw: ${err.message}`);
+    }
     const now = new Date().toISOString();
     console.warn(`[${now}] [AUTH] Unauthorized WebSocket upgrade attempt`);
     return callback(false, 401, 'Unauthorized');
@@ -516,81 +528,76 @@ async function main() {
     }, 200);
   }
 
-  // ---- OTP / SMS auth endpoints (unauthenticated) ----
-  app.post('/auth/request', async (req, res) => {
-    const raw   = String(req.body?.phone || '').trim();
-    const phone = normPhone(raw);
-    if (phone.length < 7 || phone.length > 15) return res.json({ accepted: false });
-    if (!config.auth.noderedAuthUrl) {
-      console.warn(`[${ts()}] [AUTH] NODERED_AUTH_URL not set — cannot deliver OTP`);
-      return res.json({ accepted: false });
-    }
-    const code = genOtp();
-    otpStore.set(phone, { code, expiresAt: Date.now() + OTP_TTL_MS, attempts: 0 });
-    res.json({ accepted: true });
-    fetch(config.auth.noderedAuthUrl, {
-      method:  'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify({ phone: raw, code, origin: 'signalfi-control' }),
-      signal:  AbortSignal.timeout(10000),
-    }).then(async nr => {
-      if (nr.ok) {
-        const body = await nr.json().catch(() => ({}));
-        const ttl  = Number(body.ttl) || 0;
-        if (ttl > 0 && otpStore.has(phone)) otpStore.get(phone).sessionTtl = ttl * 1000;
-        console.log(`[${ts()}] [AUTH] OTP sent to ${raw}${ttl ? ` (session TTL ${ttl}s)` : ''}`);
-      } else {
-        console.log(`[${ts()}] [AUTH] OTP rejected by Node-RED for ${raw} (${nr.status})`);
-        otpStore.delete(phone);
-      }
-    }).catch(err => {
-      console.error(`[${ts()}] [AUTH] Node-RED request failed:`, err.message);
-      otpStore.delete(phone);
-    });
-  });
+  // ---- /auth/* — same-origin proxies to signalfi-manifest ----
+  // The browser never talks directly to manifest because of CORS;
+  // these proxies forward the bearer + body and return the manifest
+  // response verbatim.  /auth/invalidate is the back-channel manifest
+  // calls when a user logs out or has their permissions changed.
 
-  app.post('/auth/verify', (req, res) => {
-    const raw   = String(req.body?.phone || '').trim();
-    const phone = normPhone(raw);
-    const code  = String(req.body?.code  || '').trim();
-    const entry = otpStore.get(phone);
-    if (!entry || entry.expiresAt < Date.now()) return res.status(401).json({ error: 'expired' });
-    entry.attempts++;
-    if (entry.attempts > OTP_MAX_ATTEMPTS) {
-      otpStore.delete(phone);
-      return res.status(429).json({ error: 'too many attempts' });
+  async function proxyToManifest(method, path, req, res, { forwardBearer = true } = {}) {
+    const url = `${authClient.MANIFEST_URL}${path}`;
+    const headers = { 'Content-Type': 'application/json' };
+    if (forwardBearer && req.headers.authorization) headers.Authorization = req.headers.authorization;
+    try {
+      const r = await fetch(url, {
+        method,
+        headers,
+        body:   method === 'GET' ? undefined : JSON.stringify(req.body || {}),
+        signal: AbortSignal.timeout(10000),
+      });
+      const body = await r.text();
+      res.status(r.status);
+      res.set('Content-Type', r.headers.get('content-type') || 'application/json');
+      return res.send(body);
+    } catch (err) {
+      console.error(`[${ts()}] [AUTH] proxy ${method} ${path} failed:`, err.message);
+      return res.status(502).json({ error: 'auth service unreachable' });
     }
-    if (entry.code !== code) return res.status(401).json({ error: 'invalid' });
-    const ttlMs     = entry.sessionTtl || SESSION_TTL_MS;
-    const expiresAt = Date.now() + ttlMs;
-    otpStore.delete(phone);
-    const token = genSession();
-    sessionStore.set(token, { phone: raw, expiresAt });
-    console.log(`[${ts()}] [AUTH] Session issued for ${raw} (expires ${new Date(expiresAt).toISOString()})`);
-    return res.json({ token, expiresAt });
-  });
+  }
 
-  // DELETE /auth/sessions — terminate all sessions (internal network only, not exposed via Traefik)
-  app.delete('/auth/sessions', (req, res) => {
-    const count = sessionStore.size;
-    sessionStore.clear();
-    console.log(`[${ts()}] [AUTH] All sessions terminated (${count} cleared)`);
-    // Push to all connected WS clients so they get kicked immediately
+  app.post('/auth/login',           (req, res) => proxyToManifest('POST', '/ota/auth/login', req, res, { forwardBearer: false }));
+  app.post('/auth/change-password', (req, res) => proxyToManifest('POST', '/ota/auth/change-password', req, res));
+  app.post('/auth/logout', async (req, res) => {
+    // Drop our cache entry up front so a quick reconnect doesn't get a
+    // ghost grace-window result, then forward to manifest.
+    const m = (req.headers.authorization || '').match(/^Bearer\s+(.+)$/);
+    if (m) authClient.invalidate(m[1]);
+    return proxyToManifest('POST', '/ota/auth/logout', req, res);
+  });
+  app.get('/auth/check',            (req, res) => proxyToManifest('GET',  '/ota/auth/check', req, res));
+
+  // DELETE /auth/sessions — admin: terminate everything everywhere.
+  app.delete('/auth/sessions', async (req, res) => {
+    authClient.invalidateAll();
     broadcast({ type: 'session-terminated' });
-    res.json({ cleared: count });
+    return proxyToManifest('DELETE', '/ota/auth/sessions', req, res);
   });
 
-  app.get('/auth/check', (req, res) => {
-    const match  = (req.headers.authorization || '').match(/^Bearer\s+(.+)$/);
-    const bearer = match ? match[1] : '';
-    if (config.auth.token && bearer === config.auth.token) return res.json({ valid: true, expiresAt: null });
-    const session = sessionStore.get(bearer);
-    if (session && session.expiresAt > Date.now()) return res.json({ valid: true, expiresAt: session.expiresAt });
-    return res.status(401).json({ valid: false });
+  // POST /auth/invalidate {token?, all?}
+  // Internal-only — manifest calls this on logout/role-change.  No auth
+  // header expected; the docker-network mount is the boundary.  We
+  // refuse public exposure by checking req.ip against a small allowlist.
+  app.post('/auth/invalidate', (req, res) => {
+    const ip = req.ip || req.connection.remoteAddress || '';
+    // Accept loopback + RFC1918 + IPv6-private — manifest is on the
+    // same docker network, never reachable from the public internet.
+    const isInternal = ip === '127.0.0.1' || ip === '::1' || ip.startsWith('::ffff:127.')
+      || /^(::ffff:)?(10\.|192\.168\.|172\.(1[6-9]|2[0-9]|3[0-1])\.)/.test(ip);
+    if (!isInternal) {
+      console.warn(`[${ts()}] [AUTH] /auth/invalidate refused from ${ip}`);
+      return res.status(403).json({ error: 'forbidden' });
+    }
+    if (req.body?.all) {
+      authClient.invalidateAll();
+      broadcast({ type: 'session-terminated' });
+    } else if (req.body?.token) {
+      authClient.invalidate(req.body.token);
+    }
+    return res.json({ ok: true });
   });
 
   // ---- Mount REST routes with auth middleware ----
-  app.use('/api', createAuthMiddleware(config), createRouter(config, state, persistence, broadcast, logStore));
+  app.use('/api', createAuthMiddleware(), createRouter(config, state, persistence, broadcast, logStore));
 
   // ---- WS connection handler ----
   wss.on('connection', (ws, req) => {

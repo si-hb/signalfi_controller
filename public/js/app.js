@@ -26,102 +26,173 @@ export function scheduleRender() {
 // ─── Authentication Setup ─────────────────────────────────────────────────────
 
 const AUTH_SESSION_KEY = 'signalfi-control-session';
-let _pendingPhone  = '';
-let _expireTimer   = null;
+const AUTH_PERMS_KEY   = 'signalfi-control-perms';
+let _expireTimer       = null;
+let _pendingCurrentPw  = ''; // carry login-password into change-pw dialog
 
-function _getStoredToken()    { return sessionStorage.getItem(AUTH_SESSION_KEY) || ''; }
-function _setStoredToken(t)   { sessionStorage.setItem(AUTH_SESSION_KEY, t); }
-function _clearStoredToken()  { sessionStorage.removeItem(AUTH_SESSION_KEY); }
+function _getStoredToken()   { return sessionStorage.getItem(AUTH_SESSION_KEY) || ''; }
+function _setStoredToken(t)  { sessionStorage.setItem(AUTH_SESSION_KEY, t); }
+function _clearStoredToken() {
+  sessionStorage.removeItem(AUTH_SESSION_KEY);
+  sessionStorage.removeItem(AUTH_PERMS_KEY);
+}
 
 function scheduleExpiry(expiresAt) {
   if (_expireTimer) clearTimeout(_expireTimer);
   if (!expiresAt) return;
   const ms = expiresAt - Date.now();
-  if (ms <= 0) { showPhoneDialog(); return; }
+  if (ms <= 0) { showLoginDialog(); return; }
   _expireTimer = setTimeout(() => {
     _clearStoredToken();
     apiSetAuthToken(null);
     wsSetAuthToken(null);
-    showPhoneDialog();
+    showLoginDialog();
   }, ms);
 }
 
 function _showDialog(id)  { document.getElementById(id).classList.remove('hidden'); }
 function _hideDialog(id)  { document.getElementById(id).classList.add('hidden'); }
 
-function showPhoneDialog() {
-  _hideDialog('auth-code-dialog');
-  _showDialog('auth-phone-dialog');
-  document.getElementById('auth-phone').focus();
+function showLoginDialog() {
+  _hideDialog('auth-changepw-dialog');
+  _hideDialog('auth-denied-dialog');
+  _showDialog('auth-login-dialog');
+  document.getElementById('auth-login-error').classList.add('hidden');
+  document.getElementById('auth-login-password').value = '';
+  document.getElementById('auth-login-username').focus();
 }
 
-async function _submitPhone() {
-  const phone = document.getElementById('auth-phone').value.trim();
-  if (!phone) return;
-  const btn = document.getElementById('auth-phone-submit');
-  btn.disabled = true; btn.textContent = 'Sending…';
-  try {
-    const res  = await fetch('/auth/request', {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone }),
-    });
-    const data = await res.json();
-    if (data.accepted) {
-      _pendingPhone = phone;
-      _hideDialog('auth-phone-dialog');
-      _showDialog('auth-code-dialog');
-      document.getElementById('auth-code').focus();
-    }
-    // Silent on rejection — no feedback to bots
-  } catch (_) {}
-  finally { btn.disabled = false; btn.textContent = 'Send Code'; }
+function showChangePasswordDialog({ forced = false } = {}) {
+  _hideDialog('auth-login-dialog');
+  _showDialog('auth-changepw-dialog');
+  document.getElementById('auth-changepw-current').value = _pendingCurrentPw || '';
+  document.getElementById('auth-changepw-current').readOnly = !!forced && !!_pendingCurrentPw;
+  document.getElementById('auth-changepw-new').value     = '';
+  document.getElementById('auth-changepw-confirm').value = '';
+  document.getElementById('auth-changepw-error').classList.add('hidden');
+  document.getElementById('auth-changepw-new').focus();
 }
 
-async function _submitCode() {
-  const code = document.getElementById('auth-code').value.trim();
-  if (code.length !== 6) return;
-  const btn = document.getElementById('auth-code-submit');
-  btn.disabled = true; btn.textContent = 'Verifying…';
+function showAccessDenied() {
+  _hideDialog('auth-login-dialog');
+  _hideDialog('auth-changepw-dialog');
+  _showDialog('auth-denied-dialog');
+}
+
+function _showError(elId, msg) {
+  const el = document.getElementById(elId);
+  if (msg) { el.textContent = msg; el.classList.remove('hidden'); }
+  else      { el.classList.add('hidden'); }
+}
+
+async function _submitLogin() {
+  const username = document.getElementById('auth-login-username').value.trim();
+  const password = document.getElementById('auth-login-password').value;
+  if (!username || !password) return;
+  const btn = document.getElementById('auth-login-submit');
+  btn.disabled = true; btn.textContent = 'Signing in…';
+  _showError('auth-login-error', '');
   try {
-    const res = await fetch('/auth/verify', {
+    const res = await fetch('/auth/login', {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: _pendingPhone, code }),
+      body: JSON.stringify({ username, password }),
     });
-    if (res.ok) {
-      const data = await res.json();
+    const data = await res.json().catch(() => ({}));
+    if (res.ok && data.token) {
       _setStoredToken(data.token);
       apiSetAuthToken(data.token);
       wsSetAuthToken(data.token);
+      sessionStorage.setItem(AUTH_PERMS_KEY, JSON.stringify({
+        username: data.username, permissions: data.permissions, mustChangePassword: data.mustChangePassword,
+      }));
       scheduleExpiry(data.expiresAt);
-      _hideDialog('auth-code-dialog');
+      _hideDialog('auth-login-dialog');
+
+      if (data.mustChangePassword) {
+        _pendingCurrentPw = password;
+        showChangePasswordDialog({ forced: true });
+        return;
+      }
+      if (!data.permissions || !data.permissions.webAccess) {
+        showAccessDenied();
+        return;
+      }
       initApp();
-    } else if (res.status === 429) {
-      _hideDialog('auth-code-dialog');
-      showPhoneDialog();
+    } else if (res.status === 423) {
+      _showError('auth-login-error', data.message || 'Account temporarily locked');
     } else {
-      document.getElementById('auth-code').value = '';
-      document.getElementById('auth-code').focus();
+      _showError('auth-login-error', data.error || 'Invalid credentials');
     }
-  } catch (_) {}
-  finally { btn.disabled = false; btn.textContent = 'Verify'; }
+  } catch (_) { _showError('auth-login-error', 'Sign-in failed'); }
+  finally { btn.disabled = false; btn.textContent = 'Sign In'; }
 }
 
-document.getElementById('auth-phone-submit').addEventListener('click', _submitPhone);
-document.getElementById('auth-phone').addEventListener('keydown', e => { if (e.key === 'Enter') _submitPhone(); });
-document.getElementById('auth-code-submit').addEventListener('click', _submitCode);
-document.getElementById('auth-code').addEventListener('keydown', e => { if (e.key === 'Enter') _submitCode(); });
-document.getElementById('auth-code').addEventListener('input', e => {
-  e.target.value = e.target.value.replace(/\D/g, '').slice(0, 6);
-  if (e.target.value.length === 6) _submitCode();
+async function _submitChangePassword() {
+  const currentPassword = document.getElementById('auth-changepw-current').value;
+  const newPassword     = document.getElementById('auth-changepw-new').value;
+  const confirm         = document.getElementById('auth-changepw-confirm').value;
+  if (!currentPassword || !newPassword) return;
+  if (newPassword !== confirm) {
+    _showError('auth-changepw-error', 'New passwords do not match');
+    return;
+  }
+  const btn = document.getElementById('auth-changepw-submit');
+  btn.disabled = true; btn.textContent = 'Changing…';
+  _showError('auth-changepw-error', '');
+  try {
+    const token = _getStoredToken();
+    const res   = await fetch('/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (res.ok) {
+      _hideDialog('auth-changepw-dialog');
+      _pendingCurrentPw = '';
+      // Re-check session — mustChangePassword should now be false
+      const checkRes  = await fetch('/auth/check', { headers: { 'Authorization': `Bearer ${token}` } });
+      const checkData = await checkRes.json().catch(() => ({}));
+      sessionStorage.setItem(AUTH_PERMS_KEY, JSON.stringify(checkData));
+      if (!checkData.permissions || !checkData.permissions.webAccess) {
+        showAccessDenied();
+        return;
+      }
+      initApp();
+    } else {
+      _showError('auth-changepw-error', data.error || 'Change failed');
+    }
+  } catch (_) { _showError('auth-changepw-error', 'Change failed'); }
+  finally { btn.disabled = false; btn.textContent = 'Change Password'; }
+}
+
+async function _signOut() {
+  const token = _getStoredToken();
+  try {
+    await fetch('/auth/logout', { method: 'POST', headers: { 'Authorization': `Bearer ${token}` } });
+  } catch (_) {}
+  _clearStoredToken();
+  apiSetAuthToken(null);
+  wsSetAuthToken(null);
+  showLoginDialog();
+}
+
+document.getElementById('auth-login-submit').addEventListener('click', _submitLogin);
+document.getElementById('auth-login-username').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('auth-login-password').focus(); });
+document.getElementById('auth-login-password').addEventListener('keydown', e => { if (e.key === 'Enter') _submitLogin(); });
+
+document.getElementById('auth-changepw-submit').addEventListener('click', _submitChangePassword);
+['auth-changepw-current', 'auth-changepw-new', 'auth-changepw-confirm'].forEach(id => {
+  document.getElementById(id).addEventListener('keydown', e => { if (e.key === 'Enter') _submitChangePassword(); });
 });
+document.getElementById('auth-denied-signout').addEventListener('click', _signOut);
 
 async function setupAuth() {
-  // Remove any legacy localStorage token
+  // Remove any legacy localStorage tokens
   localStorage.removeItem('signalfi-auth-token');
 
   const stored = _getStoredToken();
   if (stored) {
-    // Validate against server before trusting
     try {
       const res = await fetch('/auth/check', { headers: { Authorization: `Bearer ${stored}` } });
       if (res.ok) {
@@ -129,20 +200,23 @@ async function setupAuth() {
         apiSetAuthToken(stored);
         wsSetAuthToken(stored);
         scheduleExpiry(data.expiresAt);
+        sessionStorage.setItem(AUTH_PERMS_KEY, JSON.stringify(data));
+        if (data.mustChangePassword) {
+          showChangePasswordDialog({ forced: false });
+          return false;
+        }
+        if (!data.permissions || !data.permissions.webAccess) {
+          showAccessDenied();
+          return false;
+        }
         return true;
       }
     } catch (_) {}
     _clearStoredToken();
   }
 
-  // Check if auth is required at all
-  try {
-    const res = await fetch('/api/state');
-    if (res.status !== 401) return true; // auth not configured
-  } catch (_) {}
-
-  showPhoneDialog();
-  return false; // initApp() called after successful code verify
+  showLoginDialog();
+  return false; // initApp() called after successful sign-in
 }
 
 // ─── Global State ─────────────────────────────────────────────────────────────
@@ -541,7 +615,7 @@ export function handleWsMessage(msg) {
       apiSetAuthToken(null);
       wsSetAuthToken(null);
       if (_expireTimer) { clearTimeout(_expireTimer); _expireTimer = null; }
-      showPhoneDialog();
+      showLoginDialog();
       break;
 
     default:
