@@ -15,8 +15,13 @@ services:
       - MQTT_USERNAME=${MQTT_USERNAME:-}
       - MQTT_PASSWORD=${MQTT_PASSWORD:-}
       - MQTT_TLS=${MQTT_TLS:-false}
+      # signalfi-manifest is the auth authority; web validates tokens via this URL.
+      - MANIFEST_URL=${MANIFEST_URL:-http://signalfi-manifest:3001}
+      # AIRGAP_NO_AUTH_WEB_FALLBACK=true → keep stale cached entries when manifest
+      # is unreachable for >30s.  Never creates new sessions.
+      - AIRGAP_NO_AUTH_WEB_FALLBACK=${AIRGAP_NO_AUTH_WEB_FALLBACK:-false}
+      # DEPRECATED — static bearer for legacy scripts; remove in next release.
       - AUTH_TOKEN=${AUTH_TOKEN:-}
-      - NODERED_AUTH_URL=${NODERED_AUTH_URL:-http://node-red:1880/signalfi-auth}
     networks:
       - default
       - root_default

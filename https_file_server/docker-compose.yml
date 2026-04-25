@@ -171,6 +171,8 @@ services:
       - /opt/signalfi/files/firmware:/opt/signalfi/files/firmware
       - /opt/signalfi/files/audio:/opt/signalfi/files/audio
       - /opt/signalfi/files/general:/opt/signalfi/files/general
+      # users.json lives here — survives container recreation.
+      - /opt/signalfi/auth:/opt/signalfi/auth
     environment:
       - PORT=3001
       - MANIFEST_ROOT=/opt/signalfi/manifests
@@ -185,8 +187,13 @@ services:
       - FILES_ROOT=/opt/signalfi/files/general
       - FILES_BASE_URL=https://apis.symphonyinteractive.ca
       - FILES_PATH_PREFIX=/ota/v1
+      - AUTH_ROOT=/opt/signalfi/auth
+      # AIRGAP_BOOTSTRAP_RESET=true → at startup, wipe users.json and reseed
+      # admin/admin (must change on first login).  Recovery for a lost admin
+      # password.  Set, restart, log in, change password, unset, restart.
+      # - AIRGAP_BOOTSTRAP_RESET=true
+      # DEPRECATED — static bearer for scripts; remove in next release.
       - ADMIN_TOKEN=signalfiadmin2026
-      - NODERED_AUTH_URL=http://node-red:1880/signalfi-auth
       - CONTROL_SERVER_URL=http://signalfi_controller-signalfi-web-1:3000
       - DEVICE_MODEL=SF-100
     networks:
