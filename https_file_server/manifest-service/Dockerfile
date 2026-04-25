@@ -8,6 +8,7 @@ COPY package.json .
 RUN npm install --omit=dev
 
 COPY server.js .
+COPY auth ./auth
 COPY public ./public
 
 ENV PORT=3001
