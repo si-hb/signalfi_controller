@@ -53,13 +53,11 @@ function applyPermissionGating() {
   if (username) username.textContent = (authUser && authUser.username) || '—';
 }
 
-function setAuthState(ok) {
-  document.getElementById('auth-dot').className    = ok ? 'ok' : 'fail';
-  const label = document.getElementById('auth-label');
-  if (label) {
-    label.textContent = ok && authUser ? authUser.username : (ok ? 'authenticated' : 'not authenticated');
-  }
-}
+// Auth state used to drive the top-bar dot/label; that indicator was
+// removed in favour of the head/shoulders dropdown (which already shows
+// the username inside the menu).  Keep this as a no-op so existing call
+// sites stay valid; the dropdown's own gating handles UI changes.
+function setAuthState(_ok) { /* no-op */ }
 
 // Restore cached permissions immediately so admin-only UI can render
 // before /ota/auth/check returns.

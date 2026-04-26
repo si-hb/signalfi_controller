@@ -43,8 +43,12 @@ body {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.02em;
-  margin-right: auto;
 }
+
+/* The device-count badge follows the heading; its `margin-right:auto`
+   creates the spacer that pushes nav links + dropdown to the right
+   side of the bar.  Previously this auto-margin lived on the h1. */
+#top-nav .device-count { margin-right: auto; }
 
 #top-nav a {
   color: var(--text-muted);
@@ -57,22 +61,6 @@ body {
 
 #top-nav a:hover { color: var(--text-primary); }
 #top-nav a.active { color: var(--text-primary); border-bottom-color: var(--accent-bright); }
-
-#auth-indicator {
-  font-size: 12px;
-  color: var(--text-muted);
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-#auth-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-#auth-dot.ok   { background: var(--success); }
-#auth-dot.fail { background: var(--danger); }
 
 /* ── Page layout ── */
 #page {

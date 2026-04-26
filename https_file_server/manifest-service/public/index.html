@@ -38,18 +38,22 @@
 <!-- Top nav -->
 <nav id="top-nav">
   <h1>Signalfi Admin</h1>
+  <!-- Online-devices badge sits right next to the heading so the count
+       is visible from where the eye starts reading the page. -->
+  <div id="device-count-badge" class="device-count">
+    <div id="device-count-dot" class="device-count-dot"></div>
+    <span id="device-count-label">— online</span>
+  </div>
   <a href="#devices"  data-tab="devices">Devices</a>
   <a href="#firmware" data-tab="firmware">Firmware</a>
   <a href="#audio"    data-tab="audio">Audio</a>
   <a href="#files"    data-tab="files">Files</a>
   <a href="#reports"  data-tab="reports">Reports</a>
-  <div id="auth-indicator">
-    <div id="auth-dot"></div>
-    <span id="auth-label" title="signed in as">not authenticated</span>
-  </div>
 
   <!-- Account dropdown — head/shoulders icon top-right.  Items appear
-       conditionally based on the signed-in user's permissions. -->
+       conditionally based on the signed-in user's permissions.  The
+       signed-in username lives inside the dropdown panel; we don't
+       repeat it on the top bar. -->
   <div id="acct-menu" class="acct-menu">
     <button id="acct-menu-btn" class="acct-menu-btn" aria-label="Account menu" aria-haspopup="true" aria-expanded="false">
       <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
@@ -65,10 +69,6 @@
       <div class="acct-menu-sep"></div>
       <button id="acct-menu-signout" class="acct-menu-item" role="menuitem">Sign Out</button>
     </div>
-  </div>
-  <div id="device-count-badge" class="device-count">
-    <div id="device-count-dot" class="device-count-dot"></div>
-    <span id="device-count-label">— online</span>
   </div>
 </nav>
 
