@@ -117,11 +117,11 @@ document.getElementById('acct-menu-users').addEventListener('click', () => {
 
 document.getElementById('acct-menu-terminate').addEventListener('click', async () => {
   _closeAcctMenu();
-  if (!confirm('Terminate every active session on both servers?')) return;
+  if (!confirm('Terminate every active session except yours?')) return;
   try {
     const res  = await apiFetch('/ota/auth/sessions', { method: 'DELETE' });
     const data = await res.json();
-    toast(`All sessions terminated (${data.cleared} cleared)`, 'success');
+    toast(`Other sessions terminated (${data.cleared} cleared)`, 'success');
   } catch (e) {
     if (!String(e.message).includes('Unauthorized')) toast('Failed to terminate sessions', 'error');
   }
@@ -1921,6 +1921,11 @@ function showTab(id) {
     const section = document.getElementById(t);
     if (section) section.hidden = (t !== id);
   });
+  // Live Activity is only meaningful next to the Devices table (it shows
+  // ongoing OTA transfers).  Hide it on every other tab so the Users
+  // page (and Reports, Firmware, etc.) aren't cluttered with it.
+  const live = document.getElementById('live-activity');
+  if (live) live.hidden = (id !== 'devices');
   document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === id));
   // Always re-fetch on tab show, unless the tab was loaded in the last TAB_TTL_MS.

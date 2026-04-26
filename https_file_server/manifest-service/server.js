@@ -715,13 +715,18 @@ app.get('/ota/auth/check', requireAuth, (req, res) => {
   });
 });
 
-// DELETE /ota/auth/sessions — admin: clear every session everywhere
+// DELETE /ota/auth/sessions — admin: clear every session except the
+// caller's.  Without the keep-token guard, the admin pressing the
+// button would log themselves out along with everyone else, which is
+// almost never what they want.  Web sessions are still cleared
+// wholesale (admins triggering this aren't typically signed into web
+// at the same instant; if they are, they'll re-login).
 app.delete('/ota/auth/sessions', requireAuth, requireAdministrator, (req, res) => {
-  const count = authMw.destroyAllSessions();
-  console.log(`[auth] all sessions terminated by ${req.user.username} (${count} cleared)`);
-  sseEmit('session-terminated', {});
+  const count = authMw.destroyAllSessionsExcept(req.token);
+  console.log(`[auth] other sessions terminated by ${req.user.username} (${count} cleared, caller's session kept)`);
+  sseEmit('session-terminated', { except: req.user.username });
   authMw.forwardLogoutToWeb(null, { all: true }).catch(() => {});
-  writeUserAudit('sessions-cleared', '*', req.user.username, { cleared: count });
+  writeUserAudit('sessions-cleared', '*', req.user.username, { cleared: count, kept: 1 });
   return res.json({ cleared: count });
 });
 

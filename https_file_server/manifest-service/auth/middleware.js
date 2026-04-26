@@ -113,6 +113,20 @@ function destroyAllSessions() {
   return n;
 }
 
+// Clear every session *except* the one identified by `keepToken`.
+// Used by "Terminate Other Sessions" so the administrator triggering
+// the action stays signed in instead of kicking themselves out along
+// with everyone else.
+function destroyAllSessionsExcept(keepToken) {
+  let cleared = 0;
+  for (const token of [...sessionStore.keys()]) {
+    if (token === keepToken) continue;
+    sessionStore.delete(token);
+    cleared++;
+  }
+  return cleared;
+}
+
 function destroySessionsForUser(username) {
   // Only used when a user is deleted — kill any sessions they hold so
   // a stale token can't keep working until its TTL expires.
@@ -217,6 +231,7 @@ module.exports = {
   getSession,
   destroySession,
   destroyAllSessions,
+  destroyAllSessionsExcept,
   destroySessionsForUser,
   listActiveSessionTokens,
 
