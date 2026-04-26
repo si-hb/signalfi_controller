@@ -375,6 +375,9 @@ function buildSettingsView() {
   cpuCard.appendChild(cpuBtns);
   view.appendChild(cpuCard);
 
+  // Sign Out lives in the head/shoulders dropdown at the top-right of
+  // the top bar (see app.js); no Account section is rendered here.
+
   // Add bottom padding
   const pad = document.createElement('div');
   pad.style.height = '32px';

@@ -43,12 +43,28 @@
   <a href="#audio"    data-tab="audio">Audio</a>
   <a href="#files"    data-tab="files">Files</a>
   <a href="#reports"  data-tab="reports">Reports</a>
-  <a href="#users"    data-tab="users" id="nav-users-link">Users</a>
-  <button id="btn-terminate-sessions" class="btn btn-warn btn-sm" title="Terminate all active sessions on both servers">Terminate Sessions</button>
-  <button id="btn-logout" class="btn btn-secondary btn-sm" title="Sign out of this browser session">Sign Out</button>
   <div id="auth-indicator">
     <div id="auth-dot"></div>
     <span id="auth-label" title="signed in as">not authenticated</span>
+  </div>
+
+  <!-- Account dropdown — head/shoulders icon top-right.  Items appear
+       conditionally based on the signed-in user's permissions. -->
+  <div id="acct-menu" class="acct-menu">
+    <button id="acct-menu-btn" class="acct-menu-btn" aria-label="Account menu" aria-haspopup="true" aria-expanded="false">
+      <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true">
+        <path d="M12 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8zm0 2c-3.33 0-10 1.67-10 5v3h20v-3c0-3.33-6.67-5-10-5z"/>
+      </svg>
+    </button>
+    <div id="acct-menu-panel" class="acct-menu-panel hidden" role="menu">
+      <div class="acct-menu-header">
+        <span class="acct-menu-username" id="acct-menu-username">—</span>
+      </div>
+      <button id="acct-menu-users"   class="acct-menu-item" role="menuitem" data-tab="users" hidden>Users</button>
+      <button id="acct-menu-terminate" class="acct-menu-item" role="menuitem" hidden>Terminate Sessions</button>
+      <div class="acct-menu-sep"></div>
+      <button id="acct-menu-signout" class="acct-menu-item" role="menuitem">Sign Out</button>
+    </div>
   </div>
   <div id="device-count-badge" class="device-count">
     <div id="device-count-dot" class="device-count-dot"></div>

@@ -1149,3 +1149,60 @@ select:disabled {
 }
 .auth-btn:hover   { background: var(--accent-bright); }
 .auth-btn:disabled { opacity: 0.5; cursor: default; }
+
+/* ── Account dropdown (head/shoulders icon) ── */
+.acct-menu { position: relative; display: inline-flex; align-items: center; }
+.acct-menu-btn {
+  background: transparent;
+  border: none;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  line-height: 0;
+  border-radius: 6px;
+}
+.acct-menu-btn:hover { background: var(--bg-raised, rgba(255,255,255,0.08)); }
+.acct-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 180px;
+  background: var(--bg-panel, #222);
+  border: 1px solid var(--border, rgba(255,255,255,0.12));
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  padding: 6px 0;
+  z-index: 150;
+}
+.acct-menu-panel.hidden { display: none; }
+.acct-menu-header {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text-muted, #888);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.acct-menu-username {
+  display: block;
+  font-size: 13px;
+  color: var(--text-primary, #fff);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.acct-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: var(--text-primary, #fff);
+  cursor: pointer;
+  font-family: inherit;
+}
+.acct-menu-item:hover { background: var(--bg-raised, rgba(255,255,255,0.08)); }

@@ -721,6 +721,7 @@ app.delete('/ota/auth/sessions', requireAuth, requireAdministrator, (req, res) =
   console.log(`[auth] all sessions terminated by ${req.user.username} (${count} cleared)`);
   sseEmit('session-terminated', {});
   authMw.forwardLogoutToWeb(null, { all: true }).catch(() => {});
+  writeUserAudit('sessions-cleared', '*', req.user.username, { cleared: count });
   return res.json({ cleared: count });
 });
 
@@ -735,6 +736,9 @@ app.post('/ota/auth/users', requireAuth, requireAdministrator, (req, res) => {
   try {
     userStore.createUser({ username, password, permissions, mustChangePassword: false });
     console.log(`[auth] user created: ${username} by ${req.user.username}`);
+    writeUserAudit('user-created', username, req.user.username, {
+      permissions: userStore.normalizePermissions(permissions),
+    });
     return res.status(201).json({ ok: true, user: userStore.listUsers().find(u => u.username === username) });
   } catch (err) {
     const status = err.code === 'exists' ? 409
@@ -747,10 +751,20 @@ app.patch('/ota/auth/users/:username', requireAuth, requireAdministrator, (req, 
   const target = req.params.username;
   const { password, permissions } = req.body || {};
   try {
+    // Snapshot the previous permissions so the audit entry shows the
+    // before/after instead of just the new state.
+    const before = userStore.listUsers().find(u => u.username === target);
     userStore.updateUser(target, { password, permissions });
     if (password) authMw.destroySessionsForUser(target);
     console.log(`[auth] user updated: ${target} by ${req.user.username} (password=${!!password}, perms=${!!permissions})`);
-    return res.json({ ok: true, user: userStore.listUsers().find(u => u.username === target) });
+    const after = userStore.listUsers().find(u => u.username === target);
+    writeUserAudit('user-updated', target, req.user.username, {
+      passwordChanged: !!password,
+      permissionsChanged: !!permissions,
+      before: before ? before.permissions : null,
+      after:  after  ? after.permissions  : null,
+    });
+    return res.json({ ok: true, user: after });
   } catch (err) {
     const status = err.code === 'not-found' ? 404
                  : err.code === 'last-admin' ? 409
@@ -762,9 +776,13 @@ app.patch('/ota/auth/users/:username', requireAuth, requireAdministrator, (req, 
 app.delete('/ota/auth/users/:username', requireAuth, requireAdministrator, (req, res) => {
   const target = req.params.username;
   try {
+    const before = userStore.listUsers().find(u => u.username === target);
     userStore.deleteUser(target);
     authMw.destroySessionsForUser(target);
     console.log(`[auth] user deleted: ${target} by ${req.user.username}`);
+    writeUserAudit('user-deleted', target, req.user.username, {
+      permissionsHeld: before ? before.permissions : null,
+    });
     return res.json({ ok: true });
   } catch (err) {
     const status = err.code === 'not-found' ? 404
@@ -1991,6 +2009,24 @@ function writeReport(entry) {
   } catch (err) {
     console.error(`[report] failed to write log: ${err.message}`);
   }
+}
+
+// Audit log for user-management actions.  Lands in the same updates.log
+// as device reports — the Reports tab in the admin UI surfaces both.
+// `event` is one of: user-created, user-updated, user-deleted,
+// sessions-cleared.  `target` is the affected username (or '*' for
+// session-clear).  `actor` is the username making the change.
+// `details` is a small object with audit-relevant fields only — never
+// password material.
+function writeUserAudit(event, target, actor, details = {}) {
+  writeReport({
+    type:      'user-event',
+    timestamp: new Date().toISOString(),
+    event,
+    target:    target || null,
+    actor:     actor  || null,
+    details,
+  });
 }
 
 // ── Admin API — reports ───────────────────────────────────────────────────────

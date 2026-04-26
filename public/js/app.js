@@ -174,7 +174,45 @@ async function _signOut() {
   _clearStoredToken();
   apiSetAuthToken(null);
   wsSetAuthToken(null);
-  showLoginDialog();
+  // Reload rather than tearing down WebSocket + state in place — auth
+  // affects every part of the app and a fresh boot is the cleanest way
+  // to land back on the login dialog.
+  location.reload();
+}
+
+// ── Account dropdown (head/shoulders icon, top-right of the top bar) ──────
+
+const _acctMenuBtn   = document.getElementById('acct-menu-btn');
+const _acctMenuPanel = document.getElementById('acct-menu-panel');
+
+function _openAcctMenu()  { if (_acctMenuPanel) { _acctMenuPanel.classList.remove('hidden'); _acctMenuBtn?.setAttribute('aria-expanded', 'true'); } }
+function _closeAcctMenu() { if (_acctMenuPanel) { _acctMenuPanel.classList.add('hidden');    _acctMenuBtn?.setAttribute('aria-expanded', 'false'); } }
+
+function _refreshAcctMenuUsername() {
+  try {
+    const cached = JSON.parse(sessionStorage.getItem('signalfi-control-perms') || 'null');
+    const lbl = document.getElementById('acct-menu-username');
+    if (lbl) lbl.textContent = (cached && cached.username) || '—';
+  } catch (_) {}
+}
+
+if (_acctMenuBtn) {
+  _acctMenuBtn.addEventListener('click', e => {
+    e.stopPropagation();
+    _refreshAcctMenuUsername();
+    if (_acctMenuPanel.classList.contains('hidden')) _openAcctMenu();
+    else                                              _closeAcctMenu();
+  });
+  document.addEventListener('click', e => {
+    if (_acctMenuPanel.classList.contains('hidden')) return;
+    if (e.target.closest('#acct-menu')) return;
+    _closeAcctMenu();
+  });
+  document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeAcctMenu(); });
+  document.getElementById('acct-menu-signout')?.addEventListener('click', () => {
+    _closeAcctMenu();
+    _signOut();
+  });
 }
 
 document.getElementById('auth-login-submit').addEventListener('click', _submitLogin);

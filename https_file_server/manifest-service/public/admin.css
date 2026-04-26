@@ -670,6 +670,68 @@ body {
 }
 .auth-error.hidden { display: none; }
 
+/* Account dropdown — top-right head/shoulders icon + menu */
+.acct-menu { position: relative; display: inline-flex; align-items: center; }
+.acct-menu-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  padding: 4px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-primary);
+  cursor: pointer;
+  line-height: 0;
+}
+.acct-menu-btn:hover  { background: var(--bg-raised); border-color: var(--border); }
+.acct-menu-btn:focus  { outline: 2px solid var(--accent-bright); outline-offset: 2px; }
+.acct-menu-panel {
+  position: absolute;
+  top: calc(100% + 6px);
+  right: 0;
+  min-width: 200px;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0,0,0,0.45);
+  padding: 6px 0;
+  z-index: 150;
+}
+.acct-menu-panel.hidden { display: none; }
+.acct-menu-header {
+  padding: 8px 14px;
+  font-size: 11px;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.acct-menu-username {
+  display: block;
+  font-size: 13px;
+  color: var(--text-primary);
+  text-transform: none;
+  letter-spacing: 0;
+  font-weight: 600;
+}
+.acct-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  padding: 9px 14px;
+  font-size: 13px;
+  color: var(--text-primary);
+  cursor: pointer;
+}
+.acct-menu-item:hover { background: var(--bg-raised); }
+.acct-menu-sep {
+  height: 1px;
+  background: var(--border);
+  margin: 4px 0;
+}
+
 /* User-edit dialog permission rows + button row */
 .user-perm {
   display: flex;

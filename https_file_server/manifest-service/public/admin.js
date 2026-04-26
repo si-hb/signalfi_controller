@@ -43,10 +43,14 @@ function applyAuthSession({ token, expiresAt, username, permissions, mustChangeP
 
 function applyPermissionGating() {
   const isAdmin = !!(authUser && authUser.permissions && authUser.permissions.administrator);
-  const usersLink = document.getElementById('nav-users-link');
-  if (usersLink) usersLink.style.display = isAdmin ? '' : 'none';
-  const termBtn = document.getElementById('btn-terminate-sessions');
-  if (termBtn) termBtn.style.display = isAdmin ? '' : 'none';
+  // Admin-only items in the account dropdown.  Non-admins still get
+  // Sign Out; Users + Terminate Sessions disappear.
+  const usersItem = document.getElementById('acct-menu-users');
+  if (usersItem) usersItem.hidden = !isAdmin;
+  const termItem = document.getElementById('acct-menu-terminate');
+  if (termItem) termItem.hidden = !isAdmin;
+  const username = document.getElementById('acct-menu-username');
+  if (username) username.textContent = (authUser && authUser.username) || '—';
 }
 
 function setAuthState(ok) {
@@ -85,21 +89,48 @@ function setAuthState(ok) {
   } catch (_) { clearAuth(); showLoginDialog(); }
 })();
 
-document.getElementById('btn-terminate-sessions').addEventListener('click', async () => {
-  const btn = document.getElementById('btn-terminate-sessions');
-  btn.disabled = true; btn.textContent = 'Terminating…';
+// ── Account dropdown (head/shoulders icon, top-right) ───────────────────────
+
+const _acctMenuBtn   = document.getElementById('acct-menu-btn');
+const _acctMenuPanel = document.getElementById('acct-menu-panel');
+
+function _openAcctMenu()  { _acctMenuPanel.classList.remove('hidden'); _acctMenuBtn.setAttribute('aria-expanded', 'true'); }
+function _closeAcctMenu() { _acctMenuPanel.classList.add('hidden');    _acctMenuBtn.setAttribute('aria-expanded', 'false'); }
+
+_acctMenuBtn.addEventListener('click', e => {
+  e.stopPropagation();
+  if (_acctMenuPanel.classList.contains('hidden')) _openAcctMenu();
+  else                                              _closeAcctMenu();
+});
+// Click outside the panel → close.  Stay open on clicks inside the
+// panel header so the operator can read their username without losing
+// the menu.
+document.addEventListener('click', e => {
+  if (_acctMenuPanel.classList.contains('hidden')) return;
+  if (e.target.closest('#acct-menu')) return;
+  _closeAcctMenu();
+});
+document.addEventListener('keydown', e => { if (e.key === 'Escape') _closeAcctMenu(); });
+
+document.getElementById('acct-menu-users').addEventListener('click', () => {
+  _closeAcctMenu();
+  showTab('users');
+});
+
+document.getElementById('acct-menu-terminate').addEventListener('click', async () => {
+  _closeAcctMenu();
+  if (!confirm('Terminate every active session on both servers?')) return;
   try {
     const res  = await apiFetch('/ota/auth/sessions', { method: 'DELETE' });
     const data = await res.json();
     toast(`All sessions terminated (${data.cleared} cleared)`, 'success');
   } catch (e) {
     if (!String(e.message).includes('Unauthorized')) toast('Failed to terminate sessions', 'error');
-  } finally {
-    btn.disabled = false; btn.textContent = 'Terminate Sessions';
   }
 });
 
-document.getElementById('btn-logout').addEventListener('click', async () => {
+document.getElementById('acct-menu-signout').addEventListener('click', async () => {
+  _closeAcctMenu();
   try { await apiFetch('/ota/auth/logout', { method: 'POST' }); } catch (_) {}
   clearAuth();
   setAuthState(false);
@@ -1333,6 +1364,22 @@ function makeReportRow(e) {
       <td>${_pushStatusBadge(e.devices)}</td>
       <td class="mono text-muted">${n ? `${n} device${n > 1 ? 's' : ''}` : '—'}</td>
     `;
+  } else if (e.type === 'user-event') {
+    // Audit-log row.  Reuses the device columns but swaps semantics:
+    //   topics→event, model→target user, version→actor user.
+    // Status badge uses the event verb so deletes stand out red.
+    const verb = (e.event || 'unknown').replace(/^user-/, '');
+    const verbClass = e.event === 'user-deleted' ? 'fail'
+                    : e.event === 'sessions-cleared' ? 'warn'
+                    : 'ok';
+    tr.innerHTML = `
+      <td>${e.timestamp ? new Date(e.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'}</td>
+      <td class="mono" style="font-size:11px">audit · ${verb}</td>
+      <td>${e.target || '—'}</td>
+      <td class="mono">${e.actor || '—'}</td>
+      <td><span class="status-badge status-${verbClass}">${e.event || '—'}</span></td>
+      <td class="mono text-muted">user-event</td>
+    `;
   } else {
     tr.innerHTML = `
       <td>${e.timestamp ? new Date(e.timestamp).toLocaleString(undefined, { month:'short', day:'numeric', hour:'2-digit', minute:'2-digit', second:'2-digit' }) : '—'}</td>
@@ -1427,6 +1474,37 @@ function showReportDetail(e) {
             <tbody>${deviceRows}</tbody>
           </table>
         </div>
+      </div>`;
+  } else if (e.type === 'user-event') {
+    // Audit detail — show actor, target, what changed, with before/after
+    // permissions when an update.  Same overlay shell as the device
+    // detail; the row body changes only.
+    const fmtPerms = p => p
+      ? Object.entries(p).map(([k, v]) => `${k}=${v ? 'on' : 'off'}`).join(', ')
+      : '—';
+    const d = e.details || {};
+    const detailRows = [];
+    if (d.passwordChanged !== undefined) detailRows.push(`<tr><td style="color:var(--text-muted);padding:7px 0">Password</td><td>${d.passwordChanged ? 'changed' : 'unchanged'}</td></tr>`);
+    if (d.permissionsChanged !== undefined) detailRows.push(`<tr><td style="color:var(--text-muted);padding:7px 0">Permissions</td><td>${d.permissionsChanged ? 'changed' : 'unchanged'}</td></tr>`);
+    if (d.before)        detailRows.push(`<tr><td style="color:var(--text-muted);padding:7px 0">Before</td><td class="mono" style="font-size:12px">${fmtPerms(d.before)}</td></tr>`);
+    if (d.after)         detailRows.push(`<tr><td style="color:var(--text-muted);padding:7px 0">After</td><td class="mono" style="font-size:12px">${fmtPerms(d.after)}</td></tr>`);
+    if (d.permissions)   detailRows.push(`<tr><td style="color:var(--text-muted);padding:7px 0">Permissions</td><td class="mono" style="font-size:12px">${fmtPerms(d.permissions)}</td></tr>`);
+    if (d.permissionsHeld) detailRows.push(`<tr><td style="color:var(--text-muted);padding:7px 0">Held permissions</td><td class="mono" style="font-size:12px">${fmtPerms(d.permissionsHeld)}</td></tr>`);
+    if (d.cleared !== undefined) detailRows.push(`<tr><td style="color:var(--text-muted);padding:7px 0">Sessions cleared</td><td>${d.cleared}</td></tr>`);
+
+    box.innerHTML = `
+      <div style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between;flex-shrink:0">
+        <span style="font-size:13px;font-weight:700">User Audit Event</span>
+        <button id="rpt-close" class="btn btn-secondary btn-sm">Close</button>
+      </div>
+      <div style="padding:20px">
+        <table style="width:100%;font-size:13px;border-collapse:collapse">
+          <tr><td style="color:var(--text-muted);padding:7px 0;width:140px">Timestamp</td><td>${fmtTs(e.timestamp)}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Event</td><td class="mono">${e.event || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Target</td><td>${e.target || '—'}</td></tr>
+          <tr><td style="color:var(--text-muted);padding:7px 0">Actor</td><td>${e.actor || '—'}</td></tr>
+          ${detailRows.join('')}
+        </table>
       </div>`;
   } else {
     // Legacy / standalone device report
