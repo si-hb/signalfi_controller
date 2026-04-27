@@ -2123,19 +2123,21 @@ let _sseBackoff = 1000;
       else if (d.type === 'device-state')        onDeviceState(d);
       else if (d.type === 'report-created')      prependReport(d.entry);
       else if (d.type === 'session-terminated') {
-        // Server emits this to *every* SSE subscriber, but if the admin
-        // who triggered "Terminate Other Sessions" is one of those
-        // subscribers we don't want to log them out — the server has
-        // already preserved their token.  d.except carries the caller's
-        // username; skip the kick when it matches us.
-        if (d.except && authUser && d.except === authUser.username) {
-          // It's us — stay signed in.
-        } else {
-          setTimeout(() => {
-            clearAuth();
-            showLoginDialog();
-          }, 300); // brief delay so the DELETE response reaches the browser first
-        }
+        // Server emits this to *every* SSE subscriber, but the caller's
+        // session token is preserved server-side.  We can't filter by
+        // username (two browsers as the same user would both think
+        // they're the caller); instead, ask the server whether THIS
+        // browser's token still works.  200 → stay; 401 → kick.
+        setTimeout(async () => {
+          try {
+            const res = await fetch('/ota/auth/check', {
+              headers: authToken ? { 'Authorization': `Bearer ${authToken}` } : {},
+            });
+            if (res.ok) return; // our token survived — stay signed in
+          } catch (_) {}
+          clearAuth();
+          showLoginDialog();
+        }, 300); // brief delay so the DELETE response lands first
       }
     } catch (_) {}
   };
