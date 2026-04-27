@@ -1959,11 +1959,12 @@ function showTab(id) {
     const section = document.getElementById(t);
     if (section) section.hidden = (t !== id);
   });
-  // Live Activity is only meaningful next to the Devices table (it shows
-  // ongoing OTA transfers).  Hide it on every other tab so the Users
-  // page (and Reports, Firmware, etc.) aren't cluttered with it.
+  // Live Activity is only meaningful where ongoing OTA transfers are
+  // relevant — Devices (where you initiate them) and the file tabs
+  // (Firmware/Audio/Files, where you push from).  Hidden on Reports
+  // and Users since those pages have nothing to do with transfers.
   const live = document.getElementById('live-activity');
-  if (live) live.hidden = (id !== 'devices');
+  if (live) live.hidden = !['firmware', 'audio', 'files'].includes(id);
   document.querySelectorAll('#top-nav a[data-tab]').forEach(a =>
     a.classList.toggle('active', a.dataset.tab === id));
   // Always re-fetch on tab show, unless the tab was loaded in the last TAB_TTL_MS.
