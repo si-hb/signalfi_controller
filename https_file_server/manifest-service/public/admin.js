@@ -2122,12 +2122,21 @@ let _sseBackoff = 1000;
       else if (d.type === 'device-error')        onDeviceError(d);
       else if (d.type === 'device-state')        onDeviceState(d);
       else if (d.type === 'report-created')      prependReport(d.entry);
-      else if (d.type === 'session-terminated')  setTimeout(() => {
-        authToken = '';
-        sessionStorage.removeItem(STORAGE_KEY);
-        if (_expireTimer) { clearTimeout(_expireTimer); _expireTimer = null; }
-        showLoginDialog();
-      }, 300); // slight delay so the DELETE response reaches the browser first
+      else if (d.type === 'session-terminated') {
+        // Server emits this to *every* SSE subscriber, but if the admin
+        // who triggered "Terminate Other Sessions" is one of those
+        // subscribers we don't want to log them out — the server has
+        // already preserved their token.  d.except carries the caller's
+        // username; skip the kick when it matches us.
+        if (d.except && authUser && d.except === authUser.username) {
+          // It's us — stay signed in.
+        } else {
+          setTimeout(() => {
+            clearAuth();
+            showLoginDialog();
+          }, 300); // brief delay so the DELETE response reaches the browser first
+        }
+      }
     } catch (_) {}
   };
   es.onerror = () => {
