@@ -921,6 +921,30 @@ app.get('/ota/admin/api/devices', adminAuth, (req, res) => {
   }, 1500);
 });
 
+// POST /ota/admin/api/devices/reboot  { ids: [<mac>, ...] }
+// Publishes {act:"rbt"} to scout/<mac>/$action for each selected device.
+// One MQTT message per target — broadcast isn't appropriate here because
+// the operator picked a specific subset.
+app.post('/ota/admin/api/devices/reboot', adminAuth, (req, res) => {
+  if (!mqttClient || !mqttClient.connected) {
+    return res.status(503).json({ error: 'MQTT broker not connected' });
+  }
+  const ids = Array.isArray(req.body?.ids) ? req.body.ids : null;
+  if (!ids || ids.length === 0) {
+    return res.status(400).json({ error: 'ids[] required' });
+  }
+  const payload = JSON.stringify({ act: 'rbt' });
+  let sent = 0;
+  for (const raw of ids) {
+    if (typeof raw !== 'string' || !raw.trim()) continue;
+    const id = raw.trim();
+    mqttClient.publish(`${MQTT_PREFIX}/${id}/$action`, payload, { qos: 0, retain: false });
+    sent++;
+  }
+  console.log(`[admin] reboot: ${sent} device(s) by ${req.user?.username || '?'} — ${ids.join(', ')}`);
+  return res.json({ rebooted: sent });
+});
+
 // Single-shot aggregate for the admin UI's initial page load.  Replaces the
 // six parallel requests that init() used to fire (firmware, audio, general,
 // reports, reports/stats, devices) — which tripped the per-IP rate limit on

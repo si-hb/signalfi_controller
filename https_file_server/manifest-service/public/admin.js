@@ -1602,6 +1602,13 @@ function _updateSelectionBadges() {
   });
   const countEl = document.getElementById('devices-sel-count');
   if (countEl) countEl.textContent = `${n} selected`;
+  // Reboot button is dangerous and noisy — leave it disabled until at
+  // least one device is checked, with a tooltip that hints why.
+  const rebootBtn = document.getElementById('devices-reboot-btn');
+  if (rebootBtn) {
+    rebootBtn.disabled = (n === 0);
+    rebootBtn.title = n === 0 ? 'Select devices to enable' : `Reboot ${n} selected device${n === 1 ? '' : 's'}`;
+  }
 }
 
 function _formatDeviceTemp(temp) {
@@ -1790,6 +1797,33 @@ document.getElementById('devices-refresh-btn')?.addEventListener('click', async 
   btn.textContent = 'Refreshing…';
   try {
     await loadDevices({ broadcast: true });
+  } finally {
+    btn.disabled    = false;
+    btn.textContent = prev;
+  }
+});
+
+document.getElementById('devices-reboot-btn')?.addEventListener('click', async (e) => {
+  // Reboot is destructive (interrupts whatever the device is doing and
+  // takes ~10s to come back), so confirm first.  Sends one MQTT message
+  // per selected MAC; non-broadcast on purpose.
+  const ids = Array.from(selectedDevices);
+  if (ids.length === 0) return;
+  const noun = `${ids.length} device${ids.length === 1 ? '' : 's'}`;
+  if (!confirm(`Reboot ${noun}? They'll be offline for ~10 seconds.`)) return;
+  const btn = e.currentTarget;
+  const prev = btn.textContent;
+  btn.disabled    = true;
+  btn.textContent = 'Rebooting…';
+  try {
+    const res  = await apiFetch('/ota/admin/api/devices/reboot', {
+      method: 'POST',
+      body:   JSON.stringify({ ids }),
+    });
+    const data = await res.json();
+    toast(`Reboot sent to ${data.rebooted} device${data.rebooted === 1 ? '' : 's'}`, 'success');
+  } catch (err) {
+    if (!String(err.message).includes('Unauthorized')) toast(err.message || 'Reboot failed', 'error');
   } finally {
     btn.disabled    = false;
     btn.textContent = prev;
