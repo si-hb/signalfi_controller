@@ -1805,23 +1805,27 @@ document.getElementById('devices-refresh-btn')?.addEventListener('click', async 
 
 document.getElementById('devices-reboot-btn')?.addEventListener('click', async (e) => {
   // Reboot is destructive (interrupts whatever the device is doing and
-  // takes ~10s to come back), so confirm first.  Sends one MQTT message
-  // per selected MAC; non-broadcast on purpose.
-  const ids = Array.from(selectedDevices);
+  // takes ~10s to come back), so confirm first.  When the "Select all"
+  // checkbox is on, send broadcast=true so the broker fans out a single
+  // message; otherwise send the explicit list of MACs.
+  const ids       = Array.from(selectedDevices);
   if (ids.length === 0) return;
-  const noun = `${ids.length} device${ids.length === 1 ? '' : 's'}`;
+  const allRows   = document.querySelectorAll('#devices-tbody tr[data-dev-id]').length;
+  const isAll     = allRows > 0 && ids.length === allRows;
+  const noun      = isAll ? `all ${ids.length} devices (broadcast)` : `${ids.length} device${ids.length === 1 ? '' : 's'}`;
   if (!confirm(`Reboot ${noun}? They'll be offline for ~10 seconds.`)) return;
-  const btn = e.currentTarget;
+  const btn  = e.currentTarget;
   const prev = btn.textContent;
   btn.disabled    = true;
   btn.textContent = 'Rebooting…';
   try {
     const res  = await apiFetch('/ota/admin/api/devices/reboot', {
       method: 'POST',
-      body:   JSON.stringify({ ids }),
+      body:   JSON.stringify(isAll ? { broadcast: true } : { ids }),
     });
     const data = await res.json();
-    toast(`Reboot sent to ${data.rebooted} device${data.rebooted === 1 ? '' : 's'}`, 'success');
+    if (data.rebooted === 'broadcast') toast(`Reboot broadcast to all devices`, 'success');
+    else toast(`Reboot sent to ${data.rebooted} device${data.rebooted === 1 ? '' : 's'}`, 'success');
   } catch (err) {
     if (!String(err.message).includes('Unauthorized')) toast(err.message || 'Reboot failed', 'error');
   } finally {

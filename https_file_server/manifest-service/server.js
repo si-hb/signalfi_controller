@@ -921,19 +921,28 @@ app.get('/ota/admin/api/devices', adminAuth, (req, res) => {
   }, 1500);
 });
 
-// POST /ota/admin/api/devices/reboot  { ids: [<mac>, ...] }
-// Publishes {act:"rbt"} to scout/<mac>/$action for each selected device.
-// One MQTT message per target — broadcast isn't appropriate here because
-// the operator picked a specific subset.
+// POST /ota/admin/api/devices/reboot  { ids: [<mac>, ...] } | { broadcast: true }
+// Publishes {act:"rbt"} on MQTT.  broadcast=true → one message to
+// scout/$broadcast/$action (every device); otherwise one per id to
+// scout/<mac>/$action.  The client picks broadcast when "select all"
+// is checked so we don't fan out to a separate topic per device when
+// the broker can do the fan-out for free.
 app.post('/ota/admin/api/devices/reboot', adminAuth, (req, res) => {
   if (!mqttClient || !mqttClient.connected) {
     return res.status(503).json({ error: 'MQTT broker not connected' });
   }
+  const payload = JSON.stringify({ act: 'rbt' });
+
+  if (req.body?.broadcast === true) {
+    mqttClient.publish(`${MQTT_PREFIX}/$broadcast/$action`, payload, { qos: 0, retain: false });
+    console.log(`[admin] reboot: broadcast by ${req.user?.username || '?'}`);
+    return res.json({ rebooted: 'broadcast' });
+  }
+
   const ids = Array.isArray(req.body?.ids) ? req.body.ids : null;
   if (!ids || ids.length === 0) {
-    return res.status(400).json({ error: 'ids[] required' });
+    return res.status(400).json({ error: 'ids[] or broadcast:true required' });
   }
-  const payload = JSON.stringify({ act: 'rbt' });
   let sent = 0;
   for (const raw of ids) {
     if (typeof raw !== 'string' || !raw.trim()) continue;
