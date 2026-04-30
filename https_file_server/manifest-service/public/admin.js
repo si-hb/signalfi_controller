@@ -436,7 +436,7 @@ const _PT_STORAGE_PATH        = 'push-node-path';
 const _PT_STORAGE_MODE        = 'push-node-mode';
 const _PT_STORAGE_LED_PROGRESS = 'push-led-progress';
 
-function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = false, showForce = false, showLedProgress = false, defaultTargetModels = '' } = {}) {
+function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = false, showForce = false, showLedProgress = false } = {}) {
   const existing = document.getElementById('push-target-overlay');
   if (existing) existing.remove();
 
@@ -469,20 +469,12 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
       </label>
     </div>` : '';
 
-  const targetModelsHtml = showForce ? `
-    <div id="pt-target-models-wrap" style="display:none">
-      <label style="font-size:11px;font-weight:600;color:var(--text-muted);text-transform:uppercase;letter-spacing:.06em;display:block;margin-bottom:6px">
-        Target Model(s)
-        <span style="font-weight:400;text-transform:none;letter-spacing:0;margin-left:4px">— comma-separated, e.g. <code>SSH-100, SF-100</code></span>
-      </label>
-      <input type="text" id="pt-target-models" value="${defaultTargetModels}"
-        placeholder="SSH-100"
-        style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;outline:none">
-      <p style="font-size:11px;color:var(--text-muted);margin:4px 0 0">
-        Add <code>SF-100</code> alongside <code>SSH-100</code> to reach devices still running old firmware.
-      </p>
-    </div>` : '';
-
+  // The Target Model(s) input that used to live here was removed —
+  // device-side `force:true` already bypasses the model check, so the
+  // field had no effect on the actual push behaviour.  The server
+  // still falls back to the firmware sidecar's targetModels[0] (or
+  // filename prefix, or DEVICE_MODEL env) when no explicit value is
+  // sent, which is the right default for every routine push.
   const ledProgressChecked = localStorage.getItem(_PT_STORAGE_LED_PROGRESS) !== 'false';
   const ledProgressHtml = showLedProgress ? `
     <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer;user-select:none">
@@ -505,7 +497,6 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
         style="width:100%;box-sizing:border-box;background:var(--bg-raised);border:1px solid var(--border);border-radius:6px;padding:8px 10px;color:var(--text-primary);font-family:var(--font-mono);font-size:13px;outline:none">
     </div>
     ${backupHtml}
-    ${targetModelsHtml}
     ${forceHtml}
     ${ledProgressHtml}
     <div id="pt-topic-preview" style="font-size:12px;color:var(--text-muted);font-family:var(--font-mono);padding:6px 10px;background:var(--bg-raised);border-radius:4px">
@@ -547,15 +538,6 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
   nodeInput.addEventListener('keydown', e => { if (e.key === 'Enter' && !confirmBtn.disabled) confirmBtn.click(); });
   update();
 
-  // Show target models field only when force is enabled
-  const forceChk       = box.querySelector('#pt-force');
-  const targetWrap     = box.querySelector('#pt-target-models-wrap');
-  if (forceChk && targetWrap) {
-    forceChk.addEventListener('change', () => {
-      targetWrap.style.display = forceChk.checked ? '' : 'none';
-    });
-  }
-
   box.querySelector('#pt-cancel').addEventListener('click', () => overlay.remove());
   confirmBtn.addEventListener('click', () => {
     const mode        = box.querySelector('input[name="pt-radio"]:checked')?.value;
@@ -564,9 +546,6 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
     const backup        = box.querySelector('#pt-backup')?.value || undefined;
     const force         = box.querySelector('#pt-force')?.checked || false;
     const ledProgress   = box.querySelector('#pt-led-progress')?.checked ?? true;
-    const targetModels  = force
-      ? (box.querySelector('#pt-target-models')?.value.split(',').map(s => s.trim()).filter(Boolean) || undefined)
-      : undefined;
     // Persist for next popup (don't persist 'selected' — it's contextual)
     if (!isSel) {
       localStorage.setItem(_PT_STORAGE_MODE, isBc ? 'broadcast' : 'group');
@@ -581,7 +560,6 @@ function showPushTargetDialog(title, confirmLabel, onConfirm, { showBackup = fal
       backup,
       force,
       ledProgress,
-      targetModels,
     });
   });
   overlay.addEventListener('click', e => { if (e.target === overlay) overlay.remove(); });
@@ -594,10 +572,7 @@ function makeFirmwarePushBtn(f) {
   btn.className = 'btn btn-primary btn-sm';
   btn.textContent = 'Push to Devices';
   btn.addEventListener('click', () => {
-    const defaultModels = Array.isArray(f.targetModels) && f.targetModels.length
-      ? f.targetModels.join(', ')
-      : '';
-    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, selectedDevices: devs, backup, force, ledProgress, targetModels }) => {
+    showPushTargetDialog(`Push ${f.name}`, 'Push', async ({ broadcast, nodePath, selectedDevices: devs, backup, force, ledProgress }) => {
       try {
         const res = await apiFetch('/ota/admin/api/ota/push-firmware', {
           method: 'POST',
@@ -609,13 +584,12 @@ function makeFirmwarePushBtn(f) {
             backup:       backup       || undefined,
             progress:     ledProgress  || undefined,
             force:        force        || undefined,
-            targetModels: targetModels?.length ? targetModels : undefined,
           }),
         });
         const data = await res.json();
         toast(`Pushed ${f.name} → ${data.topic}`, 'success');
       } catch (err) { toast(`Push failed: ${err.message || 'unknown error'}`, 'error'); }
-    }, { showBackup: true, showForce: true, showLedProgress: true, defaultTargetModels: defaultModels });
+    }, { showBackup: true, showForce: true, showLedProgress: true });
   });
   return [btn];
 }
