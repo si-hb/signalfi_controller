@@ -513,24 +513,43 @@ Multiple `scoutUpdate` messages arriving in the same animation frame are coalesc
 
 ## Authentication
 
-Both the control app (signalfi-web) and the admin panel (signalfi-manifest) use SMS OTP authentication. There is no static password or bearer token visible in the browser.
+Both apps use account-based username/password auth. The admin server
+(`signalfi-manifest`) is the auth authority; the control app
+(`signalfi-web`) validates incoming session tokens against it.
+
+**Permissions (per-user flags):**
+
+- `administrator` — manage user accounts (sole power)
+- `webAccess` — sign in to signalfi-web
+- `manifestAccess` — sign in to the admin panel
+
+A user can hold any combination. The default `admin` user has all three.
 
 **Flow:**
 
-1. On page load, the app checks `sessionStorage` for a valid session token via `/auth/check`.
-2. If no valid session exists, a phone number dialog appears.
-3. The entered phone number is POSTed to `/auth/request`. The server dispatches it asynchronously to a Node-RED endpoint (`NODERED_AUTH_URL`) which validates the number against a whitelist and sends an SMS code. The browser gets an immediate `{accepted: true}` response only if the number is on the whitelist — otherwise silence (no error, no feedback).
-4. If accepted, a 6-digit code entry dialog appears. The code is auto-submitted when the 6th digit is entered.
-5. On successful verification (`/auth/verify`), a session token is stored in `sessionStorage` (clears on tab close/refresh) and the app initialises.
-6. Sessions are valid until the browser tab is closed or refreshed. The server TTL (default 365 days) can be overridden per-number by returning `{ttl: <seconds>}` from the Node-RED flow.
+1. First start: manifest creates `admin` / `admin` with
+   `mustChangePassword: true`. Browser hits the login dialog.
+2. Login `POST /ota/auth/login {username, password}` → returns a
+   64-hex session token, expiry, permissions, and a `mustChangePassword`
+   flag. Token lives in `sessionStorage` (cleared on tab close).
+3. If `mustChangePassword` is set, every protected route returns
+   `403 password-change-required` until the user posts a new password
+   to `/ota/auth/change-password`.
+4. signalfi-web doesn't own user records — it forwards the bearer to
+   manifest's `/ota/auth/check` (60 s in-memory cache, 2 s upstream
+   timeout), gates on `permissions.webAccess`. On logout/role-change,
+   manifest pushes `POST /auth/invalidate` so web evicts the cache
+   entry within ~2 s instead of waiting for TTL.
 
-**Terminate Sessions** — the admin panel has a "Terminate Sessions" button that clears all active sessions on both servers simultaneously. All connected browser tabs (including the one that triggered it) are force-logged out via SSE (admin) or WebSocket (control).
+**Account dropdown** — both apps surface the signed-in username + sign-out (and on the admin panel: Users management + Terminate Other Sessions) under a head/shoulders icon at the top right of the nav.
 
-**Node-RED endpoint:** `POST http://node-red:1880/signalfi-auth`  
-Request body: `{ "phone": "+16045550100", "code": "123456", "origin": "signalfi-admin" }`  
-Expected response: `200 OK` with optional `{ "ttl": 86400 }` to accept; any non-2xx to reject.
+**Terminate Other Sessions** — admin-only; clears every session on the manifest *except* the caller's, plus every cached web token. Other browsers fall back to the login dialog within ~1 s via SSE/WS push.
 
-See [`AUTH_README.md`](AUTH_README.md) for a complete implementation guide suitable for adding this auth system to a new app on the same server.
+**Recovery** — lost the admin password? Set `AIRGAP_BOOTSTRAP_RESET=true` in the manifest's environment and restart it. On startup the manifest rewrites `users.json` back to `admin/admin/mustChangePassword:true`. Unset the flag after recovery.
+
+**Static bearer (deprecated)** — `ADMIN_TOKEN` (manifest) and `AUTH_TOKEN` (web) are honoured for one release as a synthetic admin session, with a deprecation warning on every use. Existing `curl -H 'Authorization: Bearer $ADMIN_TOKEN' …` scripts keep working during the rollout.
+
+See [`AUTH_README.md`](AUTH_README.md) for the full architecture, endpoint shapes, and ops recipes.
 
 **Traefik security:** The admin panel router has rate limiting (5 req/s average, burst 10) and HTTP→HTTPS redirect enforced at the Traefik layer.
 
