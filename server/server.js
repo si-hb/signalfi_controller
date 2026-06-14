@@ -465,6 +465,23 @@ async function main() {
   if (fs.existsSync(staticDir)) {
     app.use(express.static(staticDir));
     console.log(`[${ts()}] [SERVER] Serving static files from ${staticDir}`);
+
+    // Root-level icon fallback aliases.  The HTML head references
+    // /images/apple-touch-icon.png explicitly, but iOS Safari (and a
+    // number of PWA tools) ALSO probe well-known root paths when
+    // adding to home screen — and use whichever resolves first.
+    // Without these, an iOS shortcut created before the rest of the
+    // page is reachable (or by a client that never parses the HTML)
+    // falls back to the URL-letter generic icon.
+    const iconAliases = {
+      '/apple-touch-icon.png':              'images/apple-touch-icon.png',
+      '/apple-touch-icon-precomposed.png':  'images/apple-touch-icon.png',
+      '/favicon.ico':                       'images/favicon.svg',
+      '/favicon.svg':                       'images/favicon.svg',
+    };
+    for (const [route, target] of Object.entries(iconAliases)) {
+      app.get(route, (_req, res) => res.sendFile(target, { root: staticDir }));
+    }
   } else {
     console.warn(`[${ts()}] [SERVER] Static dir not found: ${staticDir} (continuing without static files)`);
   }
