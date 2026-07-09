@@ -977,6 +977,81 @@ app.get('/ota/admin/api/bootstrap', adminAuth, (req, res) => {
   }
 });
 
+// ── Admin API — Wi-Fi radio control ───────────────────────────────────────────
+//
+// This host may or may not have a Wi-Fi radio.  When it does, the
+// signalfi-wifi-agent systemd unit on the host publishes a Unix socket
+// at /run/signalfi/wifi.sock — bind-mounted into this container by the
+// airgap compose file.  The two routes below relay JSON commands to
+// that socket, so the browser UI can query / toggle the radio without
+// this container needing NET_ADMIN capabilities of its own.
+//
+// If the socket doesn't exist (host has no wireless PHY, agent not
+// running, or the compose bind-mount is absent), `capable: false` is
+// returned and the UI hides the toggle.
+
+const WIFI_SOCKET_PATH = process.env.WIFI_SOCKET_PATH || '/run/signalfi/wifi.sock';
+
+function wifiCall(cmd, actor, timeoutMs = 15000) {
+  return new Promise((resolve) => {
+    // Fast-path: no socket at all → agent isn't running / no wifi capability.
+    try {
+      const st = fs.statSync(WIFI_SOCKET_PATH);
+      if (!st.isSocket()) throw new Error('not a socket');
+    } catch (_) {
+      return resolve({
+        capable: false, enabled: false, degraded: false,
+        phy: null, iface: null, driver: null,
+        error: null,
+      });
+    }
+    const net = require('net');
+    const client = net.createConnection(WIFI_SOCKET_PATH);
+    let buf = '';
+    const timer = setTimeout(() => {
+      try { client.destroy(new Error('timeout')); } catch (_) {}
+    }, timeoutMs);
+    client.on('connect', () => {
+      client.write(JSON.stringify({ cmd, actor: actor || null }) + '\n');
+    });
+    client.on('data', (chunk) => { buf += chunk.toString('utf8'); });
+    client.on('end', () => {
+      clearTimeout(timer);
+      const line = buf.split('\n')[0] || '';
+      try { resolve(JSON.parse(line)); }
+      catch (err) {
+        resolve({
+          capable: false, enabled: false, degraded: false,
+          error: 'agent returned non-JSON: ' + line.slice(0, 120),
+        });
+      }
+    });
+    client.on('error', (err) => {
+      clearTimeout(timer);
+      resolve({
+        capable: false, enabled: false, degraded: false,
+        error: 'agent unreachable: ' + err.message,
+      });
+    });
+  });
+}
+
+// GET /ota/admin/api/wifi/status
+//   Public-ish: any signed-in user can *see* whether Wi-Fi capability
+//   exists (so the UI can decide whether to render the card).  Anyone
+//   can call it — admin gating is only on the toggle.
+app.get('/ota/admin/api/wifi/status', adminAuth, async (req, res) => {
+  const status = await wifiCall('status', req.user && req.user.username);
+  res.json(status);
+});
+
+// POST /ota/admin/api/wifi/toggle
+//   Administrator-only.  Toggles the current radio state.
+app.post('/ota/admin/api/wifi/toggle', adminAuth, requireAdministrator, async (req, res) => {
+  const status = await wifiCall('toggle', req.user && req.user.username);
+  res.json(status);
+});
+
 // ── Admin API — file listings ─────────────────────────────────────────────────
 
 // Per-file CRC/SHA cache keyed by path+size+mtime so unchanged files don't get

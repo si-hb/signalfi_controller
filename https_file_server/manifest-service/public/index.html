@@ -75,6 +75,34 @@
 <!-- Page content -->
 <div id="page">
 
+  <!-- ── Wi-Fi radio (only appears if the host has a wireless PHY;
+       admin.js unhides via /ota/admin/api/wifi/status) ── -->
+  <section class="section" id="wifi" hidden>
+    <div class="section-header">
+      <span class="section-title">Wi-Fi Radio</span>
+      <span id="wifi-degraded-badge" class="badge badge-warn" hidden
+            title="Radio soft-blocked, but the driver could not be unloaded — RF emissions cannot be fully guaranteed.">
+        DEGRADED
+      </span>
+      <span id="wifi-inflight" class="wifi-inflight" hidden>working…</span>
+    </div>
+    <div class="section-body wifi-body">
+      <div class="wifi-row">
+        <div class="wifi-label">
+          <div class="wifi-label-primary">Radio</div>
+          <div class="wifi-label-secondary" id="wifi-meta">—</div>
+        </div>
+        <label class="wifi-switch" title="Toggle Wi-Fi radio">
+          <input type="checkbox" id="wifi-toggle">
+          <span class="wifi-switch-slider"></span>
+        </label>
+        <div class="wifi-state-text" id="wifi-state-text">—</div>
+      </div>
+      <p class="wifi-last-change" id="wifi-last-change" hidden></p>
+      <p class="wifi-error" id="wifi-error" hidden></p>
+    </div>
+  </section>
+
   <!-- ── Devices ── -->
   <section class="section" id="devices">
     <div class="section-header">
