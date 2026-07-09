@@ -1145,99 +1145,48 @@ body {
 .device-version { font-family: var(--font-mono); font-size: 12px; }
 .device-node { font-size: 12px; }
 
-/* ── Wi-Fi radio toggle ──────────────────────────────────────────── */
+/* ── Wi-Fi radio icon button (top-nav) ──────────────────────────── */
+/*
+ * A single icon-button that sits in the top nav.  Two visual states,
+ * driven by data-state on the <button>:
+ *   data-state="on"  → light blue arcs, no strike-through  (radio emitting)
+ *   data-state="off" → dark  blue arcs,  red strike-through (radio silent)
+ *
+ * The button starts hidden.  admin.js unhides it once the wifi
+ * feature is provisioned on this deployment (host-side socket
+ * reachable from the container).
+ */
 
-.wifi-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-.wifi-row {
-  display: grid;
-  grid-template-columns: 1fr auto auto;
-  align-items: center;
-  gap: 20px;
-}
-.wifi-label-primary {
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 2px;
-}
-.wifi-label-secondary {
-  font-size: 12px;
-  color: var(--text-muted);
-  font-family: var(--font-mono);
-}
-.wifi-state-text {
-  font-size: 13px;
-  color: var(--text-muted);
-  min-width: 40px;
-  text-align: right;
-}
-.wifi-state-text.on  { color: #2ecc71; font-weight: 600; }
-.wifi-state-text.off { color: var(--text-muted); font-weight: 500; }
-.wifi-last-change {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-.wifi-error {
-  margin: 0;
-  padding: 8px 12px;
-  border-radius: 4px;
-  background: rgba(192,57,43,0.15);
-  color: #e74c3c;
-  font-size: 12px;
-  font-family: var(--font-mono);
-}
-.wifi-inflight {
-  margin-left: auto;
-  font-size: 12px;
-  color: var(--accent-bright);
-  font-style: italic;
-}
-
-/* Toggle switch — checkbox-styled, no external JS lib */
-.wifi-switch {
-  position: relative;
-  display: inline-block;
-  width: 52px;
-  height: 28px;
+.wifi-icon-btn {
+  --wifi-on:  #4fc3f7;   /* Material sky-400   — light blue */
+  --wifi-off: #1e3a5f;   /* muted navy         — dark  blue */
+  background: none;
+  border: none;
+  padding: 6px;
+  margin: 0 4px 0 auto;  /* pushes the icon right, next to the account menu */
   cursor: pointer;
+  border-radius: 4px;
+  color: var(--wifi-off);
+  transition: color 0.15s ease, background 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
-.wifi-switch input {
-  opacity: 0;
-  width: 0;
-  height: 0;
-}
-.wifi-switch-slider {
-  position: absolute;
-  inset: 0;
-  background: #444;
-  border-radius: 999px;
-  transition: background 0.2s;
-}
-.wifi-switch-slider::before {
-  content: "";
-  position: absolute;
-  width: 22px;
-  height: 22px;
-  left: 3px;
-  top: 3px;
-  background: #eaeaea;
-  border-radius: 50%;
-  transition: transform 0.2s, background 0.2s;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.4);
-}
-.wifi-switch input:checked + .wifi-switch-slider {
-  background: var(--accent);
-}
-.wifi-switch input:checked + .wifi-switch-slider::before {
-  transform: translateX(24px);
-  background: var(--accent-bright);
-}
-.wifi-switch input:disabled + .wifi-switch-slider {
-  opacity: 0.5;
-  cursor: not-allowed;
+.wifi-icon-btn:hover { background: rgba(255,255,255,0.06); }
+.wifi-icon-btn:disabled { opacity: 0.55; cursor: progress; }
+
+.wifi-icon-btn[data-state="on"]  { color: var(--wifi-on); }
+.wifi-icon-btn[data-state="off"] { color: var(--wifi-off); }
+
+/* SVG paths inherit currentColor for the arcs+dot; slash renders in
+   red only when the radio is off. */
+.wifi-icon .wifi-slash { display: none; stroke: #e74c3c; stroke-width: 2.4; }
+.wifi-icon-btn[data-state="off"] .wifi-slash { display: inline; }
+
+/* Degraded (rfkill blocked but rmmod failed) — same base color, with a
+   warn-tinted outline so an operator can tell the "off" isn't fully
+   guaranteed at a glance. */
+.wifi-icon-btn[data-degraded="true"] {
+  outline: 1.5px solid var(--warn);
+  outline-offset: 2px;
 }

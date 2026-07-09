@@ -50,6 +50,21 @@
   <a href="#files"    data-tab="files">Files</a>
   <a href="#reports"  data-tab="reports">Reports</a>
 
+  <!-- Wi-Fi radio toggle — icon only.  Hidden until admin.js
+       confirms the host has the wifi feature provisioned.  Click
+       flips the radio; enabled = light blue, disabled = dark blue
+       with a diagonal strike. -->
+  <button id="wifi-icon-btn" class="wifi-icon-btn" data-state="off" hidden
+          aria-label="Toggle Wi-Fi radio" title="Wi-Fi">
+    <svg class="wifi-icon" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+      <path class="wifi-arc" d="M2 8.82 A16 16 0 0 1 22 8.82"       fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path class="wifi-arc" d="M5 12.36 A11 11 0 0 1 19 12.36"     fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <path class="wifi-arc" d="M8.53 15.9 A6 6 0 0 1 15.47 15.9"   fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+      <circle class="wifi-dot" cx="12" cy="19.5" r="1.6" fill="currentColor"/>
+      <line   class="wifi-slash" x1="4" y1="4" x2="20" y2="20"     stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+    </svg>
+  </button>
+
   <!-- Account dropdown — head/shoulders icon top-right.  Items appear
        conditionally based on the signed-in user's permissions.  The
        signed-in username lives inside the dropdown panel; we don't
@@ -74,34 +89,6 @@
 
 <!-- Page content -->
 <div id="page">
-
-  <!-- ── Wi-Fi radio (only appears if the host has a wireless PHY;
-       admin.js unhides via /ota/admin/api/wifi/status) ── -->
-  <section class="section" id="wifi" hidden>
-    <div class="section-header">
-      <span class="section-title">Wi-Fi Radio</span>
-      <span id="wifi-degraded-badge" class="badge badge-warn" hidden
-            title="Radio soft-blocked, but the driver could not be unloaded — RF emissions cannot be fully guaranteed.">
-        DEGRADED
-      </span>
-      <span id="wifi-inflight" class="wifi-inflight" hidden>working…</span>
-    </div>
-    <div class="section-body wifi-body">
-      <div class="wifi-row">
-        <div class="wifi-label">
-          <div class="wifi-label-primary">Radio</div>
-          <div class="wifi-label-secondary" id="wifi-meta">—</div>
-        </div>
-        <label class="wifi-switch" title="Toggle Wi-Fi radio">
-          <input type="checkbox" id="wifi-toggle">
-          <span class="wifi-switch-slider"></span>
-        </label>
-        <div class="wifi-state-text" id="wifi-state-text">—</div>
-      </div>
-      <p class="wifi-last-change" id="wifi-last-change" hidden></p>
-      <p class="wifi-error" id="wifi-error" hidden></p>
-    </div>
-  </section>
 
   <!-- ── Devices ── -->
   <section class="section" id="devices">

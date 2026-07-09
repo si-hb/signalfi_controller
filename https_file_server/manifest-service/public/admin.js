@@ -2005,66 +2005,41 @@ async function bootstrap() {
   }
 }
 
-// ── Wi-Fi radio toggle ────────────────────────────────────────────────
+// ── Wi-Fi radio toggle (icon-only) ────────────────────────────────────
 //
-// Feature-detection: /ota/admin/api/wifi/status returns {capable: false}
-// on hosts with no Wi-Fi (or when the host-side signalfi-wifi-agent
-// isn't running).  In that case the section stays hidden.
+// A single icon-button in the top nav.  Rendered as light-blue arcs
+// when the radio is emitting, dark-blue arcs with a red strike-through
+// when it isn't.  Hidden entirely when the deployment doesn't have
+// wifi provisioned (host-side agent socket absent → capable:false).
 //
-// When capable, we render the current state, wire the toggle to POST
-// /ota/admin/api/wifi/toggle, and disable the switch during the ~2s
-// state transition.
+// Not optimistic — click posts, backend runs the OFF/ON sequence
+// (~1–3s), we re-render from the state the server returns.  Button is
+// disabled during the transition so operators can't rapid-flip.
 
 let _wifiInFlight = false;
 
 function _wifiRender(state) {
-  const sec       = document.getElementById('wifi');
-  const toggle    = document.getElementById('wifi-toggle');
-  const stateText = document.getElementById('wifi-state-text');
-  const meta      = document.getElementById('wifi-meta');
-  const degraded  = document.getElementById('wifi-degraded-badge');
-  const lastEl    = document.getElementById('wifi-last-change');
-  const errorEl   = document.getElementById('wifi-error');
-  const inflight  = document.getElementById('wifi-inflight');
-
+  const btn = document.getElementById('wifi-icon-btn');
+  if (!btn) return;
   if (!state || !state.capable) {
-    sec.hidden = true;
+    btn.hidden = true;
     return;
   }
-  sec.hidden = false;
+  btn.hidden = false;
+  btn.dataset.state    = state.enabled ? 'on' : 'off';
+  btn.dataset.degraded = state.degraded ? 'true' : 'false';
+  btn.disabled         = _wifiInFlight;
 
-  toggle.checked  = !!state.enabled;
-  toggle.disabled = _wifiInFlight;
-  inflight.hidden = !_wifiInFlight;
-
-  stateText.textContent = state.enabled ? 'On' : 'Off';
-  stateText.className   = 'wifi-state-text ' + (state.enabled ? 'on' : 'off');
-
-  const metaBits = [];
-  if (state.iface)     metaBits.push(state.iface);
-  if (state.phy)       metaBits.push(state.phy);
-  if (state.driver)    metaBits.push(state.driver);
-  if (state.ap_daemon) metaBits.push('via ' + state.ap_daemon);
-  meta.textContent = metaBits.length ? metaBits.join(' · ') : '—';
-
-  degraded.hidden = !state.degraded;
-
+  // Title text conveys the details we used to render inline; keeps
+  // the top-nav compact but the info discoverable on hover.
+  const bits = [`Wi-Fi radio: ${state.enabled ? 'on' : 'off'}`];
+  if (state.degraded) bits.push('(degraded — driver still loaded, RF not fully guaranteed)');
   if (state.last_change_ts) {
-    const when = new Date(state.last_change_ts * 1000);
+    const when = new Date(state.last_change_ts * 1000).toLocaleString();
     const who  = state.last_change_by || 'unknown';
-    const action = state.last_action ? `${state.last_action}` : 'change';
-    lastEl.textContent = `Last ${action}: ${when.toLocaleString()} (${who})`;
-    lastEl.hidden = false;
-  } else {
-    lastEl.hidden = true;
+    bits.push(`\nLast ${state.last_action || 'change'}: ${when} (${who})`);
   }
-
-  if (state.error) {
-    errorEl.textContent = state.error;
-    errorEl.hidden = false;
-  } else {
-    errorEl.hidden = true;
-  }
+  btn.title = bits.join(' ');
 }
 
 async function _wifiFetchStatus() {
@@ -2081,37 +2056,30 @@ async function _wifiFetchStatus() {
 
 async function _wifiToggle() {
   if (_wifiInFlight) return;
+  const btn = document.getElementById('wifi-icon-btn');
   _wifiInFlight = true;
-  document.getElementById('wifi-toggle').disabled = true;
-  document.getElementById('wifi-inflight').hidden = false;
+  if (btn) btn.disabled = true;
   try {
     const r = await apiFetch('/ota/admin/api/wifi/toggle', { method: 'POST' });
     const state = await r.json();
     _wifiRender(state);
-    if (state.enabled) toast('Wi-Fi radio ON', 'success');
-    else if (state.degraded) toast('Wi-Fi radio OFF (degraded — driver still loaded)', 'error');
-    else toast('Wi-Fi radio OFF', 'success');
+    if (state.enabled)         toast('Wi-Fi radio ON', 'success');
+    else if (state.degraded)   toast('Wi-Fi radio OFF (degraded — driver still loaded)', 'error');
+    else                       toast('Wi-Fi radio OFF', 'success');
   } catch (err) {
     if (String(err.message) !== 'Unauthorized') {
       toast(`Wi-Fi toggle failed: ${err.message}`, 'error');
     }
   } finally {
     _wifiInFlight = false;
-    document.getElementById('wifi-inflight').hidden = true;
-    // Small delay before re-enabling — module (un)load has finished.
-    setTimeout(() => { document.getElementById('wifi-toggle').disabled = false; }, 200);
+    setTimeout(() => { if (btn) btn.disabled = false; }, 200);
   }
 }
 
 function wifiInit() {
-  const toggle = document.getElementById('wifi-toggle');
-  if (!toggle) return;
-  // Prevent the browser from optimistically flipping the checkbox
-  // before the backend confirms — we re-render from server state.
-  toggle.addEventListener('click', (ev) => {
-    ev.preventDefault();
-    _wifiToggle();
-  });
+  const btn = document.getElementById('wifi-icon-btn');
+  if (!btn) return;
+  btn.addEventListener('click', _wifiToggle);
   _wifiFetchStatus();
 }
 
