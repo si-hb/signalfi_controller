@@ -2058,7 +2058,10 @@ async function _wifiToggle() {
   if (_wifiInFlight) return;
   const btn = document.getElementById('wifi-icon-btn');
   _wifiInFlight = true;
-  if (btn) btn.disabled = true;
+  if (btn) {
+    btn.disabled = true;
+    btn.dataset.busy = 'true';   // start pulse animation
+  }
   try {
     const r = await apiFetch('/ota/admin/api/wifi/toggle', { method: 'POST' });
     const state = await r.json();
@@ -2072,6 +2075,7 @@ async function _wifiToggle() {
     }
   } finally {
     _wifiInFlight = false;
+    if (btn) btn.dataset.busy = 'false';  // stop pulse
     setTimeout(() => { if (btn) btn.disabled = false; }, 200);
   }
 }

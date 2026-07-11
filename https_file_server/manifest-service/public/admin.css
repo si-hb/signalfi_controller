@@ -1175,6 +1175,19 @@ body {
 .wifi-icon-btn:hover { background: rgba(255,255,255,0.06); }
 .wifi-icon-btn:disabled { opacity: 0.55; cursor: progress; }
 
+/* Busy state — pulses opacity so the user sees "the system is
+   thinking about your click" during the 1–3s driver-unload/reload
+   cycle.  Animation runs on top of :disabled so the pulse takes
+   precedence over the static opacity dim. */
+@keyframes wifi-pulse {
+  0%, 100% { opacity: 0.35; }
+  50%      { opacity: 1.0;  }
+}
+.wifi-icon-btn[data-busy="true"] {
+  animation: wifi-pulse 1.1s ease-in-out infinite;
+  cursor: progress;
+}
+
 .wifi-icon-btn[data-state="on"]  { color: var(--wifi-on); }
 .wifi-icon-btn[data-state="off"] { color: var(--wifi-off); }
 
