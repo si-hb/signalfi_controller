@@ -1159,7 +1159,7 @@ body {
 
 .wifi-icon-btn {
   --wifi-on:  #4fc3f7;   /* Material sky-400   — light blue */
-  --wifi-off: #1e3a5f;   /* muted navy         — dark  blue */
+  --wifi-off: #5d8bb3;   /* steel blue         — dark  blue, still legible on #1a1a1a nav */
   background: none;
   border: none;
   padding: 6px;
